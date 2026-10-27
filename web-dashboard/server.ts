@@ -19879,6 +19879,64 @@ app.post('/api/iot/bad-behavior', authenticateToken, (req, res) => {
 });
 
 
+const resolveIoTSampleFile = (): string | null => {
+    const candidates = [
+        path.join(__dirname, 'iot', 'Sample', 'iot-devices-sample.json'),
+        path.join(__dirname, '..', 'iot', 'Sample', 'iot-devices-sample.json'),
+        path.join(__dirname, '..', 'sample config', '20261027', 'iot-devices-2026-10-27.json'),
+        path.join(__dirname, '..', 'sample config', 'iot-devices.json'),
+        '/app/iot/Sample/iot-devices-sample.json'
+    ];
+    for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
+    }
+    return null;
+};
+
+app.get('/api/iot/config/sample', authenticateToken, (req, res) => {
+    try {
+        const samplePath = resolveIoTSampleFile();
+        if (!samplePath) {
+            return res.status(404).json({ error: 'Sample IoT configuration file not found' });
+        }
+        const content = fs.readFileSync(samplePath, 'utf8');
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', 'attachment; filename="iot-devices-sample.json"');
+        res.send(content);
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to load sample IoT config', details: err?.message });
+    }
+});
+
+app.post('/api/iot/config/import-sample', authenticateToken, (req, res) => {
+    try {
+        const samplePath = resolveIoTSampleFile();
+        if (!samplePath) {
+            return res.status(404).json({ error: 'Sample IoT configuration file not found' });
+        }
+        const raw = fs.readFileSync(samplePath, 'utf8');
+        const config = JSON.parse(raw);
+        if (!config.devices || !Array.isArray(config.devices)) {
+            return res.status(400).json({ error: 'Invalid sample config format' });
+        }
+        config.devices = config.devices.map((d: any) => {
+            const { running, status, ...clean } = d;
+            return clean;
+        });
+        if (fs.existsSync(IOT_DEVICES_FILE)) {
+            fs.copyFileSync(IOT_DEVICES_FILE, IOT_DEVICES_FILE + '.backup');
+        }
+        saveIoTConfig(config);
+        res.json({
+            success: true,
+            count: config.devices.length,
+            message: `Imported ${config.devices.length} sample IoT devices successfully`
+        });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Sample import failed', details: err?.message });
+    }
+});
+
 app.get('/api/iot/config/export', authenticateToken, (req, res) => {
     try {
         const config = getIoTConfig();

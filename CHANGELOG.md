@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.37] - 2026-10-27
+
+### Improved
+- **IoT Sample Dataset 1-Click Direct Import & Download (`web-dashboard/src/Iot.tsx`, `web-dashboard/server.ts`, `iot/Sample/iot-devices-sample.json`, `sample config/iot-devices.json`)**:
+  - Updated the bundled IoT sample configuration with the 100-device Palo Alto IoT & CVE vulnerability dataset (`iot-devices-2026-10-27.json`).
+  - Added `GET /api/iot/config/sample` and `POST /api/iot/config/import-sample` backend endpoints so sample datasets work offline inside the container without relying on external raw GitHub URLs.
+  - Enhanced the **Import** dropdown in **IoT Device Simulation** with a dedicated **Sample Dataset (100 Devices)** card offering both **Import Directly** (1-click load into Stigix) and **Download** (`iot-devices-sample.json`), and wired the footer **Sample JSON** button to download the file directly instead of opening raw text in a browser tab.
+
 ## [3.1.36] - 2026-10-27
 
 ### Fixed

@@ -1,0 +1,6775 @@
+{
+  "devices": [
+    {
+      "id": "pantv_stream_001",
+      "name": "PANTV-STREAMER",
+      "vendor": "Unknown",
+      "type": "Specialized PC",
+      "mac": "00:10:86:82:53:45",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "ntp"
+      ],
+      "enabled": true,
+      "traffic_interval": 186,
+      "description": "OS: Windows 7 | Risk: Low (30/100) | CVEs: 196 total — 4 critical / 138 high | Max CVSS: 10.0 | Top CVEs: CVE-2013-3195 (CVSS 10.0 High), CVE-2013-3175 (CVSS 10.0 High), CVE-2019-1212 (CVSS 9.8 Critical), CVE-2016-7182 (CVSS 9.8 Critical), CVE-2016-3236 (CVSS 9.8 Critical) | APT Groups (38): Antlion, China Attribution, Cobalt Spider, Common Raven, Dalbit, Ember Bear, Equation Group, Fancy Bear | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 1576",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "PANTV-STREAMER",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.92.106",
+        "os": "Windows 7",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 1576,
+        "cve_count": 196,
+        "critical_cves": 4,
+        "high_cves": 138,
+        "max_cvss": 10,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cobalt Spider",
+          "Common Raven",
+          "Dalbit",
+          "Ember Bear",
+          "Equation Group",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "Indrik Spider",
+          "Iran Attribution",
+          "IronHusky",
+          "Kryptonite Panda",
+          "Luckycat",
+          "Manic Menagerie",
+          "Mustang Panda",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "Sandcat",
+          "Shadow Crane",
+          "Shadow Wolf",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Vice Society",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2013-3195",
+          "CVE-2013-3175",
+          "CVE-2019-1212",
+          "CVE-2016-7182",
+          "CVE-2016-3236"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": false,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      },
+      "deviceState": "QUEUED",
+      "timing": {
+        "queuePosition": 1,
+        "cumulative": {
+          "active": 202281,
+          "idle": 198738,
+          "queued": 54237
+        }
+      }
+    },
+    {
+      "id": "lenelvip_002",
+      "name": "LENELVIP",
+      "vendor": "Lenel",
+      "type": "Lenel Security System",
+      "mac": "00:50:56:93:4f:26",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 173,
+      "description": "OS: Windows 8.1 | Risk: Low (30/100) | CVEs: 141 total — 4 critical / 113 high | Max CVSS: 10.0 | Top CVEs: CVE-2013-3195 (CVSS 10.0 High), CVE-2013-3175 (CVSS 10.0 High), CVE-2019-1212 (CVSS 9.8 Critical), CVE-2015-1635 (CVSS 9.8 Critical) [ICSA-17-215-02], CVE-2016-7182 (CVSS 9.8 Critical) | APT Groups (40): Antlion, China Attribution, Cobalt Spider, Common Raven, Cozy Bear, Dalbit, Ember Bear, Equation Group | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 1296",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "LENELVIP",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.124.205",
+        "os": "Windows 8.1",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 1296,
+        "cve_count": 141,
+        "critical_cves": 4,
+        "high_cves": 113,
+        "max_cvss": 10,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cobalt Spider",
+          "Common Raven",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Equation Group",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "Indrik Spider",
+          "Iran Attribution",
+          "IronHusky",
+          "Kryptonite Panda",
+          "Luckycat",
+          "Manic Menagerie",
+          "Mustang Panda",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "Sandcat",
+          "Shadow Crane",
+          "Shadow Wolf",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Vice Society",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2013-3195",
+          "CVE-2013-3175",
+          "CVE-2019-1212",
+          "CVE-2015-1635",
+          "CVE-2016-7182"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "win_314bhevo_003",
+      "name": "WIN-314BHEVO8K4",
+      "vendor": "Avigilon",
+      "type": "Avigilon Video Surveillance Server",
+      "mac": "f4:8e:38:c6:02:a8",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 80,
+      "description": "OS: Windows 8.1/6.10.4.0 | Risk: Low (30/100) | CVEs: 137 total — 4 critical / 110 high | Max CVSS: 10.0 | Top CVEs: CVE-2013-3195 (CVSS 10.0 High), CVE-2013-3175 (CVSS 10.0 High), CVE-2019-1212 (CVSS 9.8 Critical), CVE-2016-7182 (CVSS 9.8 Critical), CVE-2016-3236 (CVSS 9.8 Critical) | APT Groups (33): Antlion, China Attribution, Common Raven, Cozy Bear, Dalbit, Ember Bear, Equation Group, Fancy Bear | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 1234",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "WIN-314BHEVO8K4",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.124.29",
+        "os": "Windows 8.1/6.10.4.0",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 1234,
+        "cve_count": 137,
+        "critical_cves": 4,
+        "high_cves": 110,
+        "max_cvss": 10,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Common Raven",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Equation Group",
+          "Fancy Bear",
+          "FruityArmor",
+          "Indrik Spider",
+          "Iran Attribution",
+          "Kryptonite Panda",
+          "Luckycat",
+          "Manic Menagerie",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "Shadow Crane",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2013-3195",
+          "CVE-2013-3175",
+          "CVE-2019-1212",
+          "CVE-2016-7182",
+          "CVE-2016-3236"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "amazon_echo_004",
+      "name": "Amazon Echo #1",
+      "vendor": "Amazon.com, Inc.",
+      "type": "Amazon Echo",
+      "mac": "44:65:0d:01:04:d0",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 103,
+      "description": "OS: Windows 10 | Risk: Critical (100/100) | CVEs: 116 total — 8 critical / 87 high | Max CVSS: 9.8 | Top CVEs: CVE-2024-1283 (CVSS 9.8 Critical), CVE-2024-1284 (CVSS 9.8 Critical), CVE-2024-0808 (CVSS 9.8 Critical), CVE-2016-7182 (CVSS 9.8 Critical), CVE-2016-3236 (CVSS 9.8 Critical) | APT Groups (42): Antlion, China Attribution, Cozy Bear, Dalbit, Ember Bear, Fancy Bear, FruityArmor, Graceful Spider | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 1218",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Amazon Echo #1",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "172.16.10.73",
+        "os": "Windows 10",
+        "risk_score": 100,
+        "risk_level": "Critical",
+        "danger_score": 1218,
+        "cve_count": 116,
+        "critical_cves": 8,
+        "high_cves": 87,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Fancy Bear",
+          "FruityArmor",
+          "Graceful Spider",
+          "Helix Kitten",
+          "Indrik Spider",
+          "Intellexa",
+          "Iran Attribution",
+          "Kryptonite Panda",
+          "Labyrinth Chollima",
+          "Luckycat",
+          "Manic Menagerie",
+          "NSO Group",
+          "North Korea Attribution",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "SectorD",
+          "SectorJ",
+          "SectorJ177",
+          "SectorJ74",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "Storm-1811",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Void Banshee",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2024-1283",
+          "CVE-2024-1284",
+          "CVE-2024-0808",
+          "CVE-2016-7182",
+          "CVE-2016-3236"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "sjcmediapc02_005",
+      "name": "SJCMEDIAPC02",
+      "vendor": "Unknown",
+      "type": "Specialized PC",
+      "mac": "00:10:86:82:47:78",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "ntp"
+      ],
+      "enabled": true,
+      "traffic_interval": 190,
+      "description": "OS: Windows 10 | Risk: Low (30/100) | CVEs: 94 total — 2 critical / 73 high | Max CVSS: 9.8 | Top CVEs: CVE-2016-7182 (CVSS 9.8 Critical), CVE-2016-3236 (CVSS 9.8 Critical), CVE-2021-34527 (CVSS 8.8 High), CVE-2019-1152 (CVSS 8.8 High), CVE-2019-1150 (CVSS 8.8 High) | APT Groups (47): Antlion, China Attribution, Cobalt Spider, Cozy Bear, Dalbit, Ember Bear, Fancy Bear, FruityArmor | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 965",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "SJCMEDIAPC02",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.92.101",
+        "os": "Windows 10",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 965,
+        "cve_count": 94,
+        "critical_cves": 2,
+        "high_cves": 73,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cobalt Spider",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "Graceful Spider",
+          "Helix Kitten",
+          "Indrik Spider",
+          "Iran Attribution",
+          "IronHusky",
+          "Kryptonite Panda",
+          "Labyrinth Chollima",
+          "Luckycat",
+          "Manic Menagerie",
+          "Mustang Panda",
+          "North Korea Attribution",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "Sandcat",
+          "SectorD",
+          "SectorJ",
+          "SectorJ177",
+          "SectorJ74",
+          "Shadow Wolf",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "Storm-1811",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Vice Society",
+          "Void Banshee",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2016-7182",
+          "CVE-2016-3236",
+          "CVE-2021-34527",
+          "CVE-2019-1152",
+          "CVE-2019-1150"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "xbox_one__1_006",
+      "name": "Xbox One #1",
+      "vendor": "Microsoft Corporation",
+      "type": "Xbox One",
+      "mac": "b8:31:b5:c6:a2:13",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 167,
+      "description": "OS: Windows 10 | Risk: Low (30/100) | CVEs: 94 total — 2 critical / 73 high | Max CVSS: 9.8 | Top CVEs: CVE-2016-3236 (CVSS 9.8 Critical), CVE-2016-7182 (CVSS 9.8 Critical), CVE-2024-30068 (CVSS 8.8 High), CVE-2024-29988 (CVSS 8.8 High), CVE-2023-32049 (CVSS 8.8 High) | APT Groups (47): Antlion, China Attribution, Cobalt Spider, Cozy Bear, Dalbit, Ember Bear, Fancy Bear, FruityArmor | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 965",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Xbox One #1",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.12.83.177",
+        "os": "Windows 10",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 965,
+        "cve_count": 94,
+        "critical_cves": 2,
+        "high_cves": 73,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cobalt Spider",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "Graceful Spider",
+          "Helix Kitten",
+          "Indrik Spider",
+          "Iran Attribution",
+          "IronHusky",
+          "Kryptonite Panda",
+          "Labyrinth Chollima",
+          "Luckycat",
+          "Manic Menagerie",
+          "Mustang Panda",
+          "North Korea Attribution",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "Sandcat",
+          "SectorD",
+          "SectorJ",
+          "SectorJ177",
+          "SectorJ74",
+          "Shadow Wolf",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "Storm-1811",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Vice Society",
+          "Void Banshee",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2016-3236",
+          "CVE-2016-7182",
+          "CVE-2024-30068",
+          "CVE-2024-29988",
+          "CVE-2023-32049"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "xbox_one__2_007",
+      "name": "Xbox One #2",
+      "vendor": "Microsoft Corporation",
+      "type": "Xbox One",
+      "mac": "4c:0b:be:88:9c:93",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 95,
+      "description": "OS: Windows 10 | Risk: Low (30/100) | CVEs: 94 total — 2 critical / 73 high | Max CVSS: 9.8 | Top CVEs: CVE-2016-7182 (CVSS 9.8 Critical), CVE-2016-3236 (CVSS 9.8 Critical), CVE-2024-30068 (CVSS 8.8 High), CVE-2024-29988 (CVSS 8.8 High), CVE-2023-32049 (CVSS 8.8 High) | APT Groups (47): Antlion, China Attribution, Cobalt Spider, Cozy Bear, Dalbit, Ember Bear, Fancy Bear, FruityArmor | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 965",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Xbox One #2",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.12.82.241",
+        "os": "Windows 10",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 965,
+        "cve_count": 94,
+        "critical_cves": 2,
+        "high_cves": 73,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cobalt Spider",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "Graceful Spider",
+          "Helix Kitten",
+          "Indrik Spider",
+          "Iran Attribution",
+          "IronHusky",
+          "Kryptonite Panda",
+          "Labyrinth Chollima",
+          "Luckycat",
+          "Manic Menagerie",
+          "Mustang Panda",
+          "North Korea Attribution",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "Sandcat",
+          "SectorD",
+          "SectorJ",
+          "SectorJ177",
+          "SectorJ74",
+          "Shadow Wolf",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "Storm-1811",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Vice Society",
+          "Void Banshee",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2016-7182",
+          "CVE-2016-3236",
+          "CVE-2024-30068",
+          "CVE-2024-29988",
+          "CVE-2023-32049"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "xbox_one__3_008",
+      "name": "Xbox One #3",
+      "vendor": "Microsoft Corporation",
+      "type": "Xbox One",
+      "mac": "30:59:b7:aa:56:1a",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 218,
+      "description": "OS: Windows 10 | Risk: Low (30/100) | CVEs: 94 total — 2 critical / 73 high | Max CVSS: 9.8 | Top CVEs: CVE-2016-7182 (CVSS 9.8 Critical), CVE-2016-3236 (CVSS 9.8 Critical), CVE-2024-30068 (CVSS 8.8 High), CVE-2024-29988 (CVSS 8.8 High), CVE-2023-32049 (CVSS 8.8 High) | APT Groups (47): Antlion, China Attribution, Cobalt Spider, Cozy Bear, Dalbit, Ember Bear, Fancy Bear, FruityArmor | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 965",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Xbox One #3",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.118.85.166",
+        "os": "Windows 10",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 965,
+        "cve_count": 94,
+        "critical_cves": 2,
+        "high_cves": 73,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cobalt Spider",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "Graceful Spider",
+          "Helix Kitten",
+          "Indrik Spider",
+          "Iran Attribution",
+          "IronHusky",
+          "Kryptonite Panda",
+          "Labyrinth Chollima",
+          "Luckycat",
+          "Manic Menagerie",
+          "Mustang Panda",
+          "North Korea Attribution",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "Sandcat",
+          "SectorD",
+          "SectorJ",
+          "SectorJ177",
+          "SectorJ74",
+          "Shadow Wolf",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "Storm-1811",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Vice Society",
+          "Void Banshee",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2016-7182",
+          "CVE-2016-3236",
+          "CVE-2024-30068",
+          "CVE-2024-29988",
+          "CVE-2023-32049"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "sjcmediapc01_009",
+      "name": "SJCMEDIAPC01",
+      "vendor": "Unknown",
+      "type": "Specialized PC",
+      "mac": "00:10:86:82:46:d4",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "ntp"
+      ],
+      "enabled": true,
+      "traffic_interval": 236,
+      "description": "OS: Windows 10 | Risk: Low (30/100) | CVEs: 94 total — 2 critical / 73 high | Max CVSS: 9.8 | Top CVEs: CVE-2016-3236 (CVSS 9.8 Critical), CVE-2016-7182 (CVSS 9.8 Critical), CVE-2024-30068 (CVSS 8.8 High), CVE-2024-29988 (CVSS 8.8 High), CVE-2023-32049 (CVSS 8.8 High) | APT Groups (47): Antlion, China Attribution, Cobalt Spider, Cozy Bear, Dalbit, Ember Bear, Fancy Bear, FruityArmor | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 965",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "SJCMEDIAPC01",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.92.103",
+        "os": "Windows 10",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 965,
+        "cve_count": 94,
+        "critical_cves": 2,
+        "high_cves": 73,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cobalt Spider",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "Graceful Spider",
+          "Helix Kitten",
+          "Indrik Spider",
+          "Iran Attribution",
+          "IronHusky",
+          "Kryptonite Panda",
+          "Labyrinth Chollima",
+          "Luckycat",
+          "Manic Menagerie",
+          "Mustang Panda",
+          "North Korea Attribution",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "Sandcat",
+          "SectorD",
+          "SectorJ",
+          "SectorJ177",
+          "SectorJ74",
+          "Shadow Wolf",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "Storm-1811",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Vice Society",
+          "Void Banshee",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2016-3236",
+          "CVE-2016-7182",
+          "CVE-2024-30068",
+          "CVE-2024-29988",
+          "CVE-2023-32049"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "palo_alto_ne_010",
+      "name": "Palo Alto Networks Device #1",
+      "vendor": "Palo Alto Networks, Inc.",
+      "type": "Palo Alto Networks Device",
+      "mac": "84:d4:12:f0:8c:46",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 211,
+      "description": "OS: Windows 10 | Risk: Medium (43/100) | CVEs: 83 total — 2 critical / 65 high | Max CVSS: 9.8 | Top CVEs: CVE-2016-7182 (CVSS 9.8 Critical), CVE-2016-3236 (CVSS 9.8 Critical), CVE-2024-30068 (CVSS 8.8 High), CVE-2024-29988 (CVSS 8.8 High), CVE-2023-32049 (CVSS 8.8 High) | APT Groups (39): Antlion, China Attribution, Cozy Bear, Dalbit, Ember Bear, Fancy Bear, FruityArmor, Graceful Spider | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 865",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Palo Alto Networks Device #1",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.1.12",
+        "os": "Windows 10",
+        "risk_score": 43,
+        "risk_level": "Medium",
+        "danger_score": 865,
+        "cve_count": 83,
+        "critical_cves": 2,
+        "high_cves": 65,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Fancy Bear",
+          "FruityArmor",
+          "Graceful Spider",
+          "Helix Kitten",
+          "Indrik Spider",
+          "Iran Attribution",
+          "Kryptonite Panda",
+          "Labyrinth Chollima",
+          "Luckycat",
+          "Manic Menagerie",
+          "North Korea Attribution",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "SectorD",
+          "SectorJ177",
+          "SectorJ74",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "Storm-1811",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Void Banshee",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2016-7182",
+          "CVE-2016-3236",
+          "CVE-2024-30068",
+          "CVE-2024-29988",
+          "CVE-2023-32049"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "rockwell_plc_011",
+      "name": "Rockwell PLC",
+      "vendor": "Rockwell Automation",
+      "type": "Rockwell Automation PLC",
+      "mac": "12:5a:6b:11:90:09",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 194,
+      "description": "OS: Windows 10 | Risk: Low (0/100) | CVEs: 87 total — 2 critical / 66 high | Max CVSS: 9.8 | Top CVEs: CVE-2016-7182 (CVSS 9.8 Critical), CVE-2016-3236 (CVSS 9.8 Critical), CVE-2024-30068 (CVSS 8.8 High), CVE-2024-29988 (CVSS 8.8 High), CVE-2023-32049 (CVSS 8.8 High) | APT Groups (40): Antlion, China Attribution, Cozy Bear, Dalbit, Ember Bear, Fancy Bear, FruityArmor, Graceful Spider | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 844",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Rockwell PLC",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.80.102.33",
+        "os": "Windows 10",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 844,
+        "cve_count": 87,
+        "critical_cves": 2,
+        "high_cves": 66,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Antlion",
+          "China Attribution",
+          "Cozy Bear",
+          "Dalbit",
+          "Ember Bear",
+          "Fancy Bear",
+          "FruityArmor",
+          "Graceful Spider",
+          "Helix Kitten",
+          "Indrik Spider",
+          "Iran Attribution",
+          "Kryptonite Panda",
+          "Labyrinth Chollima",
+          "Luckycat",
+          "Manic Menagerie",
+          "North Korea Attribution",
+          "RedNovember",
+          "RomCom",
+          "Russia Attribution",
+          "SectorD",
+          "SectorJ",
+          "SectorJ177",
+          "SectorJ74",
+          "Silent Chollima",
+          "SparklingGoblin",
+          "Stone Panda",
+          "Storm-1811",
+          "UAC-0027",
+          "UAC-0098",
+          "UNC3347",
+          "UNC3658",
+          "UNC3784",
+          "UNC3819",
+          "Velvet Chollima",
+          "Venomous Bear",
+          "Void Banshee",
+          "Voodoo Bear",
+          "Wicked Panda",
+          "Wizard Opium",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2016-7182",
+          "CVE-2016-3236",
+          "CVE-2024-30068",
+          "CVE-2024-29988",
+          "CVE-2023-32049"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "raspberry_pi_012",
+      "name": "Raspberry Pi Device #1",
+      "vendor": "Raspberry Pi Foundation",
+      "type": "Raspberry Pi Device",
+      "mac": "b8:27:eb:9a:7d:a9",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 107,
+      "description": "OS: Linux Raspberry Pi Os | Risk: Critical (100/100) | CVEs: 53 total — 10 critical / 19 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-32207 (CVSS 9.8 Critical) [ICSA-23-075-01], CVE-2022-32221 (CVSS 9.8 Critical) [ICSA-23-348-10], CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38426 (CVSS 9.1 Critical) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 497",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Raspberry Pi Device #1",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.1.197",
+        "os": "Linux Raspberry Pi Os",
+        "risk_score": 100,
+        "risk_level": "Critical",
+        "danger_score": 497,
+        "cve_count": 53,
+        "critical_cves": 10,
+        "high_cves": 19,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-32207",
+          "CVE-2022-32221",
+          "CVE-2023-38427",
+          "CVE-2023-38429",
+          "CVE-2023-38426"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "hikvision_ca_013",
+      "name": "Hikvision Camera #1",
+      "vendor": "Hikvision",
+      "type": "Hikvision Camera",
+      "mac": "c4:2f:90:89:90:b9",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 204,
+      "description": "OS: Linux | Risk: Low (30/100) | CVEs: 30 total — 9 critical / 11 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38429 (CVSS 9.8 Critical), CVE-2017-7921 (CVSS 9.8 Critical) [ICSA-17-124-01], CVE-2018-6414 (CVSS 9.8 Critical), CVE-2023-38426 (CVSS 9.1 Critical) | APT Groups (2): Iran Attribution, SPECTRAL KITTEN | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 322",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Hikvision Camera #1",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.1.17",
+        "os": "Linux",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 322,
+        "cve_count": 30,
+        "critical_cves": 9,
+        "high_cves": 11,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Iran Attribution",
+          "SPECTRAL KITTEN"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38427",
+          "CVE-2023-38429",
+          "CVE-2017-7921",
+          "CVE-2018-6414",
+          "CVE-2023-38426"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "hikvision_ca_014",
+      "name": "Hikvision Camera #2",
+      "vendor": "Hikvision",
+      "type": "Hikvision Camera",
+      "mac": "64:db:8b:21:4c:cf",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 71,
+      "description": "OS: Linux | Risk: Low (0/100) | CVEs: 30 total — 9 critical / 11 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38429 (CVSS 9.8 Critical), CVE-2017-7921 (CVSS 9.8 Critical) [ICSA-17-124-01], CVE-2018-6414 (CVSS 9.8 Critical), CVE-2023-38426 (CVSS 9.1 Critical) | APT Groups (2): Iran Attribution, SPECTRAL KITTEN | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 292",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Hikvision Camera #2",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.100.64",
+        "os": "Linux",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 292,
+        "cve_count": 30,
+        "critical_cves": 9,
+        "high_cves": 11,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Iran Attribution",
+          "SPECTRAL KITTEN"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38427",
+          "CVE-2023-38429",
+          "CVE-2017-7921",
+          "CVE-2018-6414",
+          "CVE-2023-38426"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "hikvision_ca_015",
+      "name": "Hikvision Camera #3",
+      "vendor": "Hikvision",
+      "type": "Hikvision Camera",
+      "mac": "58:03:fb:b6:a4:cf",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 185,
+      "description": "OS: Linux | Risk: Low (0/100) | CVEs: 30 total — 9 critical / 11 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38427 (CVSS 9.8 Critical), CVE-2018-6414 (CVSS 9.8 Critical), CVE-2017-7921 (CVSS 9.8 Critical) [ICSA-17-124-01], CVE-2023-38432 (CVSS 9.1 Critical) | APT Groups (2): Iran Attribution, SPECTRAL KITTEN | Site: unknown | ⚠️ ICS-CERT alert | Danger Score: 292",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Hikvision Camera #3",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "",
+        "os": "Linux",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 292,
+        "cve_count": 30,
+        "critical_cves": 9,
+        "high_cves": 11,
+        "max_cvss": 9.8,
+        "apt_groups": [
+          "Iran Attribution",
+          "SPECTRAL KITTEN"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38429",
+          "CVE-2023-38427",
+          "CVE-2018-6414",
+          "CVE-2017-7921",
+          "CVE-2023-38432"
+        ],
+        "site": "unknown"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "meraki_camer_016",
+      "name": "meraki-camera-sjc-2",
+      "vendor": "Cisco Systems/Meraki",
+      "type": "Cisco Meraki Smart Camera",
+      "mac": "e4:55:a8:66:89:0d",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 104,
+      "description": "OS: Linux | Risk: Low (33/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38431 (CVSS 9.1 Critical), CVE-2023-38432 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical) | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 252",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "meraki-camera-sjc-2",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.23.184.101",
+        "os": "Linux",
+        "risk_score": 33,
+        "risk_level": "Low",
+        "danger_score": 252,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38429",
+          "CVE-2023-38427",
+          "CVE-2023-38431",
+          "CVE-2023-38432",
+          "CVE-2023-38430"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "philips_hue_017",
+      "name": "Philips Hue Bridge - SJC",
+      "vendor": "Signify",
+      "type": "Philips Hue Bridge",
+      "mac": "ec:b5:fa:66:88:0f",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 102,
+      "description": "OS: Linux | Risk: Low (33/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38432 (CVSS 9.1 Critical), CVE-2023-38431 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical) | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 252",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Philips Hue Bridge - SJC",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.23.183.101",
+        "os": "Linux",
+        "risk_score": 33,
+        "risk_level": "Low",
+        "danger_score": 252,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38429",
+          "CVE-2023-38427",
+          "CVE-2023-38432",
+          "CVE-2023-38431",
+          "CVE-2023-38430"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "raspberry_pi_018",
+      "name": "Raspberry Pi Device #2",
+      "vendor": "Raspberry Pi Foundation",
+      "type": "Raspberry Pi Device",
+      "mac": "b8:27:eb:7d:6b:a6",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 143,
+      "description": "OS: Linux Raspberry Pi Os | Risk: Low (30/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38426 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical), CVE-2023-38432 (CVSS 9.1 Critical) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 249",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Raspberry Pi Device #2",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.100.113",
+        "os": "Linux Raspberry Pi Os",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 249,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38427",
+          "CVE-2023-38429",
+          "CVE-2023-38426",
+          "CVE-2023-38430",
+          "CVE-2023-38432"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "raspberry_pi_019",
+      "name": "Raspberry Pi Device #3",
+      "vendor": "Raspberry Pi Foundation",
+      "type": "Raspberry Pi Device",
+      "mac": "b8:27:eb:c7:e9:c9",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 111,
+      "description": "OS: Linux Raspberry Pi Os | Risk: Low (30/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38426 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical), CVE-2023-38432 (CVSS 9.1 Critical) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 249",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Raspberry Pi Device #3",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.2.5",
+        "os": "Linux Raspberry Pi Os",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 249,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38427",
+          "CVE-2023-38429",
+          "CVE-2023-38426",
+          "CVE-2023-38430",
+          "CVE-2023-38432"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "profusion_me_020",
+      "name": "Profusion Media Player #1",
+      "vendor": "Mood Media",
+      "type": "Profusion Media Player",
+      "mac": "08:a5:c8:a8:5a:89",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 238,
+      "description": "OS: Linux -/2.30.0 | Risk: Low (30/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38432 (CVSS 9.1 Critical), CVE-2023-38431 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical) | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 249",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Profusion Media Player #1",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.54.100.146",
+        "os": "Linux -/2.30.0",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 249,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38429",
+          "CVE-2023-38427",
+          "CVE-2023-38432",
+          "CVE-2023-38431",
+          "CVE-2023-38430"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "profusion_me_021",
+      "name": "Profusion Media Player #2",
+      "vendor": "Mood Media",
+      "type": "Profusion Media Player",
+      "mac": "08:a5:c8:27:d4:87",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 209,
+      "description": "OS: Linux | Risk: Low (30/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38431 (CVSS 9.1 Critical), CVE-2023-38432 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical) | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 249",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Profusion Media Player #2",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.54.105.54",
+        "os": "Linux",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 249,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38429",
+          "CVE-2023-38427",
+          "CVE-2023-38431",
+          "CVE-2023-38432",
+          "CVE-2023-38430"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "rhombus_came_022",
+      "name": "Rhombus-Camera",
+      "vendor": "Rhombus Systems",
+      "type": "Rhombus Systems Security Camera",
+      "mac": "b8:27:eb:d8:be:34",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 61,
+      "description": "Risk: Low (30/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38432 (CVSS 9.1 Critical), CVE-2023-38431 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 249",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Rhombus-Camera",
+          "vendor_class_id": "Rhombus Systems IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.10.181",
+        "os": "",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 249,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38429",
+          "CVE-2023-38427",
+          "CVE-2023-38432",
+          "CVE-2023-38431",
+          "CVE-2023-38430"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "cisco_ip_pho_023",
+      "name": "Cisco IP phone",
+      "vendor": "Cisco Systems",
+      "type": "Cisco IP Phone",
+      "mac": "58:97:1e:cc:94:ef",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 221,
+      "description": "OS: Cisco IOS | Risk: Critical (93/100) | CVEs: 13 total — 3 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-20079 (CVSS 9.8 Critical), CVE-2023-20078 (CVSS 9.8 Critical), CVE-2020-3161 (CVSS 9.8 Critical), CVE-2020-3111 (CVSS 8.8 High), CVE-2023-20018 (CVSS 8.6 High) | Site: Default Site | Danger Score: 227",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Cisco IP phone",
+          "vendor_class_id": "dhcpcd-9.4.1",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            121,
+            3,
+            6,
+            15,
+            119,
+            252,
+            95,
+            44,
+            46
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.128.242.205",
+        "os": "Cisco IOS",
+        "risk_score": 93,
+        "risk_level": "Critical",
+        "danger_score": 227,
+        "cve_count": 13,
+        "critical_cves": 3,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2023-20079",
+          "CVE-2023-20078",
+          "CVE-2020-3161",
+          "CVE-2020-3111",
+          "CVE-2023-20018"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "siemens_plc_024",
+      "name": "Siemens PLC #1",
+      "vendor": "Siemens AG",
+      "type": "Siemens PLC",
+      "mac": "ac:64:17:19:7c:20",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 138,
+      "description": "OS: Embedded | Risk: Medium (46/100) | CVEs: 19 total — 4 critical / 8 high | Max CVSS: 10.0 | Top CVEs: CVE-2018-3991 (CVSS 10.0 Critical) [ICSA-19-043-03], CVE-2016-9157 (CVSS 9.8 Critical), CVE-2016-8567 (CVSS 9.8 Critical) [ICSA-16-336-01], CVE-2016-8565 (CVSS 9.1 Critical) [ICSA-16-287-02], CVE-2016-9160 (CVSS 8.1 High) [ICSA-16-348-04] | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 221",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Siemens PLC #1",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.65.11",
+        "os": "Embedded",
+        "risk_score": 46,
+        "risk_level": "Medium",
+        "danger_score": 221,
+        "cve_count": 19,
+        "critical_cves": 4,
+        "high_cves": 8,
+        "max_cvss": 10,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2018-3991",
+          "CVE-2016-9157",
+          "CVE-2016-8567",
+          "CVE-2016-8565",
+          "CVE-2016-9160"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "axis_communi_025",
+      "name": "Axis Communications Network Camera",
+      "vendor": "Axis Communications",
+      "type": "Axis Communications Network Camera",
+      "mac": "ac:cc:8e:bf:55:d5",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 87,
+      "description": "OS: Axis OS | Risk: Critical (100/100) | CVEs: 10 total — 3 critical / 7 high | Max CVSS: 9.8 | Top CVEs: CVE-2018-10661 (CVSS 9.8 Critical), CVE-2018-10662 (CVSS 9.8 Critical), CVE-2018-10660 (CVSS 9.8 Critical), CVE-2015-8255 (CVSS 8.8 High), SMB v1 Usage (CVSS 8.1 High) | Site: Default Site | Danger Score: 220",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Axis Communications Network Camera",
+          "vendor_class_id": "Axis Communications IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.16.211.49",
+        "os": "Axis OS",
+        "risk_score": 100,
+        "risk_level": "Critical",
+        "danger_score": 220,
+        "cve_count": 10,
+        "critical_cves": 3,
+        "high_cves": 7,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2018-10661",
+          "CVE-2018-10662",
+          "CVE-2018-10660",
+          "CVE-2015-8255",
+          "SMB v1 Usage"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "proxmox_serv_026",
+      "name": "Proxmox Server #1",
+      "vendor": "Proxmox Server Solutions GmbH",
+      "type": "Proxmox Server",
+      "mac": "bc:24:11:1a:b9:21",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 213,
+      "description": "OS: Linux | Risk: Low (0/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38426 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical), CVE-2023-38432 (CVSS 9.1 Critical) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 219",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Proxmox Server #1",
+          "vendor_class_id": "udhcp 1.30.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            28,
+            2,
+            3,
+            15,
+            6,
+            119,
+            12,
+            44,
+            47
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.150.10",
+        "os": "Linux",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 219,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38427",
+          "CVE-2023-38429",
+          "CVE-2023-38426",
+          "CVE-2023-38430",
+          "CVE-2023-38432"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "robotic0cbn_027",
+      "name": "Robotic0CBN",
+      "vendor": "FANUC",
+      "type": "FANUC Robotic Arm",
+      "mac": "22:21:5c:62:4e:46",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 61,
+      "description": "Risk: Low (0/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38432 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical), CVE-2023-38428 (CVSS 9.1 Critical) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 219",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Robotic0CBN",
+          "vendor_class_id": "FANUC IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.10.63",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 219,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38429",
+          "CVE-2023-38427",
+          "CVE-2023-38432",
+          "CVE-2023-38430",
+          "CVE-2023-38428"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "agv00112_028",
+      "name": "AGV00112",
+      "vendor": "JBT Corporation",
+      "type": "JBT AGV",
+      "mac": "01:21:5c:62:4e:46",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 214,
+      "description": "Risk: Low (0/100) | CVEs: 22 total — 7 critical / 8 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-38429 (CVSS 9.8 Critical), CVE-2023-38427 (CVSS 9.8 Critical), CVE-2023-38431 (CVSS 9.1 Critical), CVE-2023-38430 (CVSS 9.1 Critical), CVE-2023-38428 (CVSS 9.1 Critical) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 219",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "AGV00112",
+          "vendor_class_id": "JBT Corporation IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.10.163",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 219,
+        "cve_count": 22,
+        "critical_cves": 7,
+        "high_cves": 8,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-38429",
+          "CVE-2023-38427",
+          "CVE-2023-38431",
+          "CVE-2023-38430",
+          "CVE-2023-38428"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "hp_printer_029",
+      "name": "HP-Printer #1",
+      "vendor": "HP Inc.",
+      "type": "HP-Printer",
+      "mac": "48:ba:4e:83:09:c6",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 214,
+      "description": "OS: LynxOS | Risk: Low (30/100) | CVEs: 22 total — 6 critical / 4 high | Max CVSS: 10.0 | Top CVEs: CVE-2020-11897 (CVSS 10.0 Critical) [ICSA-20-168-01], CVE-2020-11896 (CVSS 10.0 Critical) [ICSA-20-168-01], CVE-2018-5924 (CVSS 9.8 Critical), CVE-2018-5923 (CVSS 9.8 Critical), CVE-2020-11898 (CVSS 9.1 Critical) [ICSA-20-168-01] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 218",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "HP-Printer #1",
+          "vendor_class_id": "HP Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.68.128",
+        "os": "LynxOS",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 218,
+        "cve_count": 22,
+        "critical_cves": 6,
+        "high_cves": 4,
+        "max_cvss": 10,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2020-11897",
+          "CVE-2020-11896",
+          "CVE-2018-5924",
+          "CVE-2018-5923",
+          "CVE-2020-11898"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_030",
+      "name": "F5 Networks Device #1",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:e5:42:86",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 228,
+      "description": "Risk: Critical (90/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22825 (CVSS 8.8 High) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 212",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #1",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "172.16.241.4",
+        "os": "",
+        "risk_score": 90,
+        "risk_level": "Critical",
+        "danger_score": 212,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22822",
+          "CVE-2022-22823",
+          "CVE-2022-22825",
+          "CVE-2022-22827"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "palo_alto_ne_031",
+      "name": "Palo Alto Networks Device #2",
+      "vendor": "Palo Alto Networks, Inc.",
+      "type": "Palo Alto Networks Device",
+      "mac": "00:50:56:8e:1f:d0",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 67,
+      "description": "OS: PAN-OS | Risk: Low (30/100) | CVEs: 8 total — 0 critical / 7 high | Max CVSS: 8.8 | Top CVEs: CVE-2021-34527 (CVSS 8.8 High), CVE-2020-0601 (CVSS 8.1 High), CVE-2021-1675 (CVSS 7.8 High), CVE-2021-40449 (CVSS 7.8 High), CVE-2018-8611 (CVSS 7.8 High) | APT Groups (15): China Attribution, Cobalt Spider, Dalbit, Fancy Bear, FruityArmor, Gold Southfield, IronHusky, Mustang Panda | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 191",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Palo Alto Networks Device #2",
+          "vendor_class_id": "Palo Alto Networks, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.130.21",
+        "os": "PAN-OS",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 191,
+        "cve_count": 8,
+        "critical_cves": 0,
+        "high_cves": 7,
+        "max_cvss": 8.8,
+        "apt_groups": [
+          "China Attribution",
+          "Cobalt Spider",
+          "Dalbit",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "IronHusky",
+          "Mustang Panda",
+          "Russia Attribution",
+          "Sandcat",
+          "Shadow Wolf",
+          "Velvet Chollima",
+          "Vice Society",
+          "Wicked Panda",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-34527",
+          "CVE-2020-0601",
+          "CVE-2021-1675",
+          "CVE-2021-40449",
+          "CVE-2018-8611"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "palo_alto_ne_032",
+      "name": "Palo Alto Networks Device #3",
+      "vendor": "Palo Alto Networks, Inc.",
+      "type": "Palo Alto Networks Device",
+      "mac": "00:50:56:8e:ef:d0",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 101,
+      "description": "OS: PAN-OS | Risk: Low (30/100) | CVEs: 8 total — 0 critical / 7 high | Max CVSS: 8.8 | Top CVEs: CVE-2021-34527 (CVSS 8.8 High), CVE-2020-0601 (CVSS 8.1 High), CVE-2021-40449 (CVSS 7.8 High), CVE-2021-1675 (CVSS 7.8 High), CVE-2018-8611 (CVSS 7.8 High) | APT Groups (15): China Attribution, Cobalt Spider, Dalbit, Fancy Bear, FruityArmor, Gold Southfield, IronHusky, Mustang Panda | Site: Branch 7 - San Diego IoT Lab | ⚠️ ICS-CERT alert | Danger Score: 191",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Palo Alto Networks Device #3",
+          "vendor_class_id": "Palo Alto Networks, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.10.107.8",
+        "os": "PAN-OS",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 191,
+        "cve_count": 8,
+        "critical_cves": 0,
+        "high_cves": 7,
+        "max_cvss": 8.8,
+        "apt_groups": [
+          "China Attribution",
+          "Cobalt Spider",
+          "Dalbit",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "IronHusky",
+          "Mustang Panda",
+          "Russia Attribution",
+          "Sandcat",
+          "Shadow Wolf",
+          "Velvet Chollima",
+          "Vice Society",
+          "Wicked Panda",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-34527",
+          "CVE-2020-0601",
+          "CVE-2021-40449",
+          "CVE-2021-1675",
+          "CVE-2018-8611"
+        ],
+        "site": "Branch 7 - San Diego IoT Lab"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "palo_alto_ne_033",
+      "name": "Palo Alto Networks Device #4",
+      "vendor": "Palo Alto Networks, Inc.",
+      "type": "Palo Alto Networks Device",
+      "mac": "00:50:56:8e:c2:23",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 80,
+      "description": "OS: PAN-OS | Risk: Low (30/100) | CVEs: 8 total — 0 critical / 7 high | Max CVSS: 8.8 | Top CVEs: CVE-2021-34527 (CVSS 8.8 High), CVE-2020-0601 (CVSS 8.1 High), CVE-2021-40449 (CVSS 7.8 High), CVE-2021-1675 (CVSS 7.8 High), CVE-2018-8611 (CVSS 7.8 High) | APT Groups (15): China Attribution, Cobalt Spider, Dalbit, Fancy Bear, FruityArmor, Gold Southfield, IronHusky, Mustang Panda | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 191",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Palo Alto Networks Device #4",
+          "vendor_class_id": "Palo Alto Networks, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.20.30.10",
+        "os": "PAN-OS",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 191,
+        "cve_count": 8,
+        "critical_cves": 0,
+        "high_cves": 7,
+        "max_cvss": 8.8,
+        "apt_groups": [
+          "China Attribution",
+          "Cobalt Spider",
+          "Dalbit",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "IronHusky",
+          "Mustang Panda",
+          "Russia Attribution",
+          "Sandcat",
+          "Shadow Wolf",
+          "Velvet Chollima",
+          "Vice Society",
+          "Wicked Panda",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-34527",
+          "CVE-2020-0601",
+          "CVE-2021-40449",
+          "CVE-2021-1675",
+          "CVE-2018-8611"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "lenelvip_034",
+      "name": "LENELVIP",
+      "vendor": "Lenel",
+      "type": "Lenel Security System",
+      "mac": "00:50:56:93:b2:a1",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 177,
+      "description": "OS: Windows | Risk: Low (30/100) | CVEs: 8 total — 0 critical / 6 high | Max CVSS: 8.8 | Top CVEs: CVE-2021-34527 (CVSS 8.8 High), CVE-2018-8611 (CVSS 7.8 High), CVE-2018-8453 (CVSS 7.8 High), CVE-2019-0859 (CVSS 7.8 High), CVE-2021-1675 (CVSS 7.8 High) | APT Groups (15): China Attribution, Cobalt Spider, Dalbit, Fancy Bear, FruityArmor, Gold Southfield, IronHusky, Mustang Panda | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 186",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "LENELVIP",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.124.203",
+        "os": "Windows",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 186,
+        "cve_count": 8,
+        "critical_cves": 0,
+        "high_cves": 6,
+        "max_cvss": 8.8,
+        "apt_groups": [
+          "China Attribution",
+          "Cobalt Spider",
+          "Dalbit",
+          "Fancy Bear",
+          "FruityArmor",
+          "Gold Southfield",
+          "IronHusky",
+          "Mustang Panda",
+          "Russia Attribution",
+          "Sandcat",
+          "Shadow Wolf",
+          "Velvet Chollima",
+          "Vice Society",
+          "Wicked Panda",
+          "Wizard Spider"
+        ],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-34527",
+          "CVE-2018-8611",
+          "CVE-2018-8453",
+          "CVE-2019-0859",
+          "CVE-2021-1675"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "axis_communi_035",
+      "name": "Axis Communications Video Surveillance #1",
+      "vendor": "Axis Communications",
+      "type": "Axis Communications Video Surveillance",
+      "mac": "b8:a4:4f:23:61:29",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 154,
+      "description": "OS: Axis OS | Risk: Medium (65/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2018-10662 (CVSS 9.8 Critical), CVE-2018-10660 (CVSS 9.8 Critical), CVE-2018-10661 (CVSS 9.8 Critical), CVE-2015-8255 (CVSS 8.8 High), CVE-2018-10663 (CVSS 7.5 High) | Site: Branch 5 - Florida | Danger Score: 177",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Axis Communications Video Surveillance #1",
+          "vendor_class_id": "Axis Communications IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.131.200",
+        "os": "Axis OS",
+        "risk_score": 65,
+        "risk_level": "Medium",
+        "danger_score": 177,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2018-10662",
+          "CVE-2018-10660",
+          "CVE-2018-10661",
+          "CVE-2015-8255",
+          "CVE-2018-10663"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "axis_00408cf_036",
+      "name": "axis-00408cfc34ca",
+      "vendor": "Axis Communications",
+      "type": "Axis Communications Network Camera",
+      "mac": "00:40:8c:fc:34:ca",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 86,
+      "description": "OS: Axis OS | Risk: Medium (65/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2018-10662 (CVSS 9.8 Critical), CVE-2018-10661 (CVSS 9.8 Critical), CVE-2018-10660 (CVSS 9.8 Critical), CVE-2015-8255 (CVSS 8.8 High), CVE-2018-10663 (CVSS 7.5 High) | Site: Default Site | Danger Score: 177",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "axis-00408cfc34ca",
+          "vendor_class_id": "Axis Communications IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.193.5.223",
+        "os": "Axis OS",
+        "risk_score": 65,
+        "risk_level": "Medium",
+        "danger_score": 177,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2018-10662",
+          "CVE-2018-10661",
+          "CVE-2018-10660",
+          "CVE-2015-8255",
+          "CVE-2018-10663"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "xxxchll1ahu3_037",
+      "name": "XXXCHLL1Ahu3@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:3a:59",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 236,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "XXXCHLL1Ahu3@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.15",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll2ahu7_038",
+      "name": "CHLL2Ahu7@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:35:ca",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 149,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL2Ahu7@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.0.10",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch4thahu10_039",
+      "name": "CH4thAhu10@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:b5:c8",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 109,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CH4thAhu10@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.5.13",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31887",
+          "CVE-2021-31888",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll2ahu2_040",
+      "name": "CHLL2Ahu2@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:39:e9",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 155,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL2Ahu2@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.14",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll1ahu5_041",
+      "name": "CHLL1Ahu5@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:39:ea",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 92,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL1Ahu5@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.17",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31884",
+          "CVE-2021-31886",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch4thahu11_042",
+      "name": "CH4thAhu11@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:b5:cb",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 134,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CH4thAhu11@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.5.14",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch12thahu15_043",
+      "name": "Ch12thAhu15@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:09:0b",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 209,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Ch12thAhu15@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.13.12",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31884",
+          "CVE-2021-31886",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll1ahu8ab_044",
+      "name": "CHLL1Ahu8AB@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:39:e7",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 148,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL1Ahu8AB@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.19",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll2ahu4_045",
+      "name": "CHLL2Ahu4@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:b5:c4",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 163,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL2Ahu4@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.16",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31884",
+          "CVE-2021-31886",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch4thahu12_046",
+      "name": "CH4thAhu12@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:39:e5",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 222,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CH4thAhu12@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.5.15",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31884",
+          "CVE-2021-31886",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch4thahu9_047",
+      "name": "CH4thAhu9@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:b5:c5",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 126,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CH4thAhu9@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.5.12",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31884",
+          "CVE-2021-31886",
+          "CVE-2021-31887",
+          "CVE-2021-31888",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch12thhru02_048",
+      "name": "CH12thHru02@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:a0:03:0c:12:bc",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 79,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CH12thHru02@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.13.14",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch12thahu13_049",
+      "name": "CH12thAhu13@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:a0:03:0a:23:64",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 82,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CH12thAhu13@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.13.10",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31884",
+          "CVE-2021-31886",
+          "CVE-2021-31887",
+          "CVE-2021-31888",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll1hwx_050",
+      "name": "CHLL1Hwx@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:a0:03:09:65:99",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 129,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL1Hwx@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.20",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll1cws_051",
+      "name": "CHLL1Cws@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:a0:03:09:65:ac",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 138,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL1Cws@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.21",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll1ahu6_052",
+      "name": "CHLL1Ahu6@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:c0:e4:03:39:eb",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 138,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL1Ahu6@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.18",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31884",
+          "CVE-2021-31886",
+          "CVE-2021-31888",
+          "CVE-2021-31887",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch12thhru01_053",
+      "name": "CH12thHru01@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:a0:03:0c:12:b8",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 158,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CH12thHru01@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.14.10",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31887",
+          "CVE-2021-31888",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chll1ahu1_054",
+      "name": "CHLL1Ahu1@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:a0:03:07:cd:2f",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 181,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CHLL1Ahu1@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.1.13",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31887",
+          "CVE-2021-31888",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ch12thahu14_055",
+      "name": "CH12thAhu14@",
+      "vendor": "Siemens AG",
+      "type": "Siemens Building Technology Device",
+      "mac": "00:a0:03:0a:23:40",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 240,
+      "description": "OS: Embedded | Risk: Low (30/100) | CVEs: 13 total — 2 critical / 9 high | Max CVSS: 9.8 | Top CVEs: CVE-2021-31886 (CVSS 9.8 Critical), CVE-2021-31884 (CVSS 9.8 Critical) [ICSA-21-350-06], CVE-2021-31887 (CVSS 8.8 High), CVE-2021-31888 (CVSS 8.8 High), CVE-2021-31346 (CVSS 8.2 High) [ICSA-21-350-06] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 167",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "CH12thAhu14@",
+          "vendor_class_id": "udhcp 0.9.8",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            12,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.104.13.11",
+        "os": "Embedded",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 167,
+        "cve_count": 13,
+        "critical_cves": 2,
+        "high_cves": 9,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2021-31886",
+          "CVE-2021-31884",
+          "CVE-2021-31887",
+          "CVE-2021-31888",
+          "CVE-2021-31346"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "apc_smart_po_056",
+      "name": "APC Smart PowerSupply #1",
+      "vendor": "Schneider Electric/APC",
+      "type": "APC Smart PowerSupply",
+      "mac": "00:c0:b7:f9:35:29",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 176,
+      "description": "OS: APC AOS | Risk: Low (30/100) | CVEs: 8 total — 7 critical / 0 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22806 (CVSS 9.8 Critical), CVE-2022-22805 (CVSS 9.8 Critical), CVE-2020-7521 (CVSS 9.8 Critical), CVE-2020-7522 (CVSS 9.8 Critical), CVE-2018-7243 (CVSS 9.8 Critical) | Site: Default Site | Danger Score: 157",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "APC Smart PowerSupply #1",
+          "vendor_class_id": "Schneider Electric/APC IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.69.44",
+        "os": "APC AOS",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 157,
+        "cve_count": 8,
+        "critical_cves": 7,
+        "high_cves": 0,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2022-22806",
+          "CVE-2022-22805",
+          "CVE-2020-7521",
+          "CVE-2020-7522",
+          "CVE-2018-7243"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "cisco_ip_pho_057",
+      "name": "Cisco IP Phone #1",
+      "vendor": "Cisco Systems",
+      "type": "Cisco IP Phone",
+      "mac": "ac:44:f2:05:28:67",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 215,
+      "description": "Risk: Low (30/100) | CVEs: 12 total — 3 critical / 7 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-20079 (CVSS 9.8 Critical), CVE-2023-20078 (CVSS 9.8 Critical), CVE-2020-3161 (CVSS 9.8 Critical), CVE-2020-3111 (CVSS 8.8 High), CVE-2023-20018 (CVSS 8.6 High) | Site: Default Site | Danger Score: 156",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Cisco IP Phone #1",
+          "vendor_class_id": "Cisco Systems IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.73.8",
+        "os": "",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 156,
+        "cve_count": 12,
+        "critical_cves": 3,
+        "high_cves": 7,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2023-20079",
+          "CVE-2023-20078",
+          "CVE-2020-3161",
+          "CVE-2020-3111",
+          "CVE-2023-20018"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "axis_communi_058",
+      "name": "Axis Communications Video Surveillance #2",
+      "vendor": "Axis Communications",
+      "type": "Axis Communications Video Surveillance",
+      "mac": "ac:cc:8e:6e:0c:da",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 202,
+      "description": "OS: Axis OS | Risk: Low (30/100) | CVEs: 10 total — 3 critical / 7 high | Max CVSS: 9.8 | Top CVEs: CVE-2018-10662 (CVSS 9.8 Critical), CVE-2018-10660 (CVSS 9.8 Critical), CVE-2018-10661 (CVSS 9.8 Critical), CVE-2015-8255 (CVSS 8.8 High), SMB v1 Usage (CVSS 8.1 High) | Site: Default Site | Danger Score: 150",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Axis Communications Video Surveillance #2",
+          "vendor_class_id": "Axis Communications IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.124.117",
+        "os": "Axis OS",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 150,
+        "cve_count": 10,
+        "critical_cves": 3,
+        "high_cves": 7,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2018-10662",
+          "CVE-2018-10660",
+          "CVE-2018-10661",
+          "CVE-2015-8255",
+          "SMB v1 Usage"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "axis_communi_059",
+      "name": "Axis Communications Video Surveillance #3",
+      "vendor": "Axis Communications",
+      "type": "Axis Communications Video Surveillance",
+      "mac": "ac:cc:8e:6d:ff:2a",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 162,
+      "description": "OS: Axis OS | Risk: Low (30/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2018-10662 (CVSS 9.8 Critical), CVE-2018-10660 (CVSS 9.8 Critical), CVE-2018-10661 (CVSS 9.8 Critical), CVE-2015-8255 (CVSS 8.8 High), CVE-2018-10663 (CVSS 7.5 High) | Site: Default Site | Danger Score: 142",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Axis Communications Video Surveillance #3",
+          "vendor_class_id": "Axis Communications IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.124.113",
+        "os": "Axis OS",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 142,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2018-10662",
+          "CVE-2018-10660",
+          "CVE-2018-10661",
+          "CVE-2015-8255",
+          "CVE-2018-10663"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "cisco_indust_060",
+      "name": "Cisco Industrial Ethernet Switch #1",
+      "vendor": "Cisco Systems",
+      "type": "Cisco Industrial Ethernet Switch",
+      "mac": "0c:d9:96:df:70:41",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http",
+        "lldp"
+      ],
+      "enabled": true,
+      "traffic_interval": 102,
+      "description": "OS: Cisco IOS 15.2(4)EA9 | Risk: Low (33/100) | CVEs: 10 total — 0 critical / 10 high | Max CVSS: 8.8 | Top CVEs: CVE-2017-6743 (CVSS 8.8 High), CVE-2017-6738 (CVSS 8.8 High), CVE-2017-6736 (CVSS 8.8 High), CVE-2017-6739 (CVSS 8.8 High), CVE-2017-6737 (CVSS 8.8 High) | APT Groups (2): Cosmic Wolf, Fancy Bear | Site: Default Site | Danger Score: 140",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Cisco Industrial Ethernet Switch #1",
+          "vendor_class_id": "dhcpcd-9.4.1",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            121,
+            3,
+            6,
+            15,
+            119,
+            252,
+            95,
+            44,
+            46
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.80.10.6",
+        "os": "Cisco IOS 15.2(4)EA9",
+        "risk_score": 33,
+        "risk_level": "Low",
+        "danger_score": 140,
+        "cve_count": 10,
+        "critical_cves": 0,
+        "high_cves": 10,
+        "max_cvss": 8.8,
+        "apt_groups": [
+          "Cosmic Wolf",
+          "Fancy Bear"
+        ],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2017-6743",
+          "CVE-2017-6738",
+          "CVE-2017-6736",
+          "CVE-2017-6739",
+          "CVE-2017-6737"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "beacon",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "ibm_server_061",
+      "name": "IBM Server #1",
+      "vendor": "IBM",
+      "type": "IBM Server",
+      "mac": "00:09:6b:00:00:04",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 137,
+      "description": "OS: Windows | Risk: Low (30/100) | CVEs: 8 total — 3 critical / 4 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 139",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "IBM Server #1",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.131.48",
+        "os": "Windows",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 139,
+        "cve_count": 8,
+        "critical_cves": 3,
+        "high_cves": 4,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "poly_video_c_062",
+      "name": "Poly Video Conferencing Device",
+      "vendor": "Poly Inc.",
+      "type": "Poly Video Conferencing Device",
+      "mac": "00:e0:db:5d:dd:83",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 132,
+      "description": "OS: Windows | Risk: Critical (100/100) | CVEs: 2 total — 0 critical / 1 high | Max CVSS: 8.8 | Top CVEs: CVE-2017-12857 (CVSS 8.8 High), CVE-2011-3389 (CVSS 4.3 Medium) [ICSA-19-192-04] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 138",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Poly Video Conferencing Device",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.28.51.134",
+        "os": "Windows",
+        "risk_score": 100,
+        "risk_level": "Critical",
+        "danger_score": 138,
+        "cve_count": 2,
+        "critical_cves": 0,
+        "high_cves": 1,
+        "max_cvss": 8.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2017-12857",
+          "CVE-2011-3389"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "apc_smart_po_063",
+      "name": "APC Smart PowerSupply #2",
+      "vendor": "Schneider Electric/APC",
+      "type": "APC Smart PowerSupply",
+      "mac": "00:c0:b7:c7:2a:43",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 65,
+      "description": "OS: APC AOS | Risk: Low (0/100) | CVEs: 8 total — 7 critical / 0 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22806 (CVSS 9.8 Critical), CVE-2022-22805 (CVSS 9.8 Critical), CVE-2020-7521 (CVSS 9.8 Critical), CVE-2020-7522 (CVSS 9.8 Critical), CVE-2018-7243 (CVSS 9.8 Critical) | Site: Default Site | Danger Score: 127",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "APC Smart PowerSupply #2",
+          "vendor_class_id": "Schneider Electric/APC IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.62.58.247",
+        "os": "APC AOS",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 127,
+        "cve_count": 8,
+        "critical_cves": 7,
+        "high_cves": 0,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2022-22806",
+          "CVE-2022-22805",
+          "CVE-2020-7521",
+          "CVE-2020-7522",
+          "CVE-2018-7243"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "apc_smart_po_064",
+      "name": "APC Smart PowerSupply #3",
+      "vendor": "Schneider Electric/APC",
+      "type": "APC Smart PowerSupply",
+      "mac": "00:c0:b7:fa:c0:fb",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 166,
+      "description": "OS: APC AOS | Risk: Low (0/100) | CVEs: 8 total — 7 critical / 0 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22806 (CVSS 9.8 Critical), CVE-2022-22805 (CVSS 9.8 Critical), CVE-2020-7521 (CVSS 9.8 Critical), CVE-2020-7522 (CVSS 9.8 Critical), CVE-2018-7243 (CVSS 9.8 Critical) | Site: Default Site | Danger Score: 127",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "APC Smart PowerSupply #3",
+          "vendor_class_id": "Schneider Electric/APC IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.55.107",
+        "os": "APC AOS",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 127,
+        "cve_count": 8,
+        "critical_cves": 7,
+        "high_cves": 0,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2022-22806",
+          "CVE-2022-22805",
+          "CVE-2020-7521",
+          "CVE-2020-7522",
+          "CVE-2018-7243"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_065",
+      "name": "NetApp Device #1",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1c:08:ff",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 62,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #1",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.111",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_066",
+      "name": "NetApp Device #2",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:33:e5:09",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 73,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #2",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.6.138",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_067",
+      "name": "NetApp Device #3",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1c:08:f3",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 191,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #3",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.115",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_068",
+      "name": "NetApp Device #4",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1b:21:0f",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 118,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #4",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.110",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_069",
+      "name": "NetApp Device #5",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:54:b4:d7",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 203,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #5",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.153",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_070",
+      "name": "NetApp Device #6",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1b:21:11",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 117,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #6",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.112",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_071",
+      "name": "NetApp Device #7",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1b:1f:b9",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 77,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #7",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.101",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_072",
+      "name": "NetApp Device #8",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1b:21:03",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 232,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #8",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.114",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_073",
+      "name": "NetApp Device #9",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:33:e5:0b",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 62,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #9",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.6.238",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_074",
+      "name": "NetApp Device #10",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:95:1d:6d",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 182,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #10",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.6.200",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_075",
+      "name": "NetApp Device #11",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:54:a2:1a",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 170,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #11",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.155",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_076",
+      "name": "NetApp Device #12",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:94:d6:89",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 129,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #12",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.6.201",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_077",
+      "name": "NetApp Device #13",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:94:d6:8c",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 178,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #13",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.6.203",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_078",
+      "name": "NetApp Device #14",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1c:09:27",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 141,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #14",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.104",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_079",
+      "name": "NetApp Device #15",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:33:95:a1",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 157,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #15",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.6.239",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_080",
+      "name": "NetApp Device #16",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:33:95:9f",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 127,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #16",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.6.140",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_081",
+      "name": "NetApp Device #17",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:54:b4:d5",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 149,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #17",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.152",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_082",
+      "name": "NetApp Device #18",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1c:09:25",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 231,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #18",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.102",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_083",
+      "name": "NetApp Device #19",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:95:1d:70",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 103,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #19",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.6.202",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_084",
+      "name": "NetApp Device #20",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1c:09:01",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 131,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #20",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.113",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_085",
+      "name": "NetApp Device #21",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:1b:1f:bb",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 69,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #21",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.103",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "netapp_devic_086",
+      "name": "NetApp Device #22",
+      "vendor": "NetApp, Inc.",
+      "type": "NetApp Device",
+      "mac": "d0:39:ea:54:a2:1c",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 221,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "NetApp Device #22",
+          "vendor_class_id": "NetApp, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.0.28.156",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_087",
+      "name": "F5 Networks Device #2",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:9b:52:9c",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 144,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #2",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.101.18.154",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_088",
+      "name": "F5 Networks Device #3",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:9d:1b:09",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 227,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #3",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.101.16.181",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_089",
+      "name": "F5 Networks Device #4",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:9b:52:8c",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 87,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #4",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.101.20.179",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_090",
+      "name": "F5 Networks Device #5",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:9d:1b:07",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 73,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #5",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.101.14.181",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_091",
+      "name": "F5 Networks Device #6",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:9b:52:89",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 204,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #6",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.101.16.90",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_092",
+      "name": "F5 Networks Device #7",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:9b:52:87",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 234,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #7",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.101.14.180",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_093",
+      "name": "F5 Networks Device #8",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:9d:1b:1c",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 70,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #8",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.101.18.156",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "f5_networks_094",
+      "name": "F5 Networks Device #9",
+      "vendor": "F5 Networks",
+      "type": "F5 Networks Device",
+      "mac": "00:94:a1:9d:1b:0c",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 228,
+      "description": "Risk: Low (0/100) | CVEs: 9 total — 3 critical / 6 high | Max CVSS: 9.8 | Top CVEs: CVE-2022-22824 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22823 (CVSS 9.8 Critical) [ICSA-23-278-01], CVE-2022-22822 (CVSS 9.8 Critical) [ICSA-22-167-17], CVE-2022-22827 (CVSS 8.8 High) [ICSA-23-278-01], CVE-2022-22826 (CVSS 8.8 High) [ICSA-22-167-17] | Site: Default Site | ⚠️ ICS-CERT alert | Danger Score: 122",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "F5 Networks Device #9",
+          "vendor_class_id": "F5 Networks IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.101.20.181",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 122,
+        "cve_count": 9,
+        "critical_cves": 3,
+        "high_cves": 6,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2022-22824",
+          "CVE-2022-22823",
+          "CVE-2022-22822",
+          "CVE-2022-22827",
+          "CVE-2022-22826"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "amazon_devic_095",
+      "name": "Amazon Device #1",
+      "vendor": "Amazon.com, Inc.",
+      "type": "Amazon Device",
+      "mac": "44:65:0d:01:09:71",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 71,
+      "description": "OS: Fire OS | Risk: High (81/100) | CVEs: 1 total — 1 critical / 0 high | Max CVSS: 9.1 | Top CVEs: CVE-2024-0057 (CVSS 9.1 Critical) | Site: Default Site | Danger Score: 114",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Amazon Device #1",
+          "vendor_class_id": "Amazon.com, Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "172.16.1.191",
+        "os": "Fire OS",
+        "risk_score": 81,
+        "risk_level": "High",
+        "danger_score": 114,
+        "cve_count": 1,
+        "critical_cves": 1,
+        "high_cves": 0,
+        "max_cvss": 9.1,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2024-0057"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "b2_flr8_pill_096",
+      "name": "B2-FLR8-Pillar",
+      "vendor": "SHARP Corporation",
+      "type": "Sharp Printer",
+      "mac": "80:38:96:20:78:25",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 203,
+      "description": "OS: ThreadX RTOS | Risk: Low (30/100) | CVEs: 6 total — 1 critical / 5 high | Max CVSS: 9.1 | Top CVEs: CVE-2024-47406 (CVSS 9.1 Critical), CVE-2024-47005 (CVSS 8.1 High), CVE-2024-42420 (CVSS 7.5 High), CVE-2024-43424 (CVSS 7.5 High), CVE-2024-47801 (CVSS 7.4 High) | Site: Default Site | Danger Score: 103",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "B2-FLR8-Pillar",
+          "vendor_class_id": "SHARP Corporation IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.68.3",
+        "os": "ThreadX RTOS",
+        "risk_score": 30,
+        "risk_level": "Low",
+        "danger_score": 103,
+        "cve_count": 6,
+        "critical_cves": 1,
+        "high_cves": 5,
+        "max_cvss": 9.1,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2024-47406",
+          "CVE-2024-47005",
+          "CVE-2024-42420",
+          "CVE-2024-43424",
+          "CVE-2024-47801"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chromecast_097",
+      "name": "Chromecast",
+      "vendor": "Google Inc.",
+      "type": "Google-ChromeCast",
+      "mac": "6c:ad:f8:54:05:41",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 75,
+      "description": "Risk: Low (0/100) | CVEs: 8 total — 2 critical / 5 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-35648 (CVSS 9.8 Critical), CVE-2023-35647 (CVSS 9.8 Critical), CVE-2022-20566 (CVSS 7.8 High) [ICSA-23-166-11], CVE-2022-20421 (CVSS 7.8 High) [ICSA-23-166-11], CVE-2024-44101 (CVSS 7.5 High) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 102",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Chromecast",
+          "vendor_class_id": "Google Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.10.55",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 102,
+        "cve_count": 8,
+        "critical_cves": 2,
+        "high_cves": 5,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-35648",
+          "CVE-2023-35647",
+          "CVE-2022-20566",
+          "CVE-2022-20421",
+          "CVE-2024-44101"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "chromecast_098",
+      "name": "Chromecast",
+      "vendor": "Google Inc.",
+      "type": "Google-ChromeCast",
+      "mac": "a4:77:33:26:e1:38",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 214,
+      "description": "Risk: Low (0/100) | CVEs: 8 total — 2 critical / 5 high | Max CVSS: 9.8 | Top CVEs: CVE-2023-35648 (CVSS 9.8 Critical), CVE-2023-35647 (CVSS 9.8 Critical), CVE-2022-20566 (CVSS 7.8 High) [ICSA-23-166-11], CVE-2022-20421 (CVSS 7.8 High) [ICSA-23-166-11], CVE-2024-44101 (CVSS 7.5 High) | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 102",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Chromecast",
+          "vendor_class_id": "Google Inc. IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.10.95",
+        "os": "",
+        "risk_score": 0,
+        "risk_level": "Low",
+        "danger_score": 102,
+        "cve_count": 8,
+        "critical_cves": 2,
+        "high_cves": 5,
+        "max_cvss": 9.8,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2023-35648",
+          "CVE-2023-35647",
+          "CVE-2022-20566",
+          "CVE-2022-20421",
+          "CVE-2024-44101"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan",
+          "pan_test_domains"
+        ]
+      }
+    },
+    {
+      "id": "palo_alto_ne_099",
+      "name": "Palo Alto Networks Device #5",
+      "vendor": "Palo Alto Networks, Inc.",
+      "type": "Palo Alto Networks Device",
+      "mac": "00:50:56:8e:e7:52",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 126,
+      "description": "OS: Windows | Risk: High (74/100) | CVEs: 1 total — 0 critical / 0 high | Max CVSS: 4.3 | Top CVEs: CVE-2011-3389 (CVSS 4.3 Medium) [ICSA-19-192-04] | Site: Branch 5 - Florida | ⚠️ ICS-CERT alert | Danger Score: 95",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Palo Alto Networks Device #5",
+          "vendor_class_id": "MSFT 5.0",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            15,
+            3,
+            6,
+            44,
+            46,
+            47,
+            31,
+            33,
+            249,
+            43,
+            252
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "192.168.131.10",
+        "os": "Windows",
+        "risk_score": 74,
+        "risk_level": "High",
+        "danger_score": 95,
+        "cve_count": 1,
+        "critical_cves": 0,
+        "high_cves": 0,
+        "max_cvss": 4.3,
+        "apt_groups": [],
+        "has_ics_cert": true,
+        "top_cves": [
+          "CVE-2011-3389"
+        ],
+        "site": "Branch 5 - Florida"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "port_scan"
+        ]
+      }
+    },
+    {
+      "id": "polycom_devi_100",
+      "name": "Polycom Device #1",
+      "vendor": "Polycom",
+      "type": "Polycom Device",
+      "mac": "64:16:7f:06:79:24",
+      "protocols": [
+        "arp",
+        "dhcp",
+        "dns",
+        "http"
+      ],
+      "enabled": true,
+      "traffic_interval": 232,
+      "description": "Risk: Medium (62/100) | CVEs: 1 total — 0 critical / 1 high | Max CVSS: 8.8 | Top CVEs: CVE-2017-12857 (CVSS 8.8 High) | Site: Default Site | Danger Score: 87",
+      "fingerprint": {
+        "dhcp": {
+          "hostname": "Polycom Device #1",
+          "vendor_class_id": "Polycom IoT Device",
+          "client_id_type": 1,
+          "param_req_list": [
+            1,
+            3,
+            6,
+            15,
+            28,
+            51,
+            58,
+            59
+          ]
+        }
+      },
+      "_vuln_meta": {
+        "ip": "10.55.72.116",
+        "os": "",
+        "risk_score": 62,
+        "risk_level": "Medium",
+        "danger_score": 87,
+        "cve_count": 1,
+        "critical_cves": 0,
+        "high_cves": 1,
+        "max_cvss": 8.8,
+        "apt_groups": [],
+        "has_ics_cert": false,
+        "top_cves": [
+          "CVE-2017-12857"
+        ],
+        "site": "Default Site"
+      },
+      "security": {
+        "bad_behavior": true,
+        "behavior_type": [
+          "pan_test_domains"
+        ]
+      }
+    }
+  ]
+}

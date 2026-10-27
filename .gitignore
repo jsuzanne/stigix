@@ -31,6 +31,8 @@ logo_header_mockup.html
 !logs/stats.json
 !mcp-server/tests/fixtures/**
 !site/reports/manifest.json
+!sample config/**/*.json
+!iot/Sample/*.json
 
 # -------------------------------------------------------
 # Credentials & Secrets — NEVER commit these

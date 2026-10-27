@@ -282,6 +282,36 @@ export default function Iot({ token }: IotProps) {
         }
     };
 
+    const handleDownloadSampleJson = async () => {
+        try {
+            const res = await gFetch('/api/iot/config/sample', { headers: authHeaders() });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const text = await res.text();
+            await triggerFileDownload(text, 'iot-devices-sample.json', 'application/json');
+        } catch (e) {
+            console.error("Failed to download sample JSON", e);
+            alert("Failed to download sample JSON.");
+        }
+    };
+
+    const handleImportSampleJson = async () => {
+        try {
+            const res = await gFetch('/api/iot/config/import-sample', {
+                method: 'POST',
+                headers: authHeaders()
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                fetchDevices();
+            } else {
+                alert("Sample import failed: " + (data.error || `HTTP ${res.status}`));
+            }
+        } catch (e) {
+            console.error("Failed to import sample JSON", e);
+            alert("Failed to import sample JSON.");
+        }
+    };
+
     const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -669,16 +699,47 @@ export default function Iot({ token }: IotProps) {
                                     <p className="text-[10px] text-text-muted leading-relaxed">Import from a Palo Alto CVE/Vulnerability export — aggregates by device &amp; danger score.</p>
                                 </button>
 
+                                <div className="h-px bg-border my-1 mx-2" />
+
+                                <div className="p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex flex-col gap-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-emerald-500 dark:text-emerald-400">
+                                            <Zap size={15} />
+                                            <span className="text-xs font-bold">Sample Dataset (100 Devices)</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-text-muted leading-relaxed">
+                                        Pre-built Palo Alto IoT &amp; CVE vulnerability profiles ready to import or download.
+                                    </p>
+                                    <div className="flex items-center gap-1.5 pt-0.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setShowImportDropdown(false); handleImportSampleJson(); }}
+                                            className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-all shadow-sm"
+                                        >
+                                            <DownloadCloud size={12} /> Import Directly
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setShowImportDropdown(false); handleDownloadSampleJson(); }}
+                                            className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border text-[10px] font-bold transition-all"
+                                            title="Download iot-devices-sample.json to disk"
+                                        >
+                                            <ArrowUpRight size={12} /> Download
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="h-px bg-border my-1.5 mx-2" />
                                 <div className="px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px] text-text-muted">
-                                    <a
-                                        href="https://raw.githubusercontent.com/jsuzanne/stigix/main/sample%20config/iot-devices.json"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowImportDropdown(false); handleDownloadSampleJson(); }}
                                         className="text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                                        title="Download Sample JSON configuration file"
                                     >
-                                        <ExternalLink size={10} /> Sample JSON
-                                    </a>
+                                        <FileJson size={10} /> Sample JSON
+                                    </button>
                                     <span>·</span>
                                     <a
                                         href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_DEVICE_GENERATOR.md"
