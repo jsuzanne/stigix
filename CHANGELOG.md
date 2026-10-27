@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.33] - 2026-10-27
+
+### Improved
+- **Magic Join Endpoint Interface Badges, Quick Presets & Persistent Selection (`web-dashboard/magic-join-manager.ts`, `web-dashboard/server.ts`, `web-dashboard/src/components/MagicJoinModal.tsx`)**:
+  - Enriched `detectLeaderEndpointsMeta()` and `GET /api/fleet/join-token` (`detected_endpoints_meta`) with the Linux interface name (`eth0`, `tailscale0`, `virbr0`, etc.) and default route indicator (`★`) without restricting private/LAN interfaces.
+  - Added compact 1-click endpoint selection presets (`Primary Only`, `Primary + Default NIC`, `All`) and persisted the administrator's preferred endpoint selection in `localStorage` (`stigix_magic_join_endpoints`) across modal openings.
+  - Updated the generated Magic Join `curl` one-liner from `/v2/install.sh` to `/main/install.sh`.
+
 ## [3.1.32] - 2026-10-27
 
 ### Improved

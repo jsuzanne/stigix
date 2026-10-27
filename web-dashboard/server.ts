@@ -17383,7 +17383,8 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
         const rawEndpoints = req.query.endpoints as string || undefined;
         const selectedEndpoints = rawEndpoints ? rawEndpoints.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined;
 
-        const allDetected = magicJoinManager.detectLeaderEndpoints(requestHost, localIp, requestProto);
+        const allDetectedMeta = magicJoinManager.detectLeaderEndpointsMeta(requestHost, localIp, requestProto);
+        const allDetected = allDetectedMeta.map(m => m.url);
         const activeRelayUrl = (
             getSystemSettings().registry_url ||
             process.env.STIGIX_REGISTRY_URL ||
@@ -17416,6 +17417,7 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
             max_uses: maxUses,
             endpoints: result.entry.payload.endpoints,
             detected_endpoints: allDetected,
+            detected_endpoints_meta: allDetectedMeta,
             realm: result.entry.payload.realm,
             relay_url: result.entry.payload.relay_url || null,
             curl_command: result.curlCommand

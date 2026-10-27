@@ -192,50 +192,77 @@ export class MagicJoinManager {
         return resolveClusterRealmHash(this.configDir);
     }
 
-    public detectLeaderEndpoints(requestHost?: string, localIp?: string, requestProto?: 'http' | 'https'): string[] {
-        const endpoints = new Set<string>();
+    public detectLeaderEndpointsMeta(requestHost?: string, localIp?: string, requestProto?: 'http' | 'https'): Array<{ url: string; iface: string; isPrimary?: boolean; isDefaultRoute?: boolean }> {
+        const metaMap = new Map<string, { url: string; iface: string; isPrimary?: boolean; isDefaultRoute?: boolean }>();
 
-        // 1. Explicit Public URL
-        if (process.env.STIGIX_PUBLIC_URL) {
-            try {
-                const u = new URL(process.env.STIGIX_PUBLIC_URL);
-                endpoints.add(u.origin);
-            } catch {
-                endpoints.add(process.env.STIGIX_PUBLIC_URL.replace(/\/$/, ''));
-            }
-        }
-
-        // 2. Request Host Header from Browser/Client (supports HTTPS Reverse Proxy / Cloudflare Tunnel)
-        if (requestHost && !requestHost.includes('127.0.0.1') && !requestHost.includes('localhost')) {
-            const isHttps = requestProto === 'https' || requestHost.endsWith(':443');
-            if (isHttps) {
-                const cleanHost = requestHost.replace(/:443$/, '');
-                endpoints.add(`https://${cleanHost}`);
-            } else {
-                const hostWithPort = requestHost.includes(':') ? requestHost : `${requestHost}:8080`;
-                endpoints.add(`http://${hostWithPort}`);
-            }
-        }
-
-        // 3. Local Private IP detected
-        if (localIp && localIp !== '127.0.0.1') {
-            endpoints.add(`http://${localIp}:8080`);
-        }
-
-        // 4. All host IPv4 network interfaces
+        // Build IP -> interface name lookup from os.networkInterfaces()
+        const ipToIface = new Map<string, string>();
         try {
             const nets = os.networkInterfaces();
             for (const name of Object.keys(nets)) {
                 if (['lo', 'docker', 'veth', 'br-'].some(b => name.startsWith(b))) continue;
                 for (const netInfo of nets[name] || []) {
                     if (netInfo.family === 'IPv4' && !netInfo.internal) {
-                        endpoints.add(`http://${netInfo.address}:8080`);
+                        ipToIface.set(netInfo.address, name);
                     }
                 }
             }
         } catch {}
 
-        return Array.from(endpoints);
+        const addEndpoint = (url: string, iface: string, isPrimary = false, isDefaultRoute = false) => {
+            const existing = metaMap.get(url);
+            if (!existing) {
+                metaMap.set(url, { url, iface, isPrimary, isDefaultRoute });
+            } else {
+                if (isPrimary) existing.isPrimary = true;
+                if (isDefaultRoute) existing.isDefaultRoute = true;
+                if ((existing.iface === 'Browser' || existing.iface === 'Default') && iface && iface !== 'Browser' && iface !== 'Default') {
+                    existing.iface = iface;
+                }
+            }
+        };
+
+        // 1. Explicit Public URL
+        if (process.env.STIGIX_PUBLIC_URL) {
+            try {
+                const u = new URL(process.env.STIGIX_PUBLIC_URL);
+                addEndpoint(u.origin, 'Public URL', metaMap.size === 0, false);
+            } catch {
+                addEndpoint(process.env.STIGIX_PUBLIC_URL.replace(/\/$/, ''), 'Public URL', metaMap.size === 0, false);
+            }
+        }
+
+        // 2. Request Host Header from Browser/Client (supports HTTPS Reverse Proxy / Cloudflare Tunnel)
+        if (requestHost && !requestHost.includes('127.0.0.1') && !requestHost.includes('localhost')) {
+            const isHttps = requestProto === 'https' || requestHost.endsWith(':443');
+            const bareHost = requestHost.replace(/:\d+$/, '');
+            const matchedIface = ipToIface.get(bareHost) || 'Browser';
+            const isDef = Boolean(localIp && bareHost === localIp);
+            if (isHttps) {
+                const cleanHost = requestHost.replace(/:443$/, '');
+                addEndpoint(`https://${cleanHost}`, matchedIface, metaMap.size === 0, isDef);
+            } else {
+                const hostWithPort = requestHost.includes(':') ? requestHost : `${requestHost}:8080`;
+                addEndpoint(`http://${hostWithPort}`, matchedIface, metaMap.size === 0, isDef);
+            }
+        }
+
+        // 3. Local Private/Default Route IP detected
+        if (localIp && localIp !== '127.0.0.1') {
+            const matchedIface = ipToIface.get(localIp) || 'Default';
+            addEndpoint(`http://${localIp}:8080`, matchedIface, metaMap.size === 0, true);
+        }
+
+        // 4. All host IPv4 network interfaces
+        for (const [ip, iface] of ipToIface.entries()) {
+            addEndpoint(`http://${ip}:8080`, iface, metaMap.size === 0, ip === localIp);
+        }
+
+        return Array.from(metaMap.values());
+    }
+
+    public detectLeaderEndpoints(requestHost?: string, localIp?: string, requestProto?: 'http' | 'https'): string[] {
+        return this.detectLeaderEndpointsMeta(requestHost, localIp, requestProto).map(m => m.url);
     }
 
     public createToken(options: {
@@ -302,7 +329,7 @@ export class MagicJoinManager {
         this.tokens.set(jti, entry);
         this.saveTokens();
 
-        const curlCommand = `curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- ${token}`;
+        const curlCommand = `curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- ${token}`;
 
         return { token, entry, curlCommand };
     }

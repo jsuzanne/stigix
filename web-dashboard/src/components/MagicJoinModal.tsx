@@ -63,8 +63,25 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
     const [loadingTokens, setLoadingTokens] = useState(false);
     const [revokingJti, setRevokingJti] = useState<string | null>(null);
 
-    const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
+    const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>(() => {
+        if (typeof window === 'undefined') return [];
+        try {
+            const raw = localStorage.getItem('stigix_magic_join_endpoints');
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+        } catch {
+            return [];
+        }
+    });
     const [allDetectedEndpoints, setAllDetectedEndpoints] = useState<string[]>([]);
+    const [endpointMetaMap, setEndpointMetaMap] = useState<Record<string, { iface: string; isPrimary?: boolean; isDefaultRoute?: boolean }>>({});
+
+    const saveSelectedEndpoints = (eps: string[]) => {
+        setSelectedEndpoints(eps);
+        try {
+            localStorage.setItem('stigix_magic_join_endpoints', JSON.stringify(eps));
+        } catch {}
+    };
 
     const authHeaders = useCallback((): Record<string, string> => {
         const t = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
@@ -97,10 +114,25 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
 
             const data: any = await res.json();
             setJoinData(data);
+            if (data.detected_endpoints_meta && Array.isArray(data.detected_endpoints_meta)) {
+                const map: Record<string, { iface: string; isPrimary?: boolean; isDefaultRoute?: boolean }> = {};
+                for (const item of data.detected_endpoints_meta) {
+                    if (item && item.url) map[item.url] = item;
+                }
+                setEndpointMetaMap(map);
+            }
             if (data.detected_endpoints && Array.isArray(data.detected_endpoints)) {
-                setAllDetectedEndpoints(data.detected_endpoints);
-                if (selectedEndpoints.length === 0) {
-                    setSelectedEndpoints(data.endpoints || data.detected_endpoints);
+                const detected: string[] = data.detected_endpoints;
+                setAllDetectedEndpoints(detected);
+                const validCurrent = (customEndpoints || selectedEndpoints).filter(ep => detected.includes(ep));
+                if (validCurrent.length === 0) {
+                    const fallback = (data.endpoints && Array.isArray(data.endpoints) && data.endpoints.length > 0)
+                        ? data.endpoints.filter((ep: string) => detected.includes(ep))
+                        : detected;
+                    const finalInitial = fallback.length > 0 ? fallback : detected;
+                    saveSelectedEndpoints(finalInitial);
+                } else if (validCurrent.length !== (customEndpoints || selectedEndpoints).length) {
+                    saveSelectedEndpoints(validCurrent);
                 }
             }
         } catch (err: any) {
@@ -118,7 +150,21 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
         } else {
             updated = [...selectedEndpoints, ep];
         }
-        setSelectedEndpoints(updated);
+        saveSelectedEndpoints(updated);
+        generateToken(updated);
+    };
+
+    const applyEndpointPreset = (preset: 'primary' | 'default_nic' | 'all') => {
+        const list = allDetectedEndpoints.length > 0 ? allDetectedEndpoints : (joinData?.endpoints || []);
+        if (list.length === 0) return;
+        let updated: string[] = list;
+        if (preset === 'primary') {
+            updated = [list[0]];
+        } else if (preset === 'default_nic') {
+            const defUrls = list.filter((ep, i) => i === 0 || endpointMetaMap[ep]?.isDefaultRoute);
+            updated = defUrls.length > 0 ? defUrls : [list[0]];
+        }
+        saveSelectedEndpoints(updated);
         generateToken(updated);
     };
 
@@ -483,49 +529,109 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                         </div>
 
                                         <div className="text-[11px] text-text-muted space-y-1.5">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-bold text-text-secondary">
-                                                    Target Leader Endpoints (Click to toggle):
-                                                </span>
-                                                <span className="text-[10px] text-text-muted">
-                                                    {selectedEndpoints.length} of {(allDetectedEndpoints.length > 0 ? allDetectedEndpoints : joinData.endpoints).length} included
-                                                </span>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2 pt-0.5">
-                                                {(allDetectedEndpoints.length > 0 ? allDetectedEndpoints : joinData.endpoints).map((ep, idx) => {
-                                                    const isSelected = selectedEndpoints.includes(ep);
-                                                    const isFirst = idx === 0;
-                                                    return (
-                                                        <button
-                                                            key={idx}
-                                                            type="button"
-                                                            onClick={() => toggleEndpoint(ep)}
-                                                            className={twMerge(
-                                                                "flex items-center gap-1.5 font-mono text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer select-none",
-                                                                isSelected
-                                                                    ? "bg-blue-500/15 border-blue-500/50 text-blue-400 font-semibold shadow-xs"
-                                                                    : "bg-card-secondary/40 border-border/80 text-text-muted line-through opacity-50 hover:opacity-90 hover:line-through-none"
+                                            {(() => {
+                                                const allEps = allDetectedEndpoints.length > 0 ? allDetectedEndpoints : joinData.endpoints;
+                                                const hasDistinctDefaultNic = allEps.some((ep, i) => i > 0 && endpointMetaMap[ep]?.isDefaultRoute);
+                                                return (
+                                                    <>
+                                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                            <span className="font-bold text-text-secondary">
+                                                                Target Leader Endpoints ({selectedEndpoints.length}/{allEps.length}):
+                                                            </span>
+                                                            {allEps.length > 1 && (
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => applyEndpointPreset('primary')}
+                                                                        className={twMerge(
+                                                                            "text-[10px] px-1.5 py-0.5 rounded border transition-all cursor-pointer",
+                                                                            selectedEndpoints.length === 1 && selectedEndpoints[0] === allEps[0]
+                                                                                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-semibold"
+                                                                                : "bg-card border-border/70 text-text-muted hover:text-text-primary"
+                                                                        )}
+                                                                        title="Keep only the primary URL used by your browser"
+                                                                    >
+                                                                        Primary Only
+                                                                    </button>
+                                                                    {hasDistinctDefaultNic && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => applyEndpointPreset('default_nic')}
+                                                                            className={twMerge(
+                                                                                "text-[10px] px-1.5 py-0.5 rounded border transition-all cursor-pointer",
+                                                                                selectedEndpoints.length === 2 && selectedEndpoints.includes(allEps[0]) && selectedEndpoints.some(e => endpointMetaMap[e]?.isDefaultRoute)
+                                                                                    ? "bg-blue-500/20 border-blue-500/40 text-blue-300 font-semibold"
+                                                                                    : "bg-card border-border/70 text-text-muted hover:text-text-primary"
+                                                                            )}
+                                                                            title="Keep Primary URL + Default Route interface"
+                                                                        >
+                                                                            Primary + Default NIC
+                                                                        </button>
+                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => applyEndpointPreset('all')}
+                                                                        className={twMerge(
+                                                                            "text-[10px] px-1.5 py-0.5 rounded border transition-all cursor-pointer",
+                                                                            selectedEndpoints.length === allEps.length
+                                                                                ? "bg-blue-500/20 border-blue-500/40 text-blue-300 font-semibold"
+                                                                                : "bg-card border-border/70 text-text-muted hover:text-text-primary"
+                                                                        )}
+                                                                        title="Include all detected interfaces"
+                                                                    >
+                                                                        All ({allEps.length})
+                                                                    </button>
+                                                                </div>
                                                             )}
-                                                            title={isSelected ? "Click to exclude this IP from the token" : "Click to include this IP in the token"}
-                                                        >
-                                                            {isSelected ? (
-                                                                <CheckCircle2 size={12} className="text-blue-400 shrink-0" />
-                                                            ) : (
-                                                                <X size={12} className="text-text-muted shrink-0" />
-                                                            )}
-                                                            <span>{ep}</span>
-                                                            {isFirst && isSelected && (
-                                                                <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-sans not-italic">
-                                                                    Primary
-                                                                </span>
-                                                            )}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                            <p className="text-[10px] text-text-muted/80 leading-relaxed pt-1">
-                                                💡 <strong>Keep all reachable interfaces selected</strong> to enable automatic multi-path failover and passive WebSocket RTT scoring. Only deselect an IP if you are certain no peer can ever route to it.
-                                            </p>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                                            {allEps.map((ep, idx) => {
+                                                                const isSelected = selectedEndpoints.includes(ep);
+                                                                const isFirst = idx === 0;
+                                                                const meta = endpointMetaMap[ep];
+                                                                const badgeLabel = isFirst
+                                                                    ? (meta?.iface && meta.iface !== 'Browser' ? `${meta.iface} • Primary` : 'Primary')
+                                                                    : meta?.iface
+                                                                        ? `${meta.iface}${meta.isDefaultRoute ? ' ★' : ''}`
+                                                                        : null;
+                                                                return (
+                                                                    <button
+                                                                        key={idx}
+                                                                        type="button"
+                                                                        onClick={() => toggleEndpoint(ep)}
+                                                                        className={twMerge(
+                                                                            "flex items-center gap-1.5 font-mono text-[11px] px-2 py-1 rounded-lg border transition-all cursor-pointer select-none",
+                                                                            isSelected
+                                                                                ? "bg-blue-500/15 border-blue-500/50 text-blue-400 font-semibold shadow-xs"
+                                                                                : "bg-card-secondary/40 border-border/80 text-text-muted line-through opacity-50 hover:opacity-90 hover:line-through-none"
+                                                                        )}
+                                                                        title={isSelected ? "Click to exclude this endpoint" : "Click to include this endpoint"}
+                                                                    >
+                                                                        {isSelected ? (
+                                                                            <CheckCircle2 size={11} className="text-blue-400 shrink-0" />
+                                                                        ) : (
+                                                                            <X size={11} className="text-text-muted shrink-0" />
+                                                                        )}
+                                                                        <span>{ep}</span>
+                                                                        {badgeLabel && (
+                                                                            <span className={twMerge(
+                                                                                "text-[9px] px-1 py-0.2 rounded font-sans not-italic",
+                                                                                isFirst && isSelected
+                                                                                    ? "bg-emerald-500/20 text-emerald-300"
+                                                                                    : meta?.isDefaultRoute && isSelected
+                                                                                        ? "bg-blue-500/20 text-blue-300"
+                                                                                        : "bg-neutral-800 text-text-muted"
+                                                                            )}>
+                                                                                {badgeLabel}
+                                                                            </span>
+                                                                        )}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
