@@ -14,7 +14,6 @@ import { clsx } from 'clsx';
 import { Favicon } from './components/Favicon';
 import { twMerge } from 'tailwind-merge';
 import { toast } from 'react-hot-toast';
-import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsTab';
 import { ApiStudio } from './ApiStudio';
 import { usePeerContext } from './PeerContext';
 import { SettingsSkeleton } from './components/skeletons/SettingsSkeleton';
@@ -2933,7 +2932,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'probes', label: 'Synthetic Probes' },
         { id: 'cloud', label: 'Cloud Edge' },
-        { id: 'custom-tcp', label: 'Custom TCP Apps' },
         { id: 'convergence', label: 'Failover' },
         { id: 'system', label: 'System Info' },
         { id: 'maintenance', label: 'Maintenance & Updates' },
@@ -9147,10 +9145,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         </div>
                     </div>
                 </div>
-            )}
-
-            {activeTab === 'custom-tcp' && (
-                <CustomTcpSettingsTab token={token} />
             )}
 
             {activeTab === 'api-studio' && (

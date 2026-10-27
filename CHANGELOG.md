@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.32] - 2026-10-27
+
+### Improved
+- **Consolidated Custom TCP Applications Management & Streamlined Settings (`web-dashboard/src/CustomApps.tsx`, `web-dashboard/src/Settings.tsx`, `web-dashboard/src/config/navigationConfig.ts`)**:
+  - Added 1-click **Duplicate Application** (`Copy`) action directly inside the main **Custom Applications** toolbar (`POST /api/custom-tcp-apps/:id/duplicate`) next to `Edit` and `Delete`.
+  - Removed the redundant `Settings -> Custom TCP Apps` sub-tab (`CustomTcpSettingsTab`) from `Settings` and `navigationConfig.ts`, consolidating all Custom TCP Application CRUD, Import/Export, Prisma SD-WAN sync, and runtime controls into the dedicated **Custom Applications** view.
+
 ## [3.1.31] - 2026-10-26
 
 ### Improved

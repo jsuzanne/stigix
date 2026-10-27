@@ -412,6 +412,31 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         if (!isEdit) setSelectedAppId(app.id);
     };
 
+    const handleDuplicateApp = async () => {
+        if (!currentApp || isActionLoading) return;
+        setIsActionLoading(true);
+        try {
+            const res = await gFetch(`/api/custom-tcp-apps/${currentApp.id}/duplicate`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                toast.success(`Duplicated "${currentApp.name}"`);
+                await loadConfig();
+                if (data.application?.id) {
+                    setSelectedAppId(data.application.id);
+                }
+            } else {
+                toast.error(data.error || 'Failed to duplicate application');
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Duplicate failed');
+        } finally {
+            setIsActionLoading(false);
+        }
+    };
+
     const handleDeleteApp = async () => {
         if (!currentApp || isActionLoading) return;
         if (!window.confirm(`Delete custom application "${currentApp.name}" (Port ${currentApp.listener?.port})? This will also purge its STX_${currentApp.name.replace(/[^a-zA-Z0-9_\-]/g, '_')} custom app from Prisma SD-WAN if synchronized.`)) return;
@@ -1171,6 +1196,15 @@ const secs = seconds % 60;
                             title="Edit Application Profile & Target Peers"
                         >
                             <Edit3 size={12} /> <span>Edit</span>
+                        </button>
+
+                        <button
+                            onClick={handleDuplicateApp}
+                            disabled={isActionLoading || !currentApp}
+                            className="h-[30px] px-2 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border rounded-xl text-xs transition-colors shadow-sm cursor-pointer disabled:opacity-40"
+                            title={`Duplicate "${currentApp?.name || 'application'}"`}
+                        >
+                            <Copy size={13} />
                         </button>
 
                         <button

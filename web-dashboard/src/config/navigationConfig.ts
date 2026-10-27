@@ -272,16 +272,6 @@ export const STIGIX_NAVIGATION_DOMAINS: NavDomainConfig[] = [
             },
             {
                 id: 'settings',
-                subTab: 'custom-tcp',
-                label: 'Custom TCP Apps',
-                icon: Boxes,
-                route: '#/settings/custom-tcp',
-                description: 'Enterprise TCP/HTTP workloads & private branch apps',
-                group: 'Simulation Profiles',
-                keywords: ['custom tcp', 'enterprise profiles', 'workload port', 'tcp apps', 'ports']
-            },
-            {
-                id: 'settings',
                 subTab: 'convergence',
                 label: 'Failover Settings',
                 icon: GitFork,
