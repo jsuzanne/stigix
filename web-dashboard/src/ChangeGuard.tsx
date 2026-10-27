@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { triggerFileDownload } from './utils/download';
 import { 
     Camera, 
     GitCompare, 
@@ -467,15 +468,7 @@ export default function ChangeGuard({ token }: ChangeGuardProps) {
     };
 
     const downloadFile = (filename: string, content: string, mimeType: string = 'application/json') => {
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        triggerFileDownload(content, filename, mimeType);
     };
 
     const buildDiffLlmMarkdown = (diff: DiffReport): string => {

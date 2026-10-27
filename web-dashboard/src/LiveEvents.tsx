@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { usePeerContext } from './PeerContext';
+import { triggerFileDownload } from './utils/download';
 import { Terminal, Search, Trash2, Pause, Play, Download, Wifi, WifiOff } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -63,15 +64,7 @@ export default function LiveEvents({ token }: { token: string | null }) {
 
   const downloadLogs = () => {
     const content = logs.join('\n');
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `stigix-logs-${new Date().toISOString()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    triggerFileDownload(content, `stigix-logs-${new Date().toISOString().split('T')[0]}.txt`, 'text/plain');
   };
 
   return (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePeerContext } from './PeerContext';
+import { triggerFileDownload } from './utils/download';
 import {
     ReactFlow,
     Controls,
@@ -3916,15 +3917,7 @@ function TopologyContent({ token, theme }: TopologyProps) {
             });
         });
 
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.setAttribute('hidden', '');
-        a.setAttribute('href', url);
-        a.setAttribute('download', 'site-inventory.csv');
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        triggerFileDownload(csv, 'site-inventory.csv', 'text/csv');
     }, [topology]);
 
     // Build a lookup: wan_if_id → UnderlayResolution for quick access in SiteNode

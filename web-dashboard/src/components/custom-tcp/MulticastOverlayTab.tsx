@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
+import { triggerFileDownload } from '../../utils/download';
 import type {
     CustomMulticastApplicationConfig,
     MulticastAddressingMode,
@@ -698,17 +699,10 @@ export const MulticastOverlayTab: React.FC<MulticastOverlayTabProps> = ({
                 throw new Error(errData.error || `Export failed (${res.status})`);
             }
             const bundle = await res.json();
-            const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = singleId
+            const filename = singleId
                 ? `stigix-multicast-${singleId}.json`
                 : `stigix-multicast-profiles-${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            await triggerFileDownload(bundle, filename, 'application/json');
             toast.success(
                 singleId
                     ? `Exported profile "${singleId}"`

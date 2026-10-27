@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
+import { triggerFileDownload } from './utils/download';
 import { VoiceSkeleton } from './components/skeletons/VoiceSkeleton';
 import { StigixSelect } from './components/common/StigixSelect';
 
@@ -348,11 +349,9 @@ export default function Voice(props: VoiceProps) {
     const handleExport = async () => {
         try {
             const r = await gFetch('/api/voice/config/export', { headers: { Authorization: `Bearer ${token}` } });
-            const blob = await r.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `voice-config-${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a); a.click(); a.remove();
+            if (!r.ok) return;
+            const text = await r.text();
+            await triggerFileDownload(text, `voice-config-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
         } catch { }
     };
 

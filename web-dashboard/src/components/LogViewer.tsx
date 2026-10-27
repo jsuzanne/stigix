@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Terminal, Download, Trash2, Filter, ChevronDown, Activity, X } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
+import { triggerFileDownload } from '../utils/download';
 
 interface LogEntry {
     type: string;
@@ -67,15 +68,8 @@ export default function LogViewer({ deviceId, deviceName, onClose }: LogViewerPr
     });
 
     const exportLogs = () => {
-        const data = JSON.stringify(logs, null, 2);
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
         const date = new Date().toISOString().split('T')[0];
-        a.href = url;
-        a.download = `SDWAN-IoT-Log-${deviceId}-${date}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
+        triggerFileDownload(logs, `SDWAN-IoT-Log-${deviceId}-${date}.json`, 'application/json');
     };
 
     const getLevelColor = (level: string) => {

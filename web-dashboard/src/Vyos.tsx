@@ -3,6 +3,7 @@ import { Activity, Plus, Trash2, RefreshCw, Shield, Server, Wifi, Layout, CheckC
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
+import { triggerFileDownload } from './utils/download';
 import { usePeerContext } from './PeerContext';
 import { VyosSkeleton } from './components/skeletons/VyosSkeleton';
 import { StigixSelect } from './components/common/StigixSelect';
@@ -915,13 +916,7 @@ export default function Vyos(props: VyosProps) {
                 }))
             };
 
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `vyos-sequences-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+            await triggerFileDownload(data, `vyos-sequences-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
             toast.success('✓ Sequences exported', { id: toastId });
         } catch (e: any) {
             toast.error(`❌ Export failed: ${e.message}`, { id: toastId });
@@ -980,13 +975,8 @@ export default function Vyos(props: VyosProps) {
             });
             if (!res.ok) throw new Error('Export failed');
 
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `vyos-config-full-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+            const text = await res.text();
+            await triggerFileDownload(text, `vyos-config-full-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
             toast.success('✓ Configuration exported', { id: toastId });
         } catch (e: any) {
             toast.error(`❌ Export failed: ${e.message}`, { id: toastId });

@@ -15090,6 +15090,56 @@ app.get('/api/admin/config/export', authenticateToken, (req, res) => {
     }
 });
 
+interface StagedDownloadEntry {
+    content: string;
+    filename: string;
+    mimeType: string;
+    expiresAt: number;
+}
+const stagedDownloads = new Map<string, StagedDownloadEntry>();
+
+app.post('/api/system/prepare-download', authenticateToken, (req, res) => {
+    try {
+        const { content, filename, mimeType } = req.body || {};
+        if (content === undefined || content === null) {
+            return res.status(400).json({ error: 'Missing content' });
+        }
+        const now = Date.now();
+        for (const [k, v] of stagedDownloads.entries()) {
+            if (v.expiresAt < now) stagedDownloads.delete(k);
+        }
+        const safeFilename = String(filename || 'export.json').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const id = crypto.randomBytes(16).toString('hex');
+        const serialized = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+        stagedDownloads.set(id, {
+            content: serialized,
+            filename: safeFilename,
+            mimeType: String(mimeType || 'application/json'),
+            expiresAt: now + 120000 // valid for 2 minutes
+        });
+        res.json({
+            id,
+            filename: safeFilename,
+            downloadUrl: `/api/system/download/${id}/${encodeURIComponent(safeFilename)}`
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Failed to stage download' });
+    }
+});
+
+app.get('/api/system/download/:id/:filename', (req, res) => {
+    const id = req.params.id;
+    const entry = stagedDownloads.get(id);
+    if (!entry || entry.expiresAt < Date.now()) {
+        stagedDownloads.delete(id);
+        return res.status(404).send('Download link expired or invalid');
+    }
+    res.setHeader('Content-Type', `${entry.mimeType}; charset=utf-8`);
+    res.setHeader('Content-Disposition', `attachment; filename="${entry.filename}"`);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.send(entry.content);
+});
+
 app.post('/api/admin/config/import', authenticateToken, async (req, res) => {
     const { bundle } = req.body;
     if (!bundle || !bundle.files) {

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.36] - 2026-10-27
+
+### Fixed
+- **Configuration & Data Export Filenames Across All Modules (`web-dashboard/server.ts`, `web-dashboard/src/utils/download.ts`, `Iot.tsx`, `Settings.tsx`, `Vyos.tsx`, `Voice.tsx`, `CustomApps.tsx`, `Security.tsx`, `Topology.tsx`, `ChangeGuard.tsx`, `LiveEvents.tsx`, `LogViewer.tsx`, `MulticastOverlayTab.tsx`)**:
+  - Fixed a Chrome download issue where exporting JSON/CSV/TXT configurations (IoT devices, Traffic applications, Connectivity probes, Stigix targets, VyOS configs/sequences, Voice profiles, Custom TCP Apps, Security profiles/results, Engine state backups) over HTTP produced raw `blob:` UUID filenames without extension (e.g., `b57faa85-d9f7-4f8e-acb8-6acfb2`) due to synchronous `URL.revokeObjectURL()` / detached `<a>` elements and Chrome's `blob:` URL handling.
+  - Added server-backed download staging endpoints (`POST /api/system/prepare-download` and `GET /api/system/download/:id/:filename`) and unified frontend `triggerFileDownload()` helper so exports always trigger native HTTP attachment downloads (`Content-Disposition: attachment; filename="..."`) with the exact `.json`/`.csv`/`.txt` filename in both local and Fleet Gateway remote views.
+
 ## [3.1.35] - 2026-10-27
 
 ### Fixed

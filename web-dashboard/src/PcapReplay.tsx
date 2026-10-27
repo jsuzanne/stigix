@@ -449,12 +449,15 @@ export const PcapReplay: React.FC<PcapReplayProps> = ({ token }) => {
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
+            a.style.display = 'none';
             a.href = url;
             a.download = fileName;
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 2000);
             toast.success(`Downloaded ${fileName}`);
         } catch (e: any) {
             toast.error(e.message || 'Download failed');

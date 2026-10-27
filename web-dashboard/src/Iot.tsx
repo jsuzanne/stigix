@@ -13,6 +13,7 @@ import {
 import { io } from 'socket.io-client';
 import LogViewer from './components/LogViewer';
 import { isValidMacAddress } from './utils/validation';
+import { triggerFileDownload } from './utils/download';
 import { IotSkeleton } from './components/skeletons/IotSkeleton';
 
 interface IoTDevice {
@@ -273,15 +274,9 @@ export default function Iot({ token }: IotProps) {
     const handleExportJson = async () => {
         try {
             const res = await gFetch('/api/iot/config/export', { headers: authHeaders() });
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'iot-devices.json';
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const text = await res.text();
+            await triggerFileDownload(text, `iot-devices-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
         } catch (e) {
             console.error("Failed to export JSON", e);
         }

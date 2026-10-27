@@ -10,6 +10,7 @@ import { ScoreDashboard } from './components/ScoreDashboard';
 import { useSecurityScores } from './hooks/useSecurityScores';
 import { ScoreGapAnalysis, ScoreLatestChanges } from './components/ScoreDetails';
 import { SecuritySkeleton } from './components/skeletons/SecuritySkeleton';
+import { triggerFileDownload } from './utils/download';
 import { StigixSelect } from './components/common/StigixSelect';
 
 function cn(...inputs: ClassValue[]) {
@@ -1526,14 +1527,8 @@ export default function Security({ token, onGoToCloudSettings: _onGoToCloudSetti
         }
     };
 
-    const exportResults = () => {
-        const dataStr = JSON.stringify(testResults, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(dataBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `security-test-results-${Date.now()}.json`;
-        link.click();
+    const exportResults = async () => {
+        await triggerFileDownload(testResults, `security-test-results-${Date.now()}.json`, 'application/json');
     };
 
     const getStatusBadge = (result: any, options?: { isFresh?: boolean; isTesting?: boolean; freshKey?: number }) => {
@@ -1660,13 +1655,7 @@ export default function Security({ token, onGoToCloudSettings: _onGoToCloudSetti
         try {
             const res = await gFetch('/api/security/profile', { headers: authHeaders() });
             const profile = await res.json();
-            const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `security-profile-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+            await triggerFileDownload(profile, `security-profile-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
             showToast('Security profile exported successfully', 'success');
         } catch (e) {
             showToast('Failed to export security profile', 'error');

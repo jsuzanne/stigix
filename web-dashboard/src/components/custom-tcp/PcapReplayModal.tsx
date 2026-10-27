@@ -70,8 +70,10 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
             a.download = fileName;
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 2000);
         } catch (e: any) {
             toast.error(e.message || 'Failed to download profile');
         }

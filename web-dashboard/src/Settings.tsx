@@ -16,6 +16,7 @@ import { twMerge } from 'tailwind-merge';
 import { toast } from 'react-hot-toast';
 import { ApiStudio } from './ApiStudio';
 import { usePeerContext } from './PeerContext';
+import { triggerFileDownload } from './utils/download';
 import { SettingsSkeleton } from './components/skeletons/SettingsSkeleton';
 import { StigixSelect } from './components/common/StigixSelect';
 
@@ -609,12 +610,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
+            a.style.display = 'none';
             a.href = url;
             a.download = filename;
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 2000);
 
             toast.success('Tech-Support bundle downloaded successfully!', { id: toastId });
         } catch (err: any) {
@@ -2204,12 +2208,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const res = await apiFetch('/api/connectivity/custom/export', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `probes-config-${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
+                await triggerFileDownload(data, `probes-config-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
             }
         } catch (e) { alert('Export failed'); }
     };
@@ -2258,7 +2257,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }
     };
 
-    const handleExportTargets = () => {
+    const handleExportTargets = async () => {
         try {
             const dataToExport = targets.map(t => ({
                 name: t.name,
@@ -2267,12 +2266,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 capabilities: t.capabilities,
                 ports: t.ports
             }));
-            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `stigix-targets-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
+            await triggerFileDownload(dataToExport, `stigix-targets-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
         } catch (e) { alert('Export failed'); }
     };
 
@@ -2297,12 +2291,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const res = await apiFetch('/api/config/applications/export?format=json', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `applications-config-${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
+                await triggerFileDownload(data, `applications-config-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
             }
         } catch (e) { alert('Export failed'); }
     };
@@ -2761,12 +2750,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
+            a.style.display = 'none';
             a.href = url;
             a.download = 'stigix-ca-bundle.pem';
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 2000);
         } catch (err: any) {
             setErrorMsg('Download failed');
         }
@@ -5376,12 +5368,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 const res = await apiFetch('/api/admin/config/export', { headers: { 'Authorization': `Bearer ${token}` } });
                                                 if (res.ok) {
                                                     const data = await res.json();
-                                                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                                                    const url = window.URL.createObjectURL(blob);
-                                                    const a = document.createElement('a');
-                                                    a.href = url;
-                                                    a.download = `stigix-backup-${new Date().toISOString().split('T')[0]}.json`;
-                                                    a.click();
+                                                    await triggerFileDownload(data, `stigix-backup-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
                                                 }
                                             } catch (e) { alert('Export failed'); }
                                         }}

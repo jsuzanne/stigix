@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
+import { triggerFileDownload } from './utils/download';
 import { CustomAppsSkeleton } from './components/skeletons/CustomAppsSkeleton';
 
 
@@ -503,15 +504,12 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Export request failed');
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'mesh'}-${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+            const text = await res.text();
+            await triggerFileDownload(
+                text,
+                `stigix-custom-apps-${instanceInfo?.siteName || 'mesh'}-${new Date().toISOString().slice(0, 10)}.json`,
+                'application/json'
+            );
             toast.success('Custom Applications bundle exported successfully!', { icon: '📥' });
         } catch (err: any) {
             toast.error(`Export failed: ${err.message}`);
@@ -525,16 +523,9 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Export request failed');
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
+            const text = await res.text();
             const currentName = currentApp?.name ? currentApp.name.toLowerCase().replace(/[^a-z0-9_-]/g, '-') : selectedAppId;
-            a.download = `stigix-app-${currentName}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+            await triggerFileDownload(text, `stigix-app-${currentName}.json`, 'application/json');
             toast.success(`Exported "${currentApp?.name || 'app'}" profile!`, { icon: '📥' });
         } catch (err: any) {
             toast.error(`Export failed: ${err.message}`);
