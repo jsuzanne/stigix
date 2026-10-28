@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.39] - 2026-10-28
+
+### Fixed
+- **Fleet Bulk Actions Payload & Tunnel Gateway Token Injection (`web-dashboard/server.ts`, `web-dashboard/src/Fleet.tsx`)**:
+  - Fixed a payload property mismatch (`peer_ids` vs `peers`) in `POST /api/fleet/bulk-action` that returned `no_peers_selected` when triggering bulk actions from the Fleet Orchestration Bar.
+  - Added signed gateway bearer token headers (`Authorization: Bearer <token>`, `x-gateway-source: stigix-leader`) and multi-key tunnel resolution (`instance_id`, `site`, `ip_private`) when forwarding bulk actions over WebSocket reverse tunnels.
+
 ## [3.1.38] - 2026-10-28
 
 ### Added

@@ -16612,7 +16612,8 @@ app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
         });
     }
 
-    const { action, peers } = req.body || {};
+    const { action } = req.body || {};
+    const peers = req.body?.peers ?? req.body?.peer_ids;
     const actionMap: Record<string, { label: string; path: string; body: any }> = {
         traffic_start: { label: 'Start Traffic Gen', path: '/api/traffic/start', body: {} },
         traffic_stop:  { label: 'Stop Traffic Gen',  path: '/api/traffic/stop',  body: {} },
@@ -16695,14 +16696,32 @@ app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
             // Remote Spoke execution
             remotePeerIdsToRefresh.push(resolvedId);
 
-            if (fleetTunnelManager.hasTunnel(resolvedId) || fleetTunnelManager.hasTunnel(siteName)) {
-                const tunnelTarget = fleetTunnelManager.hasTunnel(resolvedId) ? resolvedId : siteName;
+            const peerSigningKey =
+                fleetTunnelManager.getPeerNodeToken(resolvedId) ||
+                fleetTunnelManager.getPeerNodeToken(siteName) ||
+                (inst?.ip_private ? fleetTunnelManager.getPeerNodeToken(inst.ip_private) : null) ||
+                SECRET_KEY;
+            const peerToken = jwt.sign(
+                { username: 'stigix-gateway', role: 'admin', peer: resolvedId },
+                peerSigningKey,
+                { expiresIn: '2m' }
+            );
+            const peerAuthHeaders: Record<string, string> = {
+                'authorization': `Bearer ${peerToken}`,
+                'content-type': 'application/json',
+                'x-gateway-source': 'stigix-leader'
+            };
+
+            const tunnelCandidates = [resolvedId, siteName, inst?.ip_private].filter(Boolean) as string[];
+            const tunnelTarget = tunnelCandidates.find(cand => fleetTunnelManager.hasTunnel(cand));
+
+            if (tunnelTarget) {
                 let fwdRes = await fleetTunnelManager.forwardRequest(
                     tunnelTarget,
                     {
                         method: 'POST',
                         path: spec.path,
-                        headers: { 'content-type': 'application/json' },
+                        headers: peerAuthHeaders,
                         body: spec.body
                     },
                     12000
@@ -16712,7 +16731,7 @@ app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
                 if (fwdRes && fwdRes.status === 400 && (action === 'iot_start' || action === 'iot_stop')) {
                     const exportRes = await fleetTunnelManager.forwardRequest(
                         tunnelTarget,
-                        { method: 'GET', path: '/api/iot/config/export', headers: {} },
+                        { method: 'GET', path: '/api/iot/config/export', headers: peerAuthHeaders },
                         8000
                     );
                     if (exportRes && exportRes.status === 200 && exportRes.body) {
@@ -16724,7 +16743,7 @@ app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
                                 {
                                     method: 'POST',
                                     path: spec.path,
-                                    headers: { 'content-type': 'application/json' },
+                                    headers: peerAuthHeaders,
                                     body: { ids, all: true }
                                 },
                                 12000
@@ -16747,15 +16766,10 @@ app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
 
             // Direct LAN HTTP fallback if no active WebSocket tunnel
             if (inst?.ip_private && inst.ip_private !== '127.0.0.1') {
-                const peerSecret = fleetTunnelManager.getPeerNodeToken(resolvedId) || fleetTunnelManager.getPeerNodeToken(siteName) || SECRET_KEY;
-                const peerToken = jwt.sign({ username: 'leader-bulk', role: 'admin' }, peerSecret, { expiresIn: '5m' });
                 const targetUrl = `http://${inst.ip_private}:${inst.port || 8080}${spec.path}`;
                 const directRes = await fetch(targetUrl, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${peerToken}`
-                    },
+                    headers: peerAuthHeaders,
                     body: JSON.stringify(spec.body),
                     signal: AbortSignal.timeout(8000)
                 });

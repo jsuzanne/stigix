@@ -368,13 +368,13 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ action, peer_ids: targets })
+                body: JSON.stringify({ action, peers: targets, peer_ids: targets })
             });
             const json = await res.json();
             if (!res.ok) {
                 setBulkBanner({
                     ok: false,
-                    title: json.error || `Bulk action failed (${res.status})`
+                    title: json.message || json.error || `Bulk action failed (${res.status})`
                 });
             } else {
                 setBulkBanner({
