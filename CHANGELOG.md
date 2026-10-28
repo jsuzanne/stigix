@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.40] - 2026-10-28
+
+### Improved
+- **State-Aware Fleet Bulk Orchestration Bar & Live Voice/IoT Indicators (`web-dashboard/src/Fleet.tsx`, `web-dashboard/local-registry-server.ts`, `web-dashboard/server.ts`)**:
+  - Added live engine state pills (`● ON` / `○ OFF` for single selection, `N/M ON` for multi-node selection) and state-aware button highlighting across **Traffic**, **Voice**, **IoT**, **Probes**, and **Force Sync** (`N behind`) in the Bulk Orchestration Bar.
+  - Updated the **VOICE** column in the Fleet table to display `▶ <MOS>` / `▶ Active` when `voice_active` is true and `■ Stopped` (with last MOS in tooltip) when stopped.
+  - Updated the **TRAFFIC / IoT** column to display `IoT <running>/<total>` when active and `IoT Off (<total>)` when configured devices are stopped.
+  - Added immediate in-memory `patchInstanceSummary()` on the Leader after bulk action execution so engine states update instantaneously even on older Spokes.
+
 ## [3.1.39] - 2026-10-28
 
 ### Fixed

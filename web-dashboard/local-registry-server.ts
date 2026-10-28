@@ -386,11 +386,18 @@ export class LocalRegistryServer {
 
         this.detectSummaryTransitions(prev, instance);
 
+        const mergedSummary = instance.summary
+            ? {
+                  ...prev?.summary,
+                  ...Object.fromEntries(Object.entries(instance.summary).filter(([, v]) => v !== undefined))
+              }
+            : prev?.summary;
+
         const mergedInstance: RegistryInstance = {
             ...prev,
             ...instance,
             poc_id: targetPocId,
-            summary: instance.summary || prev?.summary,
+            summary: mergedSummary as any,
             meta: {
                 ...prev?.meta,
                 ...instance.meta
@@ -412,6 +419,24 @@ export class LocalRegistryServer {
         }
 
         return isNewOrChanged;
+    }
+
+    public patchInstanceSummary(instanceId: string, summaryPatch: Record<string, any>): void {
+        let inst = this.instances.get(instanceId);
+        if (!inst) {
+            for (const [, v] of this.instances.entries()) {
+                if (v.instance_id === instanceId || v.ip_private === instanceId || v.meta?.site === instanceId) {
+                    inst = v;
+                    break;
+                }
+            }
+        }
+        if (inst) {
+            inst.summary = {
+                ...(inst.summary || {}),
+                ...summaryPatch
+            } as any;
+        }
     }
 
     public updatePeerTunnelMetrics(

@@ -16805,8 +16805,32 @@ app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
     const succeeded = results.filter(r => r.ok).length;
     const failed = results.length - succeeded;
 
+    const applyOptimisticPatch = () => {
+        for (const r of results) {
+            if (!r.ok) continue;
+            if (action === 'traffic_start') {
+                localRegistryServer.patchInstanceSummary(r.peer_id, { traffic_state: 'RUNNING' });
+            } else if (action === 'traffic_stop') {
+                localRegistryServer.patchInstanceSummary(r.peer_id, { traffic_state: 'STOPPED', traffic_rate_mbps: 0, traffic_tx_mbps: 0, traffic_rx_mbps: 0 });
+            } else if (action === 'voice_start') {
+                localRegistryServer.patchInstanceSummary(r.peer_id, { voice_active: true });
+            } else if (action === 'voice_stop') {
+                localRegistryServer.patchInstanceSummary(r.peer_id, { voice_active: false });
+            } else if (action === 'iot_start') {
+                localRegistryServer.patchInstanceSummary(r.peer_id, { iot_active: true });
+            } else if (action === 'iot_stop') {
+                localRegistryServer.patchInstanceSummary(r.peer_id, { iot_active: false, iot_running_count: 0 });
+            } else if (action === 'probes_resume') {
+                localRegistryServer.patchInstanceSummary(r.peer_id, { probes_paused: false });
+            } else if (action === 'probes_pause') {
+                localRegistryServer.patchInstanceSummary(r.peer_id, { probes_paused: true });
+            }
+        }
+    };
+
     // Immediately refresh local Leader summary + remote Spokes telemetry over tunnel so UI updates right away
     try {
+        applyOptimisticPatch();
         if (targetPeerIds.includes(localLeaderId)) {
             const leaderSummary = await collectFleetTelemetrySummary();
             const regStatus = registryManager.getStatus();
@@ -16827,6 +16851,7 @@ app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
         if (remotePeerIdsToRefresh.length > 0) {
             await fleetTunnelManager.refreshPeersTelemetry(remotePeerIdsToRefresh, 3500);
         }
+        applyOptimisticPatch();
     } catch {}
 
     const targetSitesLabel = results.map(r => r.site).slice(0, 5).join(', ') + (results.length > 5 ? ` +${results.length - 5} more` : '');

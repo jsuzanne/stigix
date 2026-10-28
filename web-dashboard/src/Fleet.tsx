@@ -770,7 +770,50 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
             </div>
 
             {/* Contextual Bulk Orchestration Bar (Directly above Peers Table - Proposition 1) */}
-            {(selectedPeerIds.size > 0 || bulkBanner) && (
+            {(selectedPeerIds.size > 0 || bulkBanner) && (() => {
+                const selectedPeers = (data?.instances || []).filter(i => selectedPeerIds.has(i.instance_id));
+                const selTotal = selectedPeers.length;
+                const trafficOn = selectedPeers.filter(p => p.summary?.traffic_state === 'RUNNING').length;
+                const voiceOn = selectedPeers.filter(p => p.summary?.voice_active === true).length;
+                const iotOn = selectedPeers.filter(p => p.summary?.iot_active === true).length;
+                const probesOn = selectedPeers.filter(p => p.summary && !p.summary.probes_paused).length;
+                const configBehind = selectedPeers.filter(p => p.config_sync_status === 'behind').length;
+
+                const renderStatePill = (onCount: number, total: number, onWord = 'ON', offWord = 'OFF') => {
+                    if (total === 0) return null;
+                    if (total === 1) {
+                        return onCount === 1 ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                ● {onWord}
+                            </span>
+                        ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-card-secondary text-text-muted border border-border/80">
+                                ○ {offWord}
+                            </span>
+                        );
+                    }
+                    if (onCount === total) {
+                        return (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                {onCount}/{total} {onWord}
+                            </span>
+                        );
+                    }
+                    if (onCount > 0) {
+                        return (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-black bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                {onCount}/{total} {onWord}
+                            </span>
+                        );
+                    }
+                    return (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-card-secondary text-text-muted border border-border/80">
+                            0/{total} {onWord}
+                        </span>
+                    );
+                };
+
+                return (
                 <div className="bg-blue-950/20 dark:bg-blue-950/30 border border-blue-500/30 rounded-2xl p-3.5 shadow-lg space-y-2.5 animate-in fade-in duration-150">
                     {selectedPeerIds.size > 0 && (
                         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -809,17 +852,22 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                 </button>
                             </div>
 
-                            {/* Grouped Bulk Action Buttons */}
+                            {/* Grouped State-Aware Bulk Action Buttons */}
                             <div className="flex flex-wrap items-center gap-2">
                                 {/* Traffic Gen Group */}
-                                <div className="inline-flex items-center rounded-lg bg-card/90 border border-border p-0.5">
-                                    <span className="px-2 text-[10px] font-mono font-bold uppercase text-text-muted">Traffic</span>
+                                <div className="inline-flex items-center gap-1 rounded-lg bg-card/90 border border-border p-1">
+                                    <span className=" pl-1.5 text-[10px] font-mono font-bold uppercase text-text-muted">Traffic</span>
+                                    {renderStatePill(trafficOn, selTotal)}
                                     <button
                                         type="button"
                                         disabled={!!bulkActionLoading}
                                         onClick={() => executeBulkAction('traffic_start')}
-                                        className="px-2 py-1 rounded-md text-xs font-bold text-emerald-400 hover:bg-emerald-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
-                                        title="Start Traffic Generator on selected nodes"
+                                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                                            selTotal > 0 && trafficOn === selTotal
+                                                ? 'bg-emerald-500/15 text-emerald-400/60 ring-1 ring-emerald-500/30'
+                                                : 'text-emerald-400 hover:bg-emerald-500/15'
+                                        }`}
+                                        title={selTotal > 0 && trafficOn === selTotal ? 'Traffic is already running on selected node(s)' : 'Start Traffic Generator on selected nodes'}
                                     >
                                         <Play size={11} className="fill-emerald-400" />
                                         Start
@@ -828,23 +876,32 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         type="button"
                                         disabled={!!bulkActionLoading}
                                         onClick={() => executeBulkAction('traffic_stop')}
-                                        className="px-2 py-1 rounded-md text-xs font-bold text-rose-400 hover:bg-rose-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
-                                        title="Stop Traffic Generator on selected nodes"
+                                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                                            selTotal > 0 && trafficOn === 0
+                                                ? 'text-rose-400/40 hover:bg-rose-500/10'
+                                                : 'text-rose-400 hover:bg-rose-500/15'
+                                        }`}
+                                        title={selTotal > 0 && trafficOn === 0 ? 'Traffic is already stopped on selected node(s)' : 'Stop Traffic Generator on selected nodes'}
                                     >
-                                        <Square size={10} className="fill-rose-400" />
+                                        <Square size={10} className="fill-current" />
                                         Stop
                                     </button>
                                 </div>
 
                                 {/* Voice Group */}
-                                <div className="inline-flex items-center rounded-lg bg-card/90 border border-border p-0.5">
-                                    <span className="px-2 text-[10px] font-mono font-bold uppercase text-text-muted">Voice</span>
+                                <div className="inline-flex items-center gap-1 rounded-lg bg-card/90 border border-border p-1">
+                                    <span className="pl-1.5 text-[10px] font-mono font-bold uppercase text-text-muted">Voice</span>
+                                    {renderStatePill(voiceOn, selTotal)}
                                     <button
                                         type="button"
                                         disabled={!!bulkActionLoading}
                                         onClick={() => executeBulkAction('voice_start')}
-                                        className="px-2 py-1 rounded-md text-xs font-bold text-cyan-400 hover:bg-cyan-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
-                                        title="Start Voice RTP Simulation on selected nodes"
+                                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                                            selTotal > 0 && voiceOn === selTotal
+                                                ? 'bg-cyan-500/15 text-cyan-400/60 ring-1 ring-cyan-500/30'
+                                                : 'text-cyan-400 hover:bg-cyan-500/15'
+                                        }`}
+                                        title={selTotal > 0 && voiceOn === selTotal ? 'Voice RTP is already running on selected node(s)' : 'Start Voice RTP Simulation on selected nodes'}
                                     >
                                         <Phone size={11} />
                                         Start
@@ -853,22 +910,31 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         type="button"
                                         disabled={!!bulkActionLoading}
                                         onClick={() => executeBulkAction('voice_stop')}
-                                        className="px-2 py-1 rounded-md text-xs font-bold text-rose-400 hover:bg-rose-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
-                                        title="Stop Voice RTP Simulation on selected nodes"
+                                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                                            selTotal > 0 && voiceOn === 0
+                                                ? 'text-rose-400/40 hover:bg-rose-500/10'
+                                                : 'text-rose-400 hover:bg-rose-500/15'
+                                        }`}
+                                        title={selTotal > 0 && voiceOn === 0 ? 'Voice RTP is already stopped on selected node(s)' : 'Stop Voice RTP Simulation on selected nodes'}
                                     >
-                                        <Square size={10} className="fill-rose-400" />
+                                        <Square size={10} className="fill-current" />
                                         Stop
                                     </button>
                                 </div>
 
                                 {/* IoT Emulation Group */}
-                                <div className="inline-flex items-center rounded-lg bg-card/90 border border-border p-0.5">
-                                    <span className="px-2 text-[10px] font-mono font-bold uppercase text-text-muted">IoT</span>
+                                <div className="inline-flex items-center gap-1 rounded-lg bg-card/90 border border-border p-1">
+                                    <span className="pl-1.5 text-[10px] font-mono font-bold uppercase text-text-muted">IoT</span>
+                                    {renderStatePill(iotOn, selTotal)}
                                     <button
                                         type="button"
                                         disabled={!!bulkActionLoading}
                                         onClick={() => executeBulkAction('iot_start')}
-                                        className="px-2 py-1 rounded-md text-xs font-bold text-teal-400 hover:bg-teal-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                                            selTotal > 0 && iotOn === selTotal
+                                                ? 'bg-teal-500/15 text-teal-400/60 ring-1 ring-teal-500/30'
+                                                : 'text-teal-400 hover:bg-teal-500/15'
+                                        }`}
                                         title="Start all enabled IoT devices on selected nodes"
                                     >
                                         <Radio size={11} />
@@ -878,22 +944,31 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         type="button"
                                         disabled={!!bulkActionLoading}
                                         onClick={() => executeBulkAction('iot_stop')}
-                                        className="px-2 py-1 rounded-md text-xs font-bold text-rose-400 hover:bg-rose-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                                            selTotal > 0 && iotOn === 0
+                                                ? 'text-rose-400/40 hover:bg-rose-500/10'
+                                                : 'text-rose-400 hover:bg-rose-500/15'
+                                        }`}
                                         title="Stop all IoT devices on selected nodes"
                                     >
-                                        <Square size={10} className="fill-rose-400" />
+                                        <Square size={10} className="fill-current" />
                                         Stop
                                     </button>
                                 </div>
 
                                 {/* DEM Probes Group */}
-                                <div className="inline-flex items-center rounded-lg bg-card/90 border border-border p-0.5">
-                                    <span className="px-2 text-[10px] font-mono font-bold uppercase text-text-muted">Probes</span>
+                                <div className="inline-flex items-center gap-1 rounded-lg bg-card/90 border border-border p-1">
+                                    <span className="pl-1.5 text-[10px] font-mono font-bold uppercase text-text-muted">Probes</span>
+                                    {renderStatePill(probesOn, selTotal, 'ACT', 'STBY')}
                                     <button
                                         type="button"
                                         disabled={!!bulkActionLoading}
                                         onClick={() => executeBulkAction('probes_resume')}
-                                        className="px-2 py-1 rounded-md text-xs font-bold text-emerald-400 hover:bg-emerald-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                                            selTotal > 0 && probesOn === selTotal
+                                                ? 'bg-emerald-500/15 text-emerald-400/60 ring-1 ring-emerald-500/30'
+                                                : 'text-emerald-400 hover:bg-emerald-500/15'
+                                        }`}
                                         title="Resume local DEM connectivity probes on selected nodes"
                                     >
                                         <Play size={11} className="fill-emerald-400" />
@@ -903,7 +978,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         type="button"
                                         disabled={!!bulkActionLoading}
                                         onClick={() => executeBulkAction('probes_pause')}
-                                        className="px-2 py-1 rounded-md text-xs font-bold text-amber-400 hover:bg-amber-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-all disabled:opacity-50 ${
+                                            selTotal > 0 && probesOn === 0
+                                                ? 'bg-amber-500/15 text-amber-400/60 ring-1 ring-amber-500/30'
+                                                : 'text-amber-400 hover:bg-amber-500/15'
+                                        }`}
                                         title="Pause local DEM connectivity probes (Standby mode) on selected nodes"
                                     >
                                         <Pause size={11} />
@@ -916,11 +995,20 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     type="button"
                                     disabled={!!bulkActionLoading}
                                     onClick={() => executeBulkAction('config_sync')}
-                                    className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50 border ${
+                                        configBehind > 0
+                                            ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40'
+                                            : 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border-blue-500/30'
+                                    }`}
                                     title="Force immediate configuration bundle push over WebSocket tunnel"
                                 >
                                     <RefreshCw size={12} className={bulkActionLoading === 'config_sync' ? 'animate-spin' : ''} />
-                                    Force Sync
+                                    <span>Force Sync</span>
+                                    {configBehind > 0 && (
+                                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono bg-amber-500/30 text-amber-200">
+                                            {configBehind} behind
+                                        </span>
+                                    )}
                                 </button>
                             </div>
                         </div>
@@ -966,7 +1054,8 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         </div>
                     )}
                 </div>
-            )}
+                );
+            })()}
 
             {/* Peers Table */}
             <div className="bg-card/60 backdrop-blur-md rounded-2xl border border-border overflow-visible shadow-xl">
@@ -1307,26 +1396,47 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                             <span>Stopped</span>
                                                         </div>
                                                     )}
-                                                    {!peer.is_stale && peer.summary?.iot_active && (
-                                                        <span
-                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-500/15 text-teal-400 border border-teal-500/30"
-                                                            title={`IoT Emulation active (${peer.summary.iot_running_count ?? 1} device(s) running)`}
-                                                        >
-                                                            <Radio size={10} />
-                                                            IoT{peer.summary.iot_running_count ? ` (${peer.summary.iot_running_count})` : ''}
-                                                        </span>
+                                                    {!peer.is_stale && (
+                                                        peer.summary?.iot_active ? (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-500/15 text-teal-400 border border-teal-500/30"
+                                                                title={`IoT Emulation active (${peer.summary.iot_running_count ?? 1}${peer.summary.iot_total_count ? `/${peer.summary.iot_total_count}` : ''} device(s) running)`}
+                                                            >
+                                                                <Radio size={10} />
+                                                                IoT {peer.summary.iot_running_count ? `${peer.summary.iot_running_count}${peer.summary.iot_total_count ? `/${peer.summary.iot_total_count}` : ''}` : 'ON'}
+                                                            </span>
+                                                        ) : (peer.summary?.iot_total_count ?? 0) > 0 ? (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono text-text-muted bg-card-secondary/80 border border-border/70"
+                                                                title={`IoT Emulation stopped (${peer.summary?.iot_total_count} device(s) configured)`}
+                                                            >
+                                                                <Radio size={10} className="opacity-60" />
+                                                                IoT Off ({peer.summary?.iot_total_count})
+                                                            </span>
+                                                        ) : null
                                                     )}
                                                 </div>
                                             </td>
 
-                                            {/* 6. Voice MOS */}
+                                            {/* 6. Voice State & MOS */}
                                             <td className="px-3 py-2.5 whitespace-nowrap">
-                                                {peer.is_stale || !peer.summary?.voice_mos ? (
+                                                {peer.is_stale ? (
                                                     <span className="text-xs text-text-muted font-mono">—</span>
+                                                ) : peer.summary?.voice_active ? (
+                                                    <div className="inline-flex items-center gap-1 text-xs font-mono whitespace-nowrap" title="Voice RTP Simulation is RUNNING">
+                                                        <span className="text-emerald-400">▶</span>
+                                                        <span className="font-bold text-cyan-400">
+                                                            {peer.summary.voice_mos ? peer.summary.voice_mos.toFixed(2) : 'Active'}
+                                                        </span>
+                                                    </div>
                                                 ) : (
-                                                    <span className="text-xs font-bold font-mono text-cyan-400">
-                                                        {peer.summary.voice_mos.toFixed(2)}
-                                                    </span>
+                                                    <div
+                                                        className="inline-flex items-center gap-1 text-xs text-text-muted font-mono whitespace-nowrap"
+                                                        title={peer.summary?.voice_mos ? `Voice RTP Simulation is STOPPED (Last MOS: ${peer.summary.voice_mos.toFixed(2)})` : 'Voice RTP Simulation is STOPPED'}
+                                                    >
+                                                        <span>■</span>
+                                                        <span>Stopped</span>
+                                                    </div>
                                                 )}
                                             </td>
 
