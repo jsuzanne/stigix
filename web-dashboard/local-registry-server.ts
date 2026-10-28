@@ -18,6 +18,20 @@ export interface ActiveCustomAppServer {
     updated_at: number;
 }
 
+export type FleetEventCategory = 'tunnel' | 'config' | 'sla' | 'engine';
+export type FleetEventSeverity = 'info' | 'success' | 'warning' | 'critical';
+
+export interface FleetEvent {
+    id: string;
+    timestamp: string;
+    epochMs: number;
+    category: FleetEventCategory;
+    severity: FleetEventSeverity;
+    site: string;
+    instanceId: string;
+    title: string;
+    details?: string;
+}
 
 /**
  * LocalRegistryServer - A lightweight in-memory registry for local peer discovery.
@@ -26,8 +40,83 @@ export interface ActiveCustomAppServer {
 export class LocalRegistryServer {
     private instances: Map<string, RegistryInstance> = new Map();
     private activeCustomAppServers: Map<string, ActiveCustomAppServer> = new Map();
+    private fleetEvents: FleetEvent[] = [];
+    private static readonly MAX_FLEET_EVENTS = 500;
     private targetsManager: any = null;
     private ttlSeconds: number = 600; // 10 minutes TTL
+
+    public recordFleetEvent(event: {
+        category: FleetEventCategory;
+        severity: FleetEventSeverity;
+        site?: string;
+        instanceId?: string;
+        title: string;
+        details?: string;
+    }): FleetEvent {
+        const now = Date.now();
+        const instanceId = event.instanceId || 'leader';
+        let site = event.site || '';
+        if (!site && instanceId) {
+            const inst = this.instances.get(instanceId);
+            site = inst?.meta?.site || instanceId;
+        }
+        if (!site) site = 'Leader';
+
+        // Deduplicate identical consecutive events within 3 seconds for the same site
+        const latest = this.fleetEvents[0];
+        if (
+            latest &&
+            latest.site === site &&
+            latest.category === event.category &&
+            latest.title === event.title &&
+            now - latest.epochMs < 3000
+        ) {
+            return latest;
+        }
+
+        const entry: FleetEvent = {
+            id: `evt_${now}_${Math.random().toString(36).slice(2, 7)}`,
+            timestamp: new Date(now).toISOString(),
+            epochMs: now,
+            category: event.category,
+            severity: event.severity,
+            site,
+            instanceId,
+            title: event.title,
+            details: event.details
+        };
+
+        this.fleetEvents.unshift(entry);
+        if (this.fleetEvents.length > LocalRegistryServer.MAX_FLEET_EVENTS) {
+            this.fleetEvents.length = LocalRegistryServer.MAX_FLEET_EVENTS;
+        }
+        return entry;
+    }
+
+    public getFleetEvents(options?: {
+        limit?: number;
+        category?: string;
+        severity?: string;
+        site?: string;
+    }): FleetEvent[] {
+        let list = this.fleetEvents;
+        if (options?.category && options.category !== 'all') {
+            list = list.filter(e => e.category === options.category);
+        }
+        if (options?.severity && options.severity !== 'all') {
+            list = list.filter(e => e.severity === options.severity);
+        }
+        if (options?.site && options.site !== 'all') {
+            const sLower = options.site.toLowerCase();
+            list = list.filter(e => e.site.toLowerCase() === sLower || e.instanceId.toLowerCase() === sLower);
+        }
+        const limit = Math.min(500, Math.max(1, options?.limit || 200));
+        return list.slice(0, limit);
+    }
+
+    public clearFleetEvents(): void {
+        this.fleetEvents = [];
+    }
 
     public setTargetsManager(targetsManager: any): void {
         this.targetsManager = targetsManager;
@@ -57,6 +146,25 @@ export class LocalRegistryServer {
         this.activeCustomAppServers.set(key, { ...server, updated_at: Date.now() });
         if (stateChanged) {
             log('LOCAL-REGISTRY', `Custom App Server ${server.status}: ${server.app_name} on ${server.node_id} (ip: ${server.ip}, port ${server.port})`);
+            if (!prev && server.status === 'running') {
+                this.recordFleetEvent({
+                    category: 'engine',
+                    severity: 'success',
+                    site: server.node_name || server.node_id,
+                    instanceId: server.node_id,
+                    title: `Custom TCP Responder '${server.app_name}' online`,
+                    details: `Listening on ${server.ip}:${server.port}${server.is_eicar_responder ? ` (EICAR ${server.eicar_mode || 'http'})` : ''}`
+                });
+            } else if (prev && prev.status !== server.status) {
+                this.recordFleetEvent({
+                    category: 'engine',
+                    severity: server.status === 'running' ? 'success' : 'info',
+                    site: server.node_name || server.node_id,
+                    instanceId: server.node_id,
+                    title: `Custom TCP Responder '${server.app_name}' ${server.status}`,
+                    details: `${server.ip}:${server.port}`
+                });
+            }
         }
     }
 
@@ -88,8 +196,17 @@ export class LocalRegistryServer {
         for (const [key, inst] of this.instances.entries()) {
             const lastSeen = inst.last_seen ? new Date(inst.last_seen).getTime() : 0;
             if (now - lastSeen > this.ttlSeconds * 1000) {
+                const siteName = inst.meta?.site || inst.instance_id;
                 this.instances.delete(key);
                 log('LOCAL-REGISTRY', `Pruned stale instance: ${inst.instance_id}`);
+                this.recordFleetEvent({
+                    category: 'tunnel',
+                    severity: 'warning',
+                    site: siteName,
+                    instanceId: inst.instance_id,
+                    title: `Peer pruned from registry (inactive > ${Math.round(this.ttlSeconds / 60)}m)`,
+                    details: inst.ip_private ? `IP: ${inst.ip_private}` : undefined
+                });
                 pruned = true;
             }
         }
@@ -102,6 +219,147 @@ export class LocalRegistryServer {
 
     getInstances(): RegistryInstance[] {
         return Array.from(this.instances.values());
+    }
+
+    private detectSummaryTransitions(prev: RegistryInstance | undefined, next: RegistryInstance): void {
+        const siteName = next.meta?.site || prev?.meta?.site || next.instance_id;
+        const instanceId = next.instance_id;
+
+        if (!prev) {
+            this.recordFleetEvent({
+                category: 'tunnel',
+                severity: 'info',
+                site: siteName,
+                instanceId,
+                title: `Node registered in fleet (${next.type === 'leader' ? 'Leader' : 'Spoke'})`,
+                details: next.ip_private ? `IP: ${next.ip_private}${next.meta?.version ? ` · v${String(next.meta.version).replace(/^v/, '')}` : ''}` : undefined
+            });
+            return;
+        }
+
+        const pSum: any = prev.summary;
+        const nSum: any = next.summary;
+        if (!pSum || !nSum) return;
+
+        // 1. Traffic Generator transitions
+        if (pSum.traffic_state && nSum.traffic_state && pSum.traffic_state !== nSum.traffic_state) {
+            if (nSum.traffic_state === 'RUNNING') {
+                this.recordFleetEvent({
+                    category: 'engine',
+                    severity: 'success',
+                    site: siteName,
+                    instanceId,
+                    title: 'Traffic Generator started',
+                    details: nSum.traffic_rate_mbps ? `Rate: ${nSum.traffic_rate_mbps} Mbps` : undefined
+                });
+            } else if (pSum.traffic_state === 'RUNNING') {
+                this.recordFleetEvent({
+                    category: 'engine',
+                    severity: 'info',
+                    site: siteName,
+                    instanceId,
+                    title: 'Traffic Generator stopped'
+                });
+            }
+        }
+
+        // 2. Voice Generator transitions
+        if (pSum.voice_active !== undefined && nSum.voice_active !== undefined && Boolean(pSum.voice_active) !== Boolean(nSum.voice_active)) {
+            this.recordFleetEvent({
+                category: 'engine',
+                severity: nSum.voice_active ? 'success' : 'info',
+                site: siteName,
+                instanceId,
+                title: nSum.voice_active ? 'Voice Call Generator started' : 'Voice Call Generator stopped',
+                details: nSum.voice_mos ? `MOS: ${Number(nSum.voice_mos).toFixed(2)}` : undefined
+            });
+        }
+
+        // 3. IoT Emulation transitions
+        if (pSum.iot_active !== undefined && nSum.iot_active !== undefined && Boolean(pSum.iot_active) !== Boolean(nSum.iot_active)) {
+            this.recordFleetEvent({
+                category: 'engine',
+                severity: nSum.iot_active ? 'success' : 'info',
+                site: siteName,
+                instanceId,
+                title: nSum.iot_active ? 'IoT Fleet Emulation started' : 'IoT Fleet Emulation stopped',
+                details: nSum.iot_active && nSum.iot_running_count ? `${nSum.iot_running_count}/${nSum.iot_total_count || nSum.iot_running_count} device(s) active` : undefined
+            });
+        }
+
+        // 4. DEM Connectivity Probes Paused / Resumed
+        if (pSum.probes_paused !== undefined && nSum.probes_paused !== undefined && Boolean(pSum.probes_paused) !== Boolean(nSum.probes_paused)) {
+            this.recordFleetEvent({
+                category: 'engine',
+                severity: nSum.probes_paused ? 'warning' : 'success',
+                site: siteName,
+                instanceId,
+                title: nSum.probes_paused ? 'DEM Connectivity Probes paused' : 'DEM Connectivity Probes resumed',
+                details: nSum.probes_total ? `${nSum.probes_total} configured probe(s)` : undefined
+            });
+        }
+
+        // 5. Failing Probes Edge-Triggered Delta
+        if (!nSum.probes_paused && Array.isArray(pSum.failing_probes) && Array.isArray(nSum.failing_probes)) {
+            const prevMap = new Map<string, any>();
+            for (const fp of pSum.failing_probes) {
+                if (fp?.name) prevMap.set(fp.name, fp);
+            }
+            const nextMap = new Map<string, any>();
+            for (const fp of nSum.failing_probes) {
+                if (fp?.name) nextMap.set(fp.name, fp);
+            }
+
+            for (const [name, fp] of nextMap.entries()) {
+                if (!prevMap.has(name)) {
+                    this.recordFleetEvent({
+                        category: 'sla',
+                        severity: 'warning',
+                        site: siteName,
+                        instanceId,
+                        title: `DEM Probe '${name}' (${fp.type || 'PROBE'}) failing`,
+                        details: `${fp.error || 'Unreachable'}${fp.target ? ` · Target: ${fp.target}` : ''}`
+                    });
+                }
+            }
+            for (const [name, fp] of prevMap.entries()) {
+                if (!nextMap.has(name)) {
+                    this.recordFleetEvent({
+                        category: 'sla',
+                        severity: 'success',
+                        site: siteName,
+                        instanceId,
+                        title: `DEM Probe '${name}' (${fp.type || 'PROBE'}) recovered`,
+                        details: fp.target ? `Target: ${fp.target} is reachable again` : 'Probe passing'
+                    });
+                }
+            }
+        }
+
+        // 6. Global Experience Score SLA Breach / Recovery (with hysteresis)
+        const pScore = pSum.probes_global_health;
+        const nScore = nSum.probes_global_health;
+        if (!nSum.probes_paused && typeof pScore === 'number' && typeof nScore === 'number') {
+            if (pScore >= 70 && nScore < 65) {
+                this.recordFleetEvent({
+                    category: 'sla',
+                    severity: nScore < 50 ? 'critical' : 'warning',
+                    site: siteName,
+                    instanceId,
+                    title: `Global Experience Score degraded (${pScore}% ➔ ${nScore}%)`,
+                    details: `${nSum.probes_passing ?? 0}/${nSum.probes_total ?? 0} probes passing`
+                });
+            } else if (pScore < 65 && nScore >= 75) {
+                this.recordFleetEvent({
+                    category: 'sla',
+                    severity: 'success',
+                    site: siteName,
+                    instanceId,
+                    title: `Global Experience Score recovered (${pScore}% ➔ ${nScore}%)`,
+                    details: `${nSum.probes_passing ?? 0}/${nSum.probes_total ?? 0} probes passing`
+                });
+            }
+        }
     }
 
     upsertInstance(instance: RegistryInstance, pocId: string = 'local-leader'): boolean {
@@ -125,6 +383,8 @@ export class LocalRegistryServer {
             prev.instance_id !== instance.instance_id ||
             prev.ip_private !== instance.ip_private ||
             (instance.meta?.site && prev.meta?.site !== instance.meta.site);
+
+        this.detectSummaryTransitions(prev, instance);
 
         const mergedInstance: RegistryInstance = {
             ...prev,
@@ -179,6 +439,18 @@ export class LocalRegistryServer {
             }
         }
         if (inst) {
+            const prevPathProfile = (inst as any).tunnel_path_profile || inst.meta?.tunnel_path_profile;
+            if (pathProfile && prevPathProfile && prevPathProfile !== pathProfile) {
+                const siteName = inst.meta?.site || inst.instance_id;
+                this.recordFleetEvent({
+                    category: 'tunnel',
+                    severity: pathProfile === 'cloud_relay' ? 'warning' : 'info',
+                    site: siteName,
+                    instanceId: inst.instance_id,
+                    title: `WebSocket transport path switched: ${String(prevPathProfile).toUpperCase()} ➔ ${String(pathProfile).toUpperCase()}`,
+                    details: `EWMA RTT: ${ewmaRttMs ?? rttMs}ms`
+                });
+            }
             (inst as any).rtt_ms = rttMs;
             (inst as any).last_pong = new Date(lastPong).toISOString();
             if (ewmaRttMs !== undefined) (inst as any).ewma_rtt_ms = ewmaRttMs;
@@ -227,6 +499,17 @@ export class LocalRegistryServer {
                 }
             }
         }
+        const siteName = inst?.meta?.site || instanceId;
+        this.recordFleetEvent({
+            category: 'config',
+            severity: ack.status === 'applied' ? 'success' : 'warning',
+            site: siteName,
+            instanceId: inst?.instance_id || instanceId,
+            title: ack.status === 'applied'
+                ? `Applied config bundle '${ack.bundleType}' (rev #${ack.revision})`
+                : `Failed to apply bundle '${ack.bundleType}' (rev #${ack.revision})`,
+            details: `Status: ${ack.status}`
+        });
         if (inst) {
             if (!inst.meta) inst.meta = {};
             inst.meta.sync_ack = {
@@ -262,6 +545,7 @@ export class LocalRegistryServer {
             }
 
             const prev = this.instances.get(key);
+            this.detectSummaryTransitions(prev, payload as RegistryInstance);
             const instance: RegistryInstance = {
                 ...prev,
                 ...payload,
@@ -509,6 +793,8 @@ export class LocalRegistryServer {
             offline_count: offlineCount,
             avg_global_experience: avgGlobalExperience,
             leader_revisions: leaderRevisions,
+            events_count: this.fleetEvents.length,
+            latest_event: this.fleetEvents[0] || null,
             instances: enrichedInstances,
             generated_at: new Date().toISOString()
         };

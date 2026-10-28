@@ -3,7 +3,7 @@ import {
     Globe, RefreshCw, Search, Server, Gauge, 
     CheckCircle2, XCircle, ExternalLink, 
     Check, X, Filter, Copy, Clock, AlertTriangle, ShieldCheck,
-    Zap, ChevronDown, ChevronRight
+    Zap, ChevronDown, ChevronRight, Play, Square, Radio, Phone, Pause, Activity, Trash2, CheckSquare
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { usePeerContext } from './PeerContext';
@@ -12,6 +12,24 @@ import { FleetSkeleton } from './components/skeletons/FleetSkeleton';
 interface FleetProps {
     token: string;
     onNavigate?: (view: any) => void;
+}
+
+type FleetEventCategory = 'tunnel' | 'config' | 'sla' | 'engine';
+type FleetEventSeverity = 'info' | 'success' | 'warning' | 'critical';
+
+interface FleetEvent {
+    id: string;
+    timestamp: string;
+    epochMs?: number;
+    epoch_ms?: number;
+    category: FleetEventCategory;
+    severity: FleetEventSeverity;
+    site: string;
+    instanceId?: string;
+    instance_id?: string;
+    title: string;
+    details?: string;
+    detail?: string;
 }
 
 interface PeerInstance {
@@ -81,6 +99,9 @@ interface PeerInstance {
         traffic_rx_mbps?: number;
         voice_active?: boolean;
         voice_mos?: number;
+        iot_active?: boolean;
+        iot_running_count?: number;
+        iot_total_count?: number;
         convergence_active?: boolean;
         xfr_active?: boolean;
         uptime_seconds?: number;
@@ -99,6 +120,8 @@ interface FleetOverviewResponse {
     offline_count: number;
     avg_global_experience: number | null;
     leader_revisions?: Record<string, any>;
+    events_count?: number;
+    latest_event?: FleetEvent | null;
     instances: PeerInstance[];
     generated_at: string;
 }
@@ -279,6 +302,124 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
     });
     const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
     const [copiedIp, setCopiedIp] = useState<string | null>(null);
+
+    // Bulk Orchestration State (Proposition 1)
+    const [selectedPeerIds, setSelectedPeerIds] = useState<Set<string>>(new Set());
+    const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null);
+    const [bulkBanner, setBulkBanner] = useState<{
+        ok: boolean;
+        title: string;
+        results?: Array<{ peer_id: string; site: string; ok: boolean; error?: string }>;
+    } | null>(null);
+    const [syncingPeerId, setSyncingPeerId] = useState<string | null>(null);
+
+    // Live Event Timeline Drawer State (Proposition 4)
+    const [timelineOpen, setTimelineOpen] = useState(false);
+    const [timelineEvents, setTimelineEvents] = useState<FleetEvent[]>([]);
+    const [timelineLoading, setTimelineLoading] = useState(false);
+    const [timelineCategory, setTimelineCategory] = useState<'all' | FleetEventCategory>('all');
+    const [timelineSite, setTimelineSite] = useState<string>('all');
+
+    const fetchTimelineEvents = async () => {
+        setTimelineLoading(true);
+        try {
+            const res = await fetch('/api/fleet/events?limit=200', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const json = await res.json();
+                setTimelineEvents(Array.isArray(json.events) ? json.events : []);
+            }
+        } catch {
+            // Non-blocking
+        } finally {
+            setTimelineLoading(false);
+        }
+    };
+
+    const clearTimelineEvents = async () => {
+        try {
+            const res = await fetch('/api/fleet/events', {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                setTimelineEvents([]);
+                setData(prev => prev ? { ...prev, events_count: 0, latest_event: null } : prev);
+            }
+        } catch {}
+    };
+
+    useEffect(() => {
+        if (timelineOpen) {
+            fetchTimelineEvents();
+        }
+    }, [timelineOpen]);
+
+    const executeBulkAction = async (action: string, customPeerIds?: string[]) => {
+        const targets = customPeerIds || Array.from(selectedPeerIds);
+        if (targets.length === 0) return;
+        setBulkActionLoading(action);
+        setBulkBanner(null);
+        try {
+            const res = await fetch('/api/fleet/bulk-action', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action, peer_ids: targets })
+            });
+            const json = await res.json();
+            if (!res.ok) {
+                setBulkBanner({
+                    ok: false,
+                    title: json.error || `Bulk action failed (${res.status})`
+                });
+            } else {
+                setBulkBanner({
+                    ok: json.failed === 0,
+                    title: `${json.label || action}: ${json.succeeded}/${json.total} node(s) succeeded`,
+                    results: json.results
+                });
+                await fetchFleetOverview(false);
+                if (timelineOpen) {
+                    fetchTimelineEvents();
+                }
+            }
+        } catch (err: any) {
+            setBulkBanner({
+                ok: false,
+                title: err?.message || 'Error executing bulk action'
+            });
+        } finally {
+            setBulkActionLoading(null);
+        }
+    };
+
+    const handleSinglePeerConfigSync = async (e: React.MouseEvent, peer: PeerInstance) => {
+        e.stopPropagation();
+        if (syncingPeerId) return;
+        setSyncingPeerId(peer.instance_id);
+        try {
+            await executeBulkAction('config_sync', [peer.instance_id]);
+        } finally {
+            setSyncingPeerId(null);
+        }
+    };
+
+    const togglePeerSelection = (e: React.MouseEvent, instanceId: string) => {
+        e.stopPropagation();
+        setSelectedPeerIds(prev => {
+            const next = new Set(prev);
+            if (next.has(instanceId)) {
+                next.delete(instanceId);
+            } else {
+                next.add(instanceId);
+            }
+            return next;
+        });
+    };
 
     const toggleSection = (key: 'tunnel' | 'probes' | 'config' | 'capabilities') => {
         setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -502,6 +643,59 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                 </div>
             </div>
 
+            {/* 1-Line Live Event Ticker + Slide-Over Timeline Trigger (Proposition 4) */}
+            <div className="flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl bg-card/50 border border-border/80 text-xs shadow-sm">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+                        <Activity size={11} className="animate-pulse" />
+                        Live Feed
+                    </span>
+                    {data?.latest_event ? (() => {
+                        const ev = data.latest_event;
+                        const sevDot = ev.severity === 'critical' ? 'bg-rose-500'
+                            : ev.severity === 'warning' ? 'bg-amber-400'
+                            : ev.severity === 'success' ? 'bg-emerald-400'
+                            : 'bg-blue-400';
+                        const timeStr = new Date(ev.epochMs || ev.epoch_ms || ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        const detailText = ev.details || ev.detail;
+                        return (
+                            <div
+                                onClick={() => setTimelineOpen(true)}
+                                className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:opacity-90 transition-opacity"
+                                title="Click to open full Fleet Live Timeline"
+                            >
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${sevDot}`} />
+                                <span className="font-mono text-[11px] text-text-muted shrink-0">{timeStr}</span>
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-card-secondary text-text-secondary border border-border shrink-0">
+                                    {ev.site}
+                                </span>
+                                <span className="font-bold text-text truncate">{ev.title}</span>
+                                {detailText && (
+                                    <span className="text-text-muted font-mono text-[11px] truncate hidden md:inline">
+                                        — {detailText}
+                                    </span>
+                                )}
+                            </div>
+                        );
+                    })() : (
+                        <span className="text-text-muted font-mono text-[11px] truncate">
+                            Monitoring mesh tunnels, config revisions, SLA probes & engines in real time...
+                        </span>
+                    )}
+                </div>
+
+                <button
+                    onClick={() => setTimelineOpen(true)}
+                    className="px-3 py-1 rounded-lg bg-card-secondary hover:bg-card-hover text-text-primary border border-border hover:border-blue-500/40 font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 shadow-xs"
+                >
+                    <Clock size={12} className="text-blue-400" />
+                    <span>Live Timeline</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-blue-500/15 text-blue-400 border border-blue-500/25">
+                        {data?.events_count ?? timelineEvents.length}
+                    </span>
+                </button>
+            </div>
+
             {/* Error Banner */}
             {error && (
                 <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-3">
@@ -512,15 +706,31 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
 
             {/* Filter and Search Bar with Integrated Dynamic Badges */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-card/40 p-3.5 rounded-xl border border-border">
-                <div className="relative w-full sm:w-80">
-                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                    <input
-                        type="text"
-                        placeholder="Search by Site, Node ID, IP..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-4 py-1.5 bg-background border border-border rounded-lg text-xs text-text focus:outline-none focus:border-blue-500 transition-colors"
-                    />
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="relative w-full sm:w-72">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                        <input
+                            type="text"
+                            placeholder="Search by Site, Node ID, IP..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-4 py-1.5 bg-background border border-border rounded-lg text-xs text-text focus:outline-none focus:border-blue-500 transition-colors"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const spokeIds = filteredInstances
+                                .filter(i => i.status === 'online' && !i.is_leader && i.type !== 'leader')
+                                .map(i => i.instance_id);
+                            setSelectedPeerIds(new Set(spokeIds));
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text border border-border text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                        title="Select all online Spoke nodes for bulk orchestration"
+                    >
+                        <CheckSquare size={13} className="text-blue-400" />
+                        <span className="hidden md:inline">Select Spokes</span>
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
@@ -559,13 +769,230 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                 </div>
             </div>
 
+            {/* Contextual Bulk Orchestration Bar (Directly above Peers Table - Proposition 1) */}
+            {(selectedPeerIds.size > 0 || bulkBanner) && (
+                <div className="bg-blue-950/20 dark:bg-blue-950/30 border border-blue-500/30 rounded-2xl p-3.5 shadow-lg space-y-2.5 animate-in fade-in duration-150">
+                    {selectedPeerIds.size > 0 && (
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            {/* Selection Counter & Quick Select */}
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-xs font-black font-mono shadow-xs">
+                                    <Check size={13} />
+                                    {selectedPeerIds.size} Selected
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const allOnline = filteredInstances.filter(i => i.status === 'online').map(i => i.instance_id);
+                                        setSelectedPeerIds(new Set(allOnline));
+                                    }}
+                                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-card-secondary hover:bg-card-hover text-text-secondary border border-border transition-colors"
+                                >
+                                    All Online
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const spokes = filteredInstances.filter(i => i.status === 'online' && !i.is_leader && i.type !== 'leader').map(i => i.instance_id);
+                                        setSelectedPeerIds(new Set(spokes));
+                                    }}
+                                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-card-secondary hover:bg-card-hover text-text-secondary border border-border transition-colors"
+                                >
+                                    Spokes Only
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPeerIds(new Set())}
+                                    className="px-2 py-1 rounded-md text-[11px] font-bold text-text-muted hover:text-rose-400 transition-colors"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+
+                            {/* Grouped Bulk Action Buttons */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* Traffic Gen Group */}
+                                <div className="inline-flex items-center rounded-lg bg-card/90 border border-border p-0.5">
+                                    <span className="px-2 text-[10px] font-mono font-bold uppercase text-text-muted">Traffic</span>
+                                    <button
+                                        type="button"
+                                        disabled={!!bulkActionLoading}
+                                        onClick={() => executeBulkAction('traffic_start')}
+                                        className="px-2 py-1 rounded-md text-xs font-bold text-emerald-400 hover:bg-emerald-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        title="Start Traffic Generator on selected nodes"
+                                    >
+                                        <Play size={11} className="fill-emerald-400" />
+                                        Start
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!!bulkActionLoading}
+                                        onClick={() => executeBulkAction('traffic_stop')}
+                                        className="px-2 py-1 rounded-md text-xs font-bold text-rose-400 hover:bg-rose-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        title="Stop Traffic Generator on selected nodes"
+                                    >
+                                        <Square size={10} className="fill-rose-400" />
+                                        Stop
+                                    </button>
+                                </div>
+
+                                {/* Voice Group */}
+                                <div className="inline-flex items-center rounded-lg bg-card/90 border border-border p-0.5">
+                                    <span className="px-2 text-[10px] font-mono font-bold uppercase text-text-muted">Voice</span>
+                                    <button
+                                        type="button"
+                                        disabled={!!bulkActionLoading}
+                                        onClick={() => executeBulkAction('voice_start')}
+                                        className="px-2 py-1 rounded-md text-xs font-bold text-cyan-400 hover:bg-cyan-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        title="Start Voice RTP Simulation on selected nodes"
+                                    >
+                                        <Phone size={11} />
+                                        Start
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!!bulkActionLoading}
+                                        onClick={() => executeBulkAction('voice_stop')}
+                                        className="px-2 py-1 rounded-md text-xs font-bold text-rose-400 hover:bg-rose-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        title="Stop Voice RTP Simulation on selected nodes"
+                                    >
+                                        <Square size={10} className="fill-rose-400" />
+                                        Stop
+                                    </button>
+                                </div>
+
+                                {/* IoT Emulation Group */}
+                                <div className="inline-flex items-center rounded-lg bg-card/90 border border-border p-0.5">
+                                    <span className="px-2 text-[10px] font-mono font-bold uppercase text-text-muted">IoT</span>
+                                    <button
+                                        type="button"
+                                        disabled={!!bulkActionLoading}
+                                        onClick={() => executeBulkAction('iot_start')}
+                                        className="px-2 py-1 rounded-md text-xs font-bold text-teal-400 hover:bg-teal-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        title="Start all enabled IoT devices on selected nodes"
+                                    >
+                                        <Radio size={11} />
+                                        Start All
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!!bulkActionLoading}
+                                        onClick={() => executeBulkAction('iot_stop')}
+                                        className="px-2 py-1 rounded-md text-xs font-bold text-rose-400 hover:bg-rose-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        title="Stop all IoT devices on selected nodes"
+                                    >
+                                        <Square size={10} className="fill-rose-400" />
+                                        Stop
+                                    </button>
+                                </div>
+
+                                {/* DEM Probes Group */}
+                                <div className="inline-flex items-center rounded-lg bg-card/90 border border-border p-0.5">
+                                    <span className="px-2 text-[10px] font-mono font-bold uppercase text-text-muted">Probes</span>
+                                    <button
+                                        type="button"
+                                        disabled={!!bulkActionLoading}
+                                        onClick={() => executeBulkAction('probes_resume')}
+                                        className="px-2 py-1 rounded-md text-xs font-bold text-emerald-400 hover:bg-emerald-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        title="Resume local DEM connectivity probes on selected nodes"
+                                    >
+                                        <Play size={11} className="fill-emerald-400" />
+                                        Resume
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!!bulkActionLoading}
+                                        onClick={() => executeBulkAction('probes_pause')}
+                                        className="px-2 py-1 rounded-md text-xs font-bold text-amber-400 hover:bg-amber-500/15 flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        title="Pause local DEM connectivity probes (Standby mode) on selected nodes"
+                                    >
+                                        <Pause size={11} />
+                                        Standby
+                                    </button>
+                                </div>
+
+                                {/* Config Sync */}
+                                <button
+                                    type="button"
+                                    disabled={!!bulkActionLoading}
+                                    onClick={() => executeBulkAction('config_sync')}
+                                    className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                                    title="Force immediate configuration bundle push over WebSocket tunnel"
+                                >
+                                    <RefreshCw size={12} className={bulkActionLoading === 'config_sync' ? 'animate-spin' : ''} />
+                                    Force Sync
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Execution Progress or Result Banner */}
+                    {bulkActionLoading && (
+                        <div className="flex items-center gap-2 text-xs font-mono text-blue-300 pt-1">
+                            <RefreshCw size={13} className="animate-spin" />
+                            <span>Dispatching bulk command ({bulkActionLoading}) across {selectedPeerIds.size} node(s)...</span>
+                        </div>
+                    )}
+
+                    {bulkBanner && (
+                        <div className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs font-mono ${
+                            bulkBanner.ok
+                                ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                                : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+                        }`}>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold">{bulkBanner.title}</span>
+                                {bulkBanner.results && bulkBanner.results.map((r, idx) => (
+                                    <span
+                                        key={idx}
+                                        className={`px-1.5 py-0.5 rounded text-[10px] border ${
+                                            r.ok
+                                                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                                                : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+                                        }`}
+                                        title={r.error || 'Success'}
+                                    >
+                                        {r.site}: {r.ok ? 'OK' : (r.error || 'ERR')}
+                                    </span>
+                                ))}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setBulkBanner(null)}
+                                className="text-text-muted hover:text-text p-0.5"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Peers Table */}
             <div className="bg-card/60 backdrop-blur-md rounded-2xl border border-border overflow-visible shadow-xl">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-card-secondary border-b border-border text-[11px] uppercase font-mono tracking-wider text-text-muted">
                             <tr>
-                                <th className="px-4 py-2.5">Site / Node</th>
+                                <th className="pl-4 pr-1 py-2.5 w-8">
+                                    <input
+                                        type="checkbox"
+                                        checked={
+                                            filteredInstances.length > 0 &&
+                                            filteredInstances.every(i => selectedPeerIds.has(i.instance_id))
+                                        }
+                                        onChange={e => {
+                                            if (e.target.checked) {
+                                                setSelectedPeerIds(new Set(filteredInstances.map(i => i.instance_id)));
+                                            } else {
+                                                setSelectedPeerIds(new Set());
+                                            }
+                                        }}
+                                        className="rounded border-border bg-background text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        title="Select / Deselect all visible nodes"
+                                    />
+                                </th>
+                                <th className="px-3.5 py-2.5">Site / Node</th>
                                 <th className="px-3.5 py-2.5">Mesh Link</th>
                                 <th className="px-3.5 py-2.5">Exp. Score</th>
                                 <th className="px-3 py-2.5">Probes</th>
@@ -579,7 +1006,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         <tbody className="divide-y divide-border">
                             {filteredInstances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="p-6">
+                                    <td colSpan={10} className="p-6">
                                         {loading ? (
                                             <div className="space-y-2.5 shimmer">
                                                 {[1, 2, 3, 4].map(i => (
@@ -622,6 +1049,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         jitter,
                                         rttColor
                                     } = evaluateTunnelPathAndRtt(peer);
+                                    const isSelected = selectedPeerIds.has(peer.instance_id);
 
                                     return (
                                         <tr 
@@ -631,11 +1059,24 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 setSelectedPeer(peer);
                                             }}
                                             className={`hover:bg-blue-500/5 transition-colors cursor-pointer group ${
-                                                isLeader ? 'bg-purple-950/10' : ''
+                                                isSelected ? 'bg-blue-500/10' : isLeader ? 'bg-purple-950/10' : ''
                                             }`}
                                         >
+                                            {/* 0. Bulk Selection Checkbox */}
+                                            <td
+                                                className="pl-4 pr-1 py-2.5 w-8"
+                                                onClick={e => togglePeerSelection(e, peer.instance_id)}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => {}}
+                                                    className="rounded border-border bg-background text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                />
+                                            </td>
+
                                             {/* 1. Site / Node (with integrated Online/Offline status dot, IP & Version) */}
-                                            <td className="px-4 py-2.5">
+                                            <td className="px-3.5 py-2.5">
                                                 <div className="flex items-center gap-2.5">
                                                     <div
                                                         className={`relative w-8 h-8 rounded-lg border flex items-center justify-center font-bold text-xs transition-all shrink-0 ${
@@ -833,38 +1274,49 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 })()}
                                             </td>
 
-                                            {/* 5. Traffic State */}
+                                            {/* 5. Traffic State & Active IoT */}
                                             <td className="px-3.5 py-2.5 whitespace-nowrap">
-                                                {peer.is_stale || !peer.summary?.traffic_state ? (
-                                                    <span className="text-xs text-text-muted font-mono">—</span>
-                                                ) : peer.summary.traffic_state === 'RUNNING' ? (
-                                                    <div className="flex items-center gap-1 text-xs font-mono whitespace-nowrap">
-                                                        {peer.summary.traffic_tx_mbps !== undefined && peer.summary.traffic_rx_mbps !== undefined ? (
-                                                            <span className="inline-flex items-center gap-1 font-bold">
-                                                                <span className="text-emerald-400" title={`Transmitted: ${peer.summary.traffic_tx_mbps} Mbps`}>
-                                                                    ▲ {peer.summary.traffic_tx_mbps}
+                                                <div className="flex items-center gap-1.5">
+                                                    {peer.is_stale || !peer.summary?.traffic_state ? (
+                                                        <span className="text-xs text-text-muted font-mono">—</span>
+                                                    ) : peer.summary.traffic_state === 'RUNNING' ? (
+                                                        <div className="flex items-center gap-1 text-xs font-mono whitespace-nowrap">
+                                                            {peer.summary.traffic_tx_mbps !== undefined && peer.summary.traffic_rx_mbps !== undefined ? (
+                                                                <span className="inline-flex items-center gap-1 font-bold">
+                                                                    <span className="text-emerald-400" title={`Transmitted: ${peer.summary.traffic_tx_mbps} Mbps`}>
+                                                                        ▲ {peer.summary.traffic_tx_mbps}
+                                                                    </span>
+                                                                    <span className="text-text-muted font-normal">·</span>
+                                                                    <span className={peer.summary.traffic_rx_mbps === 0 ? 'text-amber-600/90 dark:text-amber-400/90' : 'text-cyan-400'} title={`Received: ${peer.summary.traffic_rx_mbps} Mbps`}>
+                                                                        ▼ {peer.summary.traffic_rx_mbps}
+                                                                    </span>
+                                                                    <span className="text-text-muted text-[10px] font-normal">Mbps</span>
                                                                 </span>
-                                                                <span className="text-text-muted font-normal">·</span>
-                                                                <span className={peer.summary.traffic_rx_mbps === 0 ? 'text-amber-600/90 dark:text-amber-400/90' : 'text-cyan-400'} title={`Received: ${peer.summary.traffic_rx_mbps} Mbps`}>
-                                                                    ▼ {peer.summary.traffic_rx_mbps}
-                                                                </span>
-                                                                <span className="text-text-muted text-[10px] font-normal">Mbps</span>
-                                                            </span>
-                                                        ) : (
-                                                            <>
-                                                                <span className="text-emerald-400">▶</span>
-                                                                <span className="text-emerald-400 font-bold">
-                                                                    {peer.summary.traffic_rate_mbps && peer.summary.traffic_rate_mbps > 0 ? `${peer.summary.traffic_rate_mbps} Mbps` : 'Active'}
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center gap-1 text-xs text-text-muted font-mono">
-                                                        <span>■</span>
-                                                        <span>Stopped</span>
-                                                    </div>
-                                                )}
+                                                            ) : (
+                                                                <>
+                                                                    <span className="text-emerald-400">▶</span>
+                                                                    <span className="text-emerald-400 font-bold">
+                                                                        {peer.summary.traffic_rate_mbps && peer.summary.traffic_rate_mbps > 0 ? `${peer.summary.traffic_rate_mbps} Mbps` : 'Active'}
+                                                                    </span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1 text-xs text-text-muted font-mono">
+                                                            <span>■</span>
+                                                            <span>Stopped</span>
+                                                        </div>
+                                                    )}
+                                                    {!peer.is_stale && peer.summary?.iot_active && (
+                                                        <span
+                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-500/15 text-teal-400 border border-teal-500/30"
+                                                            title={`IoT Emulation active (${peer.summary.iot_running_count ?? 1} device(s) running)`}
+                                                        >
+                                                            <Radio size={10} />
+                                                            IoT{peer.summary.iot_running_count ? ` (${peer.summary.iot_running_count})` : ''}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
 
                                             {/* 6. Voice MOS */}
@@ -878,7 +1330,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 )}
                                             </td>
 
-                                            {/* 7. Config Sync Status */}
+                                            {/* 7. Config Sync Status (1-click sync on Behind badge) */}
                                             <td className="px-3.5 py-2.5 whitespace-nowrap">
                                                 {peer.config_sync_status === 'synced' ? (
                                                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold font-mono whitespace-nowrap bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="All global config bundles match Leader">
@@ -886,10 +1338,20 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                         Synced
                                                     </span>
                                                 ) : peer.config_sync_status === 'behind' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold font-mono whitespace-nowrap bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title={`${peer.behind_bundles_count || 1} bundle(s) behind Leader`}>
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-                                                        Behind ({peer.behind_bundles_count || '!'})
-                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={e => handleSinglePeerConfigSync(e, peer)}
+                                                        disabled={syncingPeerId === peer.instance_id}
+                                                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold font-mono whitespace-nowrap bg-amber-500/10 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-colors cursor-pointer"
+                                                        title={`${peer.behind_bundles_count || 1} bundle(s) behind Leader — Click to force immediate Config Sync`}
+                                                    >
+                                                        {syncingPeerId === peer.instance_id ? (
+                                                            <RefreshCw size={10} className="animate-spin text-amber-400 shrink-0" />
+                                                        ) : (
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                                                        )}
+                                                        <span>Behind ({peer.behind_bundles_count || '!'})</span>
+                                                    </button>
                                                 ) : (
                                                     <span className="text-xs font-mono text-text-muted">—</span>
                                                 )}
@@ -1465,6 +1927,225 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         </button>
                                     )}
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Right-Side Slide-Over Drawer: Fleet Live Event Timeline (Proposition 4) */}
+            {timelineOpen && (() => {
+                const uniqueSites = Array.from(new Set([
+                    ...(data?.instances || []).map(i => i.meta?.site || i.instance_id),
+                    ...timelineEvents.map(e => e.site)
+                ].filter(Boolean)));
+
+                const filteredTimeline = timelineEvents.filter(ev => {
+                    if (timelineCategory !== 'all' && ev.category !== timelineCategory) return false;
+                    if (timelineSite !== 'all' && ev.site.toLowerCase() !== timelineSite.toLowerCase()) return false;
+                    return true;
+                });
+
+                const categoryPills: Array<{ id: 'all' | FleetEventCategory; label: string }> = [
+                    { id: 'all', label: 'All' },
+                    { id: 'tunnel', label: '🔗 Tunnels' },
+                    { id: 'config', label: '🔄 Config' },
+                    { id: 'sla', label: '🛡️ SLA & Probes' },
+                    { id: 'engine', label: '⚡ Engines' }
+                ];
+
+                return (
+                    <div
+                        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex justify-end"
+                        onClick={() => setTimelineOpen(false)}
+                    >
+                        <div
+                            className="w-full max-w-lg bg-card border-l border-border h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Drawer Header */}
+                            <div className="p-4 border-b border-border flex items-center justify-between gap-3 bg-card-secondary/40">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                                        <Activity size={18} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-base font-black text-text truncate">Fleet Live Timeline</h2>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-500/15 text-blue-400 border border-blue-500/25">
+                                                {filteredTimeline.length}
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-text-muted truncate">
+                                            Control plane tunnels, config revisions, SLA probes & engines
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={fetchTimelineEvents}
+                                        disabled={timelineLoading}
+                                        className="p-1.5 rounded-lg bg-card-secondary hover:bg-card-hover text-text-secondary border border-border transition-colors"
+                                        title="Refresh Timeline"
+                                    >
+                                        <RefreshCw size={14} className={timelineLoading ? 'animate-spin' : ''} />
+                                    </button>
+                                    {timelineEvents.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={clearTimelineEvents}
+                                            className="p-1.5 rounded-lg bg-card-secondary hover:bg-rose-500/15 text-text-muted hover:text-rose-400 border border-border transition-colors"
+                                            title="Clear Timeline History"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setTimelineOpen(false)}
+                                        className="p-1.5 rounded-lg bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text border border-border transition-colors"
+                                    >
+                                        <X size={15} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Filter Strip */}
+                            <div className="p-3 border-b border-border bg-card/80 space-y-2.5">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    {categoryPills.map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            type="button"
+                                            onClick={() => setTimelineCategory(cat.id)}
+                                            className={cn(
+                                                "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all",
+                                                timelineCategory === cat.id
+                                                    ? "bg-blue-600 text-white shadow-xs"
+                                                    : "bg-card-secondary text-text-muted hover:text-text border border-border/60"
+                                            )}
+                                        >
+                                            {cat.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-mono text-text-muted uppercase tracking-wider">Filter Site:</span>
+                                    <select
+                                        value={timelineSite}
+                                        onChange={e => setTimelineSite(e.target.value)}
+                                        className="bg-background border border-border rounded-lg px-2.5 py-1 text-xs font-mono text-text focus:outline-none focus:border-blue-500"
+                                    >
+                                        <option value="all">All Sites ({uniqueSites.length})</option>
+                                        {uniqueSites.map(s => (
+                                            <option key={s} value={s}>{s}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Chronological Event Feed */}
+                            <div className="flex-1 overflow-y-auto p-4">
+                                {timelineLoading && timelineEvents.length === 0 ? (
+                                    <div className="py-12 text-center text-xs font-mono text-text-muted">
+                                        Loading fleet timeline...
+                                    </div>
+                                ) : filteredTimeline.length === 0 ? (
+                                    <div className="py-12 text-center space-y-2">
+                                        <div className="text-xs font-bold text-text-secondary">No fleet events recorded yet</div>
+                                        <div className="text-[11px] text-text-muted max-w-xs mx-auto">
+                                            State transitions across WebSocket tunnels, config sync, SLA probes, and traffic/voice/IoT engines appear here automatically.
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="relative pl-4 border-l border-border space-y-3">
+                                        {filteredTimeline.map(ev => {
+                                            const dotClass = ev.severity === 'critical'
+                                                ? 'bg-rose-500 ring-rose-500/20'
+                                                : ev.severity === 'warning'
+                                                ? 'bg-amber-400 ring-amber-400/20'
+                                                : ev.severity === 'success'
+                                                ? 'bg-emerald-400 ring-emerald-400/20'
+                                                : 'bg-blue-400 ring-blue-400/20';
+
+                                            const cardBorder = ev.severity === 'critical'
+                                                ? 'border-rose-500/30 bg-rose-500/5'
+                                                : ev.severity === 'warning'
+                                                ? 'border-amber-500/30 bg-amber-500/5'
+                                                : ev.severity === 'success'
+                                                ? 'border-emerald-500/25 bg-emerald-500/5'
+                                                : 'border-border bg-card-secondary/40';
+
+                                            const catBadge = ev.category === 'tunnel'
+                                                ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20'
+                                                : ev.category === 'config'
+                                                ? 'text-purple-400 bg-purple-500/10 border-purple-500/20'
+                                                : ev.category === 'sla'
+                                                ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                                                : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+
+                                            const timeStr = new Date(ev.epochMs || ev.epoch_ms || ev.timestamp).toLocaleTimeString([], {
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                second: '2-digit'
+                                            });
+                                            const evInstanceId = ev.instanceId || ev.instance_id;
+                                            const detailText = ev.details || ev.detail;
+
+                                            const matchedPeer = data?.instances.find(
+                                                i => (evInstanceId && i.instance_id === evInstanceId) || (i.meta?.site || '').toLowerCase() === ev.site.toLowerCase()
+                                            );
+
+                                            return (
+                                                <div key={ev.id} className="relative group">
+                                                    <span
+                                                        className={`absolute -left-[21px] top-3 w-2.5 h-2.5 rounded-full ring-4 ${dotClass}`}
+                                                    />
+                                                    <div className={`p-3 rounded-xl border transition-colors ${cardBorder}`}>
+                                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <span className="font-mono text-[11px] text-text-muted">
+                                                                    {timeStr}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if (matchedPeer) {
+                                                                            setOpenSections({ tunnel: false, probes: false, config: false, capabilities: false });
+                                                                            setSelectedPeer(matchedPeer);
+                                                                        }
+                                                                    }}
+                                                                    className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold border ${
+                                                                        matchedPeer
+                                                                            ? 'bg-card hover:bg-blue-500/15 text-text hover:text-blue-400 border-border cursor-pointer'
+                                                                            : 'bg-card-secondary text-text-secondary border-border cursor-default'
+                                                                    }`}
+                                                                    title={matchedPeer ? `Inspect ${ev.site}` : ev.site}
+                                                                >
+                                                                    {ev.site}
+                                                                </button>
+                                                                <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono uppercase font-bold border ${catBadge}`}>
+                                                                    {ev.category}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-xs font-bold text-text">
+                                                            {ev.title}
+                                                        </div>
+                                                        {detailText && (
+                                                            <div className="text-[11px] font-mono text-text-muted mt-0.5 break-words">
+                                                                {detailText}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

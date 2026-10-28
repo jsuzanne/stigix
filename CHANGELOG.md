@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.38] - 2026-10-28
+
+### Added
+- **Fleet Bulk Actions & Multi-Node Orchestration (`web-dashboard/src/Fleet.tsx`, `web-dashboard/server.ts`, `web-dashboard/fleet-tunnel.ts`)**:
+  - Added multi-node selection checkboxes (`Select All`, per-row selection, and a 1-click **Select Spokes** filter button) to the Fleet Discovery & Status table.
+  - Added a contextual **Bulk Orchestration Bar** directly above the peers table to execute parallel control-plane actions (`POST /api/fleet/bulk-action`) across selected nodes: **Traffic** (`Start` / `Stop`), **Voice** (`Start` / `Stop`), **IoT Emulation** (`Start All` / `Stop All`), **DEM Connectivity Probes** (`Resume` / `Standby`), and **Config Sync** (`Force Sync`).
+  - Added `{ all: true }` support to `/api/iot/start-batch` and `/api/iot/stop-batch`, exposed `iot_active` / `iot_running_count` / `iot_total_count` in peer telemetry summaries, added an `IoT (running/total)` badge in the Fleet Traffic column, and wired `Behind (N)` config drift badges for 1-click per-node sync.
+  - Added `refreshPeersTelemetry()` in `FleetTunnelManager` to immediately query `peer:query_status` over active WebSocket tunnels after bulk operations.
+- **Centralized Fleet Live Timeline (`web-dashboard/local-registry-server.ts`, `web-dashboard/fleet-tunnel.ts`, `web-dashboard/server.ts`, `web-dashboard/src/Fleet.tsx`)**:
+  - Added an edge-triggered in-memory event ring buffer (200 events max) in `LocalRegistryServer` tracking real-time transitions across 4 categories (`tunnel`, `config`, `sla`, `engine`) and 4 severities (`info`, `success`, `warning`, `critical`).
+  - Added a 1-line **Live Feed** event ticker beneath the Fleet header and a right-side **Slide-Over Timeline Drawer** (`GET /api/fleet/events`, `DELETE /api/fleet/events`) with category and site filters, clear history action, and clickable site badges to open node detail modals.
+
 ## [3.1.37] - 2026-10-27
 
 ### Improved

@@ -16439,6 +16439,18 @@ const collectFleetTelemetrySummary = async () => {
         xfrActive = Array.from((xfrManager as any).jobs.values()).some((j: any) => j.status === 'running');
     } catch {}
 
+    // IoT Emulation state
+    let iotActive = false;
+    let iotRunningCount = 0;
+    let iotTotalCount = 0;
+    try {
+        const q = iotManager.getQueueStats();
+        iotRunningCount = (q.active || 0) + (q.queued || 0) + (q.idle || 0);
+        iotActive = iotRunningCount > 0;
+        const iotCfg = getIoTConfig();
+        iotTotalCount = Array.isArray(iotCfg?.devices) ? iotCfg.devices.length : 0;
+    } catch {}
+
     // Peer Probes for Fleet Reachability Matrix
     let peerProbes: Array<{
         target_name: string;
@@ -16498,6 +16510,9 @@ const collectFleetTelemetrySummary = async () => {
         voice_mos: voiceMos,
         convergence_active: convergenceActive,
         xfr_active: xfrActive,
+        iot_active: iotActive,
+        iot_running_count: iotRunningCount,
+        iot_total_count: iotTotalCount,
         provisioning_status: provisioningManager?.getState(),
         uptime_seconds: Math.floor(process.uptime())
     };
@@ -16557,6 +16572,270 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
     res.json(overview);
 });
 log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);
+
+// --- Centralized Fleet Event Timeline API (Leader Only) ---
+app.get('/api/fleet/events', authenticateToken, (req, res) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'Fleet Event Timeline is only accessible on the Leader instance.'
+        });
+    }
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '150', 10), 1), 500);
+    const category = (req.query.category as string) || undefined;
+    const site = (req.query.site as string) || undefined;
+    const events = localRegistryServer.getFleetEvents({ limit, category, site });
+    res.json({
+        success: true,
+        count: events.length,
+        events
+    });
+});
+
+app.delete('/api/fleet/events', authenticateToken, (req, res) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'Fleet Event Timeline can only be cleared on the Leader instance.'
+        });
+    }
+    localRegistryServer.clearFleetEvents();
+    res.json({ success: true });
+});
+
+// --- Fleet Bulk Actions Orchestrator API (Leader Only) ---
+app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'Fleet Bulk Actions can only be executed from the Leader instance.'
+        });
+    }
+
+    const { action, peers } = req.body || {};
+    const actionMap: Record<string, { label: string; path: string; body: any }> = {
+        traffic_start: { label: 'Start Traffic Gen', path: '/api/traffic/start', body: {} },
+        traffic_stop:  { label: 'Stop Traffic Gen',  path: '/api/traffic/stop',  body: {} },
+        voice_start:   { label: 'Start Voice Gen',   path: '/api/voice/control', body: { enabled: true } },
+        voice_stop:    { label: 'Stop Voice Gen',    path: '/api/voice/control', body: { enabled: false } },
+        iot_start:     { label: 'Start All IoT',     path: '/api/iot/start-batch', body: { all: true } },
+        iot_stop:      { label: 'Stop All IoT',      path: '/api/iot/stop-batch',  body: { all: true } },
+        probes_resume: { label: 'Resume DEM Probes', path: '/api/config/system-settings', body: { auto_restart_probes: true } },
+        probes_pause:  { label: 'Pause DEM Probes',  path: '/api/config/system-settings', body: { auto_restart_probes: false } },
+        config_sync:   { label: 'Force Config Sync', path: '/api/provisioning/sync', body: {} }
+    };
+
+    const spec = actionMap[String(action || '')];
+    if (!spec) {
+        return res.status(400).json({
+            error: 'invalid_action',
+            message: `Unsupported bulk action '${action}'. Valid actions: ${Object.keys(actionMap).join(', ')}`
+        });
+    }
+
+    const localLeaderId = registryManager.getInstanceId();
+    const overview = localRegistryServer.getFleetOverview(localLeaderId);
+    const allInstances: any[] = Array.isArray(overview?.instances) ? overview.instances : [];
+
+    let targetPeerIds: string[] = [];
+    if (peers === 'all' || (Array.isArray(peers) && peers.includes('all'))) {
+        targetPeerIds = allInstances.filter(i => i.status === 'online').map(i => i.instance_id);
+    } else if (Array.isArray(peers)) {
+        targetPeerIds = Array.from(new Set(peers.map(p => String(p).trim()).filter(Boolean)));
+    }
+
+    if (targetPeerIds.length === 0) {
+        return res.status(400).json({
+            error: 'no_peers_selected',
+            message: 'Please select at least one peer instance.'
+        });
+    }
+
+    const internalAdminToken = jwt.sign(
+        { username: (req as any).user?.username || 'leader-bulk', role: 'admin' },
+        SECRET_KEY,
+        { expiresIn: '5m' }
+    );
+
+    const remotePeerIdsToRefresh: string[] = [];
+
+    const tasks = targetPeerIds.map(async (peerId) => {
+        const inst = allInstances.find(
+            i => i.instance_id === peerId || i.meta?.site === peerId || i.ip_private === peerId
+        );
+        const resolvedId = inst?.instance_id || peerId;
+        const siteName = inst?.meta?.site || resolvedId;
+        const isLocalLeader = resolvedId === localLeaderId || Boolean(inst?.is_leader && !inst?.is_remote_leader);
+
+        try {
+            if (isLocalLeader) {
+                if (action === 'config_sync') {
+                    provisioningManager.ensureLeaderManifestSynced();
+                    fleetTunnelManager.broadcastProvisioningUpdate();
+                    return { peer_id: resolvedId, site: siteName, ok: true, status: 200 };
+                }
+
+                const localRes = await fetch(`http://127.0.0.1:${PORT}${spec.path}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${internalAdminToken}`
+                    },
+                    body: JSON.stringify(spec.body),
+                    signal: AbortSignal.timeout(10000)
+                });
+                const ok = localRes.status >= 200 && localRes.status < 300;
+                let errText: string | undefined;
+                if (!ok) {
+                    errText = await localRes.text().catch(() => `HTTP ${localRes.status}`);
+                }
+                return { peer_id: resolvedId, site: siteName, ok, status: localRes.status, error: errText };
+            }
+
+            // Remote Spoke execution
+            remotePeerIdsToRefresh.push(resolvedId);
+
+            if (fleetTunnelManager.hasTunnel(resolvedId) || fleetTunnelManager.hasTunnel(siteName)) {
+                const tunnelTarget = fleetTunnelManager.hasTunnel(resolvedId) ? resolvedId : siteName;
+                let fwdRes = await fleetTunnelManager.forwardRequest(
+                    tunnelTarget,
+                    {
+                        method: 'POST',
+                        path: spec.path,
+                        headers: { 'content-type': 'application/json' },
+                        body: spec.body
+                    },
+                    12000
+                );
+
+                // Backward-compatibility fallback for IoT batch start/stop on older Spokes that require explicit { ids: [...] }
+                if (fwdRes && fwdRes.status === 400 && (action === 'iot_start' || action === 'iot_stop')) {
+                    const exportRes = await fleetTunnelManager.forwardRequest(
+                        tunnelTarget,
+                        { method: 'GET', path: '/api/iot/config/export', headers: {} },
+                        8000
+                    );
+                    if (exportRes && exportRes.status === 200 && exportRes.body) {
+                        try {
+                            const parsedCfg = typeof exportRes.body === 'string' ? JSON.parse(exportRes.body) : exportRes.body;
+                            const ids = Array.isArray(parsedCfg?.devices) ? parsedCfg.devices.map((d: any) => d.id).filter(Boolean) : [];
+                            fwdRes = await fleetTunnelManager.forwardRequest(
+                                tunnelTarget,
+                                {
+                                    method: 'POST',
+                                    path: spec.path,
+                                    headers: { 'content-type': 'application/json' },
+                                    body: { ids, all: true }
+                                },
+                                12000
+                            );
+                        } catch {}
+                    }
+                }
+
+                if (fwdRes) {
+                    const ok = fwdRes.status >= 200 && fwdRes.status < 300;
+                    return {
+                        peer_id: resolvedId,
+                        site: siteName,
+                        ok,
+                        status: fwdRes.status,
+                        error: ok ? undefined : (typeof fwdRes.body === 'string' ? fwdRes.body : JSON.stringify(fwdRes.body))
+                    };
+                }
+            }
+
+            // Direct LAN HTTP fallback if no active WebSocket tunnel
+            if (inst?.ip_private && inst.ip_private !== '127.0.0.1') {
+                const peerSecret = fleetTunnelManager.getPeerNodeToken(resolvedId) || fleetTunnelManager.getPeerNodeToken(siteName) || SECRET_KEY;
+                const peerToken = jwt.sign({ username: 'leader-bulk', role: 'admin' }, peerSecret, { expiresIn: '5m' });
+                const targetUrl = `http://${inst.ip_private}:${inst.port || 8080}${spec.path}`;
+                const directRes = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${peerToken}`
+                    },
+                    body: JSON.stringify(spec.body),
+                    signal: AbortSignal.timeout(8000)
+                });
+                const ok = directRes.status >= 200 && directRes.status < 300;
+                return {
+                    peer_id: resolvedId,
+                    site: siteName,
+                    ok,
+                    status: directRes.status,
+                    error: ok ? undefined : `HTTP ${directRes.status}`
+                };
+            }
+
+            return {
+                peer_id: resolvedId,
+                site: siteName,
+                ok: false,
+                status: 504,
+                error: 'No active WebSocket tunnel or reachable management IP'
+            };
+        } catch (err: any) {
+            return {
+                peer_id: resolvedId,
+                site: siteName,
+                ok: false,
+                status: 502,
+                error: err?.message || String(err)
+            };
+        }
+    });
+
+    const results = await Promise.all(tasks);
+    const succeeded = results.filter(r => r.ok).length;
+    const failed = results.length - succeeded;
+
+    // Immediately refresh local Leader summary + remote Spokes telemetry over tunnel so UI updates right away
+    try {
+        if (targetPeerIds.includes(localLeaderId)) {
+            const leaderSummary = await collectFleetTelemetrySummary();
+            const regStatus = registryManager.getStatus();
+            localRegistryServer.upsertInstance({
+                instance_id: localLeaderId,
+                poc_id: regStatus.poc_id || 'local-leader',
+                type: 'leader',
+                ip_private: regStatus.detected_ip || '127.0.0.1',
+                port: Number(PORT) || 8080,
+                meta: {
+                    site: regStatus.site_name || localLeaderId,
+                    is_leader: true
+                },
+                summary: leaderSummary,
+                last_seen: new Date().toISOString()
+            } as any);
+        }
+        if (remotePeerIdsToRefresh.length > 0) {
+            await fleetTunnelManager.refreshPeersTelemetry(remotePeerIdsToRefresh, 3500);
+        }
+    } catch {}
+
+    const targetSitesLabel = results.map(r => r.site).slice(0, 5).join(', ') + (results.length > 5 ? ` +${results.length - 5} more` : '');
+    localRegistryServer.recordFleetEvent({
+        category: action === 'config_sync' ? 'config' : 'engine',
+        severity: failed === 0 ? 'success' : (succeeded > 0 ? 'warning' : 'critical'),
+        site: results.length === 1 ? results[0].site : 'Fleet Bulk',
+        instanceId: results.length === 1 ? results[0].peer_id : localLeaderId,
+        title: `Bulk Orchestration — ${spec.label}: ${succeeded}/${results.length} node(s) succeeded`,
+        details: `Targets: ${targetSitesLabel}${failed > 0 ? ` • ${failed} failed` : ''}`
+    });
+
+    res.json({
+        success: failed === 0,
+        action,
+        label: spec.label,
+        total: results.length,
+        succeeded,
+        failed,
+        results
+    });
+});
+log('FLEET', `⚡ Fleet Bulk Orchestration & Event Timeline APIs mounted at /api/fleet/bulk-action & /api/fleet/events`);
 
 // --- SD-WAN Reachability Matrix SLA Thresholds & Topology (PRD v2.0.97) ---
 app.get('/api/fleet/matrix/thresholds', authenticateToken, async (req, res) => {
@@ -19794,12 +20073,14 @@ app.post('/api/registry/test-connectivity', authenticateToken, async (req, res) 
 });
 
 app.post('/api/iot/start-batch', authenticateToken, async (req, res) => {
-    const { ids } = req.body;
-    if (!Array.isArray(ids)) return res.status(400).json({ error: 'IDs array required' });
-
+    const { ids, all } = req.body || {};
     const config = getIoTConfig();
+    const allDeviceIds = Array.isArray(config.devices) ? config.devices.map((d: any) => d.id) : [];
+    const targetIds: string[] = all === true ? allDeviceIds : (Array.isArray(ids) ? ids : []);
+    if (!all && !Array.isArray(ids)) return res.status(400).json({ error: 'IDs array required' });
+
     const gateway = config.network?.gateway;
-    const toStart = config.devices.filter(d => ids.includes(d.id));
+    const toStart = config.devices.filter((d: any) => targetIds.includes(d.id));
 
     for (const device of toStart) {
         const deviceWithGateway = { ...device, gateway };
@@ -19807,14 +20088,21 @@ app.post('/api/iot/start-batch', authenticateToken, async (req, res) => {
     }
 
     // Persist enabled:true so boot hook knows these were running
-    const updated = config.devices.map(d => ids.includes(d.id) ? { ...d, enabled: true } : d);
+    const updated = config.devices.map((d: any) => targetIds.includes(d.id) ? { ...d, enabled: true } : d);
     saveIoTConfig({ ...config, devices: updated });
 
     res.json({ success: true, started: toStart.length });
 });
 
 app.post('/api/iot/stop-batch', authenticateToken, async (req, res) => {
-    const { ids } = req.body;
+    const { ids, all } = req.body || {};
+    const config = getIoTConfig();
+    if (all === true) {
+        await iotManager.stopAll();
+        const updated = (config.devices || []).map((d: any) => ({ ...d, enabled: false }));
+        saveIoTConfig({ ...config, devices: updated });
+        return res.json({ success: true, stopped: updated.length });
+    }
     if (!Array.isArray(ids)) return res.status(400).json({ error: 'IDs array required' });
 
     for (const id of ids) {
@@ -19822,8 +20110,7 @@ app.post('/api/iot/stop-batch', authenticateToken, async (req, res) => {
     }
 
     // Persist enabled:false so boot hook knows these were stopped
-    const config = getIoTConfig();
-    const updated = config.devices.map(d => ids.includes(d.id) ? { ...d, enabled: false } : d);
+    const updated = config.devices.map((d: any) => ids.includes(d.id) ? { ...d, enabled: false } : d);
     saveIoTConfig({ ...config, devices: updated });
 
     res.json({ success: true, stopped: ids.length });

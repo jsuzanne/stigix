@@ -809,6 +809,20 @@ export class FleetTunnelManager {
             }, 500);
 
             log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction}) [${sourceIp} ➔ ${destIp}]`);
+            if (this.registryManager.isLeader() && this.localRegistryServer) {
+                const stats = this.getPeerTunnelStats(instanceId, siteName, clientIp);
+                const reconn = stats.disconnectCount || 0;
+                this.localRegistryServer.recordFleetEvent({
+                    category: 'tunnel',
+                    severity: 'success',
+                    site: siteName || instanceId,
+                    instanceId,
+                    title: reconn > 0
+                        ? `WebSocket reverse tunnel reconnected (${info.direction === 'outbound_dial' ? 'M6 Dial' : 'Inbound'})`
+                        : `WebSocket reverse tunnel established (${info.direction === 'outbound_dial' ? 'M6 Dial' : 'Inbound'})`,
+                    details: `${sourceIp} ➔ ${destIp} [${String(info.pathProfile || 'lan').toUpperCase()}]${reconn > 0 ? ` • reconnect #${reconn}` : ''}`
+                });
+            }
 
             // If this node is acting as Spoke dialed by Leader (M6)
             let dialHeartbeatInterval: NodeJS.Timeout | null = null;
@@ -876,6 +890,17 @@ export class FleetTunnelManager {
                 log('TUNNEL', `Reverse tunnel disconnected: ${siteName} (${instanceId}) — reason: ${reason}`, 'warn');
                 if (reason !== 'io server disconnect') {
                     this.recordPeerDisconnect(instanceId, siteName, clientIp, reason);
+                }
+                if (this.registryManager.isLeader() && this.localRegistryServer) {
+                    const stats = this.getPeerTunnelStats(instanceId, siteName, clientIp);
+                    this.localRegistryServer.recordFleetEvent({
+                        category: 'tunnel',
+                        severity: 'warning',
+                        site: siteName || instanceId,
+                        instanceId,
+                        title: `WebSocket reverse tunnel disconnected (${reason})`,
+                        details: `${clientIp}${stats.disconnectCount ? ` • disconnect #${stats.disconnectCount}` : ''}`
+                    });
                 }
                 if (this.activeTunnels.get(instanceId)?.socket === socket) {
                     this.activeTunnels.delete(instanceId);
@@ -1610,6 +1635,16 @@ export class FleetTunnelManager {
 
         socket.on('connect', () => {
             log('TUNNEL', `⚡ [M6 DIAL] Leader reverse dial CONNECTED to Cloud Peer: ${targetSiteName} (${host}:${port})`);
+            if (this.localRegistryServer) {
+                this.localRegistryServer.recordFleetEvent({
+                    category: 'tunnel',
+                    severity: 'success',
+                    site: targetSiteName || targetId,
+                    instanceId: targetId,
+                    title: `Outbound M6 reverse dial connected to ${targetSiteName}`,
+                    details: `Target endpoint: ${host}:${port}`
+                });
+            }
 
             // Persist winning target host in TargetsManager
             if (this.targetsManager && typeof this.targetsManager.createTarget === 'function') {
@@ -1801,6 +1836,16 @@ export class FleetTunnelManager {
             const resolvedInstanceId = currentEntry?.info?.instanceId || targetId;
             if (reason !== 'io client disconnect') {
                 this.recordPeerDisconnect(resolvedInstanceId, targetSiteName, host, reason);
+                if (this.localRegistryServer) {
+                    this.localRegistryServer.recordFleetEvent({
+                        category: 'tunnel',
+                        severity: 'warning',
+                        site: targetSiteName || resolvedInstanceId,
+                        instanceId: resolvedInstanceId,
+                        title: `Outbound M6 reverse dial disconnected (${reason})`,
+                        details: `Target: ${host}:${port}`
+                    });
+                }
             }
             if (currentEntry?.socket === socket) {
                 this.activeTunnels.delete(targetId);
@@ -2324,6 +2369,18 @@ export class FleetTunnelManager {
      */
     public broadcastProvisioningUpdate(type?: GlobalBundleType): void {
         log('PROVISIONING', `📢 [TUNNEL PUSH] Broadcasting bundle update notification (${type || 'all'}) to all connected tunnel peers...`);
+        if (this.localRegistryServer) {
+            const regStatus = this.registryManager.getStatus();
+            const leaderSite = regStatus.site_name || regStatus.instance_id || 'Leader';
+            this.localRegistryServer.recordFleetEvent({
+                category: 'config',
+                severity: 'info',
+                site: leaderSite,
+                instanceId: regStatus.instance_id || 'leader',
+                title: `Leader broadcasted provisioning bundle update (${type || 'all bundles'})`,
+                details: `Notified ${this.activeTunnels.size} active tunnel peer(s)`
+            });
+        }
         for (const [id, entry] of this.activeTunnels) {
             try {
                 entry.socket.emit('peer:bundle_updated', type);
@@ -2811,6 +2868,45 @@ export class FleetTunnelManager {
                 resolve(response);
             });
         });
+    }
+
+    /**
+     * Immediately query live telemetry from a set of peers over their active WebSocket tunnels
+     * so the Leader's LocalRegistryServer reflects post-action state without waiting 15s.
+     */
+    public async refreshPeersTelemetry(peerIdentifiers: string[], timeoutMs: number = 4000): Promise<void> {
+        if (!this.localRegistryServer || !Array.isArray(peerIdentifiers) || peerIdentifiers.length === 0) return;
+        const uniqueSockets = new Map<any, string>();
+        for (const rawId of peerIdentifiers) {
+            if (!rawId) continue;
+            let entry = this.activeTunnels.get(rawId);
+            if (!entry) {
+                const mappedId = this.siteToInstanceMap.get(rawId.toLowerCase());
+                if (mappedId) entry = this.activeTunnels.get(mappedId);
+            }
+            if (entry && entry.socket && entry.socket.connected) {
+                uniqueSockets.set(entry.socket, entry.info.instanceId || rawId);
+            }
+        }
+        await Promise.all(
+            Array.from(uniqueSockets.entries()).map(([socket]) =>
+                new Promise<void>((resolve) => {
+                    const timer = setTimeout(() => resolve(), timeoutMs);
+                    try {
+                        socket.emit('peer:query_status', (remoteStatus: any) => {
+                            clearTimeout(timer);
+                            if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
+                                this.localRegistryServer.upsertInstance(remoteStatus);
+                            }
+                            resolve();
+                        });
+                    } catch {
+                        clearTimeout(timer);
+                        resolve();
+                    }
+                })
+            )
+        );
     }
 
     /**
