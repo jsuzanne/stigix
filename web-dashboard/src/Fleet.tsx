@@ -1175,12 +1175,22 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                                                                 : 'bg-card-secondary/80 border-border text-text-secondary group-hover:border-blue-500/40 group-hover:text-blue-400'
                                                         }`}
-                                                        title={`${siteName} is ${isOnline ? 'Online' : 'Offline'}`}
+                                                        title={
+                                                            !isOnline
+                                                                ? `${siteName} is Offline`
+                                                                : !isLeader && !peer.has_tunnel
+                                                                ? `${siteName} heartbeat is active, but WebSocket control plane tunnel is down (auto-healing)`
+                                                                : `${siteName} is Online`
+                                                        }
                                                     >
                                                         {isLeader || isRemoteLeader ? '👑' : siteName.slice(0, 3).toUpperCase()}
                                                         <span
                                                             className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-card ${
-                                                                isOnline ? 'bg-emerald-400' : 'bg-red-500'
+                                                                !isOnline
+                                                                    ? 'bg-red-500'
+                                                                    : !isLeader && !peer.has_tunnel
+                                                                    ? 'bg-amber-400 animate-pulse'
+                                                                    : 'bg-emerald-400'
                                                             }`}
                                                         />
                                                     </div>
@@ -1195,6 +1205,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                             {isRemoteLeader && (
                                                                 <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25 whitespace-nowrap" title="This remote peer is currently configured as a Cluster Leader">
                                                                     Remote Leader
+                                                                </span>
+                                                            )}
+                                                            {isOnline && !isLeader && !peer.has_tunnel && (
+                                                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/25 whitespace-nowrap" title="Heartbeat received, waiting for WebSocket tunnel auto-reconnect">
+                                                                    Tunnel Down
                                                                 </span>
                                                             )}
                                                             {!isOnline && (
@@ -1303,13 +1318,18 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     ) : (
                                                         <div
                                                             className="relative group/mesh inline-flex items-center gap-1.5"
-                                                            title={`Direct HTTP: Leader ➔ ${peer.ip_private}:8080`}
+                                                            title={`Control plane WebSocket tunnel is down (Heartbeat active from ${peer.ip_private} — watchdog reconnecting WS)`}
                                                         >
-                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-text-muted bg-card-secondary/80 border border-border/60">
-                                                                🌐 Direct HTTP
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse">
+                                                                ⚠️ TUNNEL DOWN
                                                             </span>
-                                                            <div className="pointer-events-none invisible opacity-0 group-hover/mesh:visible group-hover/mesh:opacity-100 transition-all duration-150 absolute left-0 bottom-full mb-2 z-50 bg-neutral-950/95 text-white border border-neutral-700 rounded-xl px-3 py-2 shadow-2xl text-[11px] font-mono whitespace-nowrap">
-                                                                <span className="text-neutral-400">SRC:</span> <span className="text-emerald-300 font-bold">Leader</span> <span className="text-neutral-500">➔</span> <span className="text-neutral-400">DST:</span> <span className="text-cyan-300 font-bold">{peer.ip_private}:8080</span>
+                                                            <div className="pointer-events-none invisible opacity-0 group-hover/mesh:visible group-hover/mesh:opacity-100 transition-all duration-150 absolute left-0 bottom-full mb-2 z-50 bg-neutral-950/95 text-white border border-amber-500/40 rounded-xl px-3 py-2 shadow-2xl text-[11px] font-mono whitespace-nowrap">
+                                                                <div className="text-[9px] uppercase tracking-wider text-amber-400 font-sans font-bold mb-1">
+                                                                    Control Plane Disconnected · Auto-Heal Watchdog Active
+                                                                </div>
+                                                                <div>
+                                                                    <span className="text-neutral-400">Heartbeat:</span> <span className="text-emerald-300 font-bold">ALIVE ({peer.ip_private})</span> <span className="text-neutral-500">·</span> <span className="text-neutral-400">WS Tunnel:</span> <span className="text-amber-300 font-bold">Reconnecting...</span>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     )
@@ -1690,6 +1710,17 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             </div>
 
                             {/* 3. Collapsible Section: Mesh Tunnel Control Plane */}
+                            {!selectedPeer.is_leader && !selectedPeer.has_tunnel && (
+                                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 flex items-center justify-between gap-3">
+                                    <div className="text-xs text-amber-300 font-medium">
+                                        <span className="font-bold uppercase tracking-wider mr-1.5">⚠️ Control Plane Tunnel Down:</span>
+                                        Out-of-band heartbeat is active ({selectedPeer.ip_private}), waiting for WebSocket tunnel auto-reconnect.
+                                    </div>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap animate-pulse">
+                                        Reconnecting WS
+                                    </span>
+                                </div>
+                            )}
                             {(selectedPeer.has_tunnel || selectedPeer.tunnel_source_ip || selectedPeer.tunnel_dest_ip) && (
                                 <div className="rounded-xl border border-border bg-card/60 overflow-hidden">
                                     <button

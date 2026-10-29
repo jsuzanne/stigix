@@ -1142,6 +1142,32 @@ export class FleetTunnelManager {
         }
     }
 
+    private lastForcedTunnelRecycleAt: number = 0;
+
+    /**
+     * Triggered by the Spoke's 30s HTTP heartbeat watchdog when the Leader reports
+     * that no active WebSocket tunnel exists for this Spoke (e.g. zombie half-open socket or dropped session).
+     */
+    public forceReconnectSpokeTunnel(): void {
+        if (this.registryManager.isLeader()) return;
+        const now = Date.now();
+        if (now - this.lastForcedTunnelRecycleAt < 15000) return;
+        this.lastForcedTunnelRecycleAt = now;
+
+        if (this.spokeClientSocket) {
+            try {
+                this.spokeClientSocket.disconnect();
+            } catch {}
+            this.spokeClientSocket = null;
+            this.spokeCurrentLeaderUrl = null;
+        }
+        if (this.activeLeaderTunnelSocket) {
+            this.activeLeaderTunnelSocket = null;
+            this.activeLeaderInfo = null;
+        }
+        this.syncSpokeOutboundTunnel();
+    }
+
     /**
      * M5: Spoke Node connects outbound tunnel to Leader
      */

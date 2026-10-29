@@ -185,6 +185,11 @@ export class LocalRegistryServer {
         this.onInstancesPruned = cb;
     }
 
+    private tunnelChecker?: (instanceId: string, site?: string, ip?: string) => boolean;
+    public setTunnelChecker(cb: (instanceId: string, site?: string, ip?: string) => boolean): void {
+        this.tunnelChecker = cb;
+    }
+
     constructor() {
         // Periodic cleanup of stale heartbeats
         setInterval(() => this.cleanup(), 60000);
@@ -597,10 +602,17 @@ export class LocalRegistryServer {
                 }
             }
 
+            const isSpokeNode = instance.type !== 'leader' && !instance.meta?.is_leader;
+            const tunnelConnected = isSpokeNode && this.tunnelChecker
+                ? this.tunnelChecker(payload.instance_id, payload.meta?.site, payload.ip_private)
+                : true;
+
             return res.json({
                 status: 'ok',
                 poc_id: payload.poc_id,
-                instance_id: payload.instance_id
+                instance_id: payload.instance_id,
+                tunnel_connected: tunnelConnected,
+                force_tunnel_reconnect: isSpokeNode && !tunnelConnected
             });
         });
 

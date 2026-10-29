@@ -44,6 +44,11 @@ export class RegistryManager {
         this.telemetryProvider = provider;
     }
 
+    private onTunnelReconnectRequested?: () => void;
+    public setOnTunnelReconnectRequested(cb: () => void) {
+        this.onTunnelReconnectRequested = cb;
+    }
+
     /**
      * Normalizes a user-supplied controller URL:
      * - Trims whitespace and trailing slash
@@ -790,7 +795,10 @@ export class RegistryManager {
 
         const result = await this.client.register(this.currentIp, capabilities, summary);
         if (result && result.status === 'ok') {
-            // Heartbeat successful
+            if (result.force_tunnel_reconnect === true && this.onTunnelReconnectRequested) {
+                log('REGISTRY', `♻️ Leader heartbeat watchdog reported missing WebSocket tunnel — triggering immediate tunnel recycle`, 'warn');
+                this.onTunnelReconnectRequested();
+            }
         } else if (mode === 'peer' && config.registryUrl !== config.remoteUrl && !this.directMode && !this.staticLeaderUrl) {
             // FAILURE RECOVERY (Auto-Discovery / Dynamic Leader mode only):
             // If local registration fails and no static leader is configured,

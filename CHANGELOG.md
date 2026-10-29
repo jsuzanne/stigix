@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.42] - 2026-10-29
+
+### Changed
+- **100% WebSocket Control Plane Strict Mode & Out-of-Band Heartbeat Watchdog Auto-Heal (`web-dashboard/server.ts`, `web-dashboard/local-registry-server.ts`, `web-dashboard/registry-manager.ts`, `web-dashboard/fleet-tunnel.ts`, `web-dashboard/src/Fleet.tsx`)**:
+  - **Out-of-Band Heartbeat Watchdog Auto-Heal**: When the Leader receives a `POST /api/registry/register` heartbeat from a Spoke that lacks an active WebSocket tunnel (`!fleetTunnelManager.hasTunnel(...)`), the Leader replies with `force_tunnel_reconnect: true`. Upon receiving this signal, the Spoke immediately recycles and redials its outbound WebSocket client (`fleetTunnelManager.forceReconnectSpokeTunnel()`) with a 15-second cooldown guard.
+  - **Removed Legacy Direct HTTP Proxy Fallbacks**: Eliminated all unencrypted `http://<peer.ip_private>:8080` fallbacks in `/api/gateway/:peerId/*`, `POST /api/fleet/bulk-action`, and `tcpAppManager.multicastManager` (`nodeForwarder`). All Leader-to-Spoke and Spoke-to-Spoke control-plane operations now strictly require an active WebSocket tunnel (`↘️ INBOUND WS` or `↗️ OUTBOUND WS`) and fail fast (`503 Service Unavailable`) when disconnected.
+  - **Transparent Control Plane Health in Fleet UI**: Replaced the misleading `🌐 Direct HTTP` badge and green dot when `peer.has_tunnel` is false with an amber pulsing indicator (`bg-amber-400 animate-pulse`) and `⚠️ TUNNEL DOWN` badge indicating that out-of-band heartbeats are active while the WebSocket tunnel auto-heals.
+
 ## [3.1.41] - 2026-10-29
 
 ### Fixed

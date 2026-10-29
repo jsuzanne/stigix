@@ -16257,6 +16257,20 @@ function syncAllLocalCustomAppServers(): void {
 }
 fleetTunnelManager.setOnLeaderConnected(() => syncAllLocalCustomAppServers());
 
+// Wire Out-of-Band Heartbeat Watchdog:
+// 1. Leader checks if an incoming Spoke heartbeat has a live WebSocket tunnel; if not, signals force_tunnel_reconnect.
+// 2. Spoke receives force_tunnel_reconnect in heartbeat ACK and immediately recycles its WebSocket client.
+localRegistryServer.setTunnelChecker((instanceId, site, ip) =>
+    Boolean(
+        (instanceId && fleetTunnelManager.hasTunnel(instanceId)) ||
+        (site && fleetTunnelManager.hasTunnel(site)) ||
+        (ip && fleetTunnelManager.hasTunnel(ip))
+    )
+);
+registryManager.setOnTunnelReconnectRequested(() => {
+    fleetTunnelManager.forceReconnectSpokeTunnel();
+});
+
 // Hook Custom TCP Manager state changes into Fleet Tunnel Mesh
 tcpAppManager.on('state_changed', ({ appId }: { appId: string }) => {
     try {
@@ -16764,31 +16778,12 @@ app.post('/api/fleet/bulk-action', authenticateToken, async (req, res) => {
                 }
             }
 
-            // Direct LAN HTTP fallback if no active WebSocket tunnel
-            if (inst?.ip_private && inst.ip_private !== '127.0.0.1') {
-                const targetUrl = `http://${inst.ip_private}:${inst.port || 8080}${spec.path}`;
-                const directRes = await fetch(targetUrl, {
-                    method: 'POST',
-                    headers: peerAuthHeaders,
-                    body: JSON.stringify(spec.body),
-                    signal: AbortSignal.timeout(8000)
-                });
-                const ok = directRes.status >= 200 && directRes.status < 300;
-                return {
-                    peer_id: resolvedId,
-                    site: siteName,
-                    ok,
-                    status: directRes.status,
-                    error: ok ? undefined : `HTTP ${directRes.status}`
-                };
-            }
-
             return {
                 peer_id: resolvedId,
                 site: siteName,
                 ok: false,
-                status: 504,
-                error: 'No active WebSocket tunnel or reachable management IP'
+                status: 503,
+                error: 'Control plane WebSocket tunnel disconnected'
             };
         } catch (err: any) {
             return {
@@ -18004,11 +17999,17 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
         });
     }
 
-    if (!hasWsTunnel && !peerIp) {
-        return res.status(404).json({
-            error: 'peer_not_found',
-            message: `Peer "${peerId}" is not registered in the local registry or targets.`,
-            registered_peers: allInstances.map((i) => i.instance_id)
+    if (!hasWsTunnel) {
+        if (!peerIp) {
+            return res.status(404).json({
+                error: 'peer_not_found',
+                message: `Peer "${peerId}" is not registered in the local registry or targets.`,
+                registered_peers: allInstances.map((i) => i.instance_id)
+            });
+        }
+        return res.status(503).json({
+            error: 'tunnel_disconnected',
+            message: `Control plane WebSocket tunnel to peer "${peerId}" is currently disconnected. Waiting for tunnel auto-heal.`
         });
     }
 
@@ -18068,134 +18069,80 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
 
     const isStream = ((req.headers.accept as string) || '').includes('text/event-stream') || proxyUrl.includes('/stream');
 
-    if (hasWsTunnel) {
-        const tunnelTargetId = fleetTunnelManager.hasTunnel(peerId)
-            ? peerId
-            : fleetTunnelManager.hasTunnel(peerInstanceId)
-                ? peerInstanceId
-                : peerSiteName;
+    const tunnelTargetId = fleetTunnelManager.hasTunnel(peerId)
+        ? peerId
+        : fleetTunnelManager.hasTunnel(peerInstanceId)
+            ? peerInstanceId
+            : peerSiteName;
 
-        if (isStream) {
-            try {
-                const streamed = await fleetTunnelManager.forwardStream(tunnelTargetId, {
-                    method: req.method,
-                    path: proxyUrl,
-                    headers: forwardHeaders,
-                    body: req.body
-                }, req, res);
+    if (isStream) {
+        try {
+            const streamed = await fleetTunnelManager.forwardStream(tunnelTargetId, {
+                method: req.method,
+                path: proxyUrl,
+                headers: forwardHeaders,
+                body: req.body
+            }, req, res);
 
-                if (streamed) {
-                    return; // Handled directly by stream pump
-                }
-            } catch (streamErr: any) {
-                log('GATEWAY', `⚡ WebSocket stream forwarding to "${peerId}" failed (${streamErr.message}) — falling back to direct HTTP`, 'warn');
+            if (streamed) {
+                return; // Handled directly by stream pump
             }
-        } else {
-            try {
-                const tunnelRes = await fleetTunnelManager.forwardRequest(tunnelTargetId, {
-                    method: req.method,
-                    path: proxyUrl,
-                    headers: forwardHeaders,
-                    body: req.body
-                }, 15000);
-
-                if (tunnelRes) {
-                    res.status(tunnelRes.status);
-                    for (const [k, v] of Object.entries(tunnelRes.headers)) {
-                        if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
-                            res.setHeader(k, v as string | string[]);
-                        }
-                    }
-                    res.setHeader('x-gateway-peer', peerId);
-                    res.setHeader('x-gateway-transport', 'websocket-tunnel');
-
-                    if (tunnelRes.isBase64) {
-                        return res.send(Buffer.from(tunnelRes.body, 'base64'));
-                    } else {
-                        return res.send(tunnelRes.body);
-                    }
-                }
-            } catch (tunnelErr: any) {
-                log('GATEWAY', `⚡ Reverse WebSocket tunnel to "${peerId}" failed (${tunnelErr.message}) — falling back to direct HTTP proxy`, 'warn');
+            if (!res.headersSent) {
+                return res.status(503).json({
+                    error: 'tunnel_stream_unavailable',
+                    message: `WebSocket stream tunnel to peer "${peerId}" could not be established.`
+                });
+            }
+        } catch (streamErr: any) {
+            log('GATEWAY', `⚡ WebSocket stream forwarding to "${peerId}" failed (${streamErr.message})`, 'warn');
+            if (!res.headersSent) {
+                return res.status(502).json({
+                    error: 'tunnel_stream_error',
+                    message: `WebSocket stream forwarding to peer "${peerId}" failed: ${streamErr.message}`
+                });
             }
         }
+        return;
     }
 
-    // --- Direct HTTP Fallback ---
-    const options: http.RequestOptions = {
-        hostname: peerIp,
-        port: peerPort,
-        path: proxyUrl,
-        method: req.method,
-        headers: forwardHeaders,
-        timeout: 15000  // 15 s — allows for slow BR8 ops (batch tests, voice start, etc.)
-    };
+    try {
+        const tunnelRes = await fleetTunnelManager.forwardRequest(tunnelTargetId, {
+            method: req.method,
+            path: proxyUrl,
+            headers: forwardHeaders,
+            body: req.body
+        }, 15000);
 
-    let proxyResReceived = false;
+        if (tunnelRes) {
+            res.status(tunnelRes.status);
+            for (const [k, v] of Object.entries(tunnelRes.headers)) {
+                if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+                    res.setHeader(k, v as string | string[]);
+                }
+            }
+            res.setHeader('x-gateway-peer', peerId);
+            res.setHeader('x-gateway-transport', 'websocket-tunnel');
 
-    const proxyReq = http.request(options, (proxyRes) => {
-        proxyResReceived = true; // peer responded — abort handler must no-op from here
-        res.status(proxyRes.statusCode || 502);
-        for (const [k, v] of Object.entries(proxyRes.headers)) {
-            if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
-                res.setHeader(k, v as string | string[]);
+            if (tunnelRes.isBase64) {
+                return res.send(Buffer.from(tunnelRes.body, 'base64'));
+            } else {
+                return res.send(tunnelRes.body);
             }
         }
-        res.setHeader('x-gateway-peer', peerId);
-        res.setHeader('x-gateway-transport', 'direct-http');
 
-        // SSE streams (text/event-stream) must not be buffered — flush headers
-        // immediately so the browser's EventSource receives events in real-time.
-        const isSSE = (proxyRes.headers['content-type'] || '').includes('text/event-stream');
-        if (isSSE) {
-            res.setHeader('X-Accel-Buffering', 'no');
-            res.setHeader('Cache-Control', 'no-cache');
-            res.flushHeaders();
-        }
-
-        proxyRes.pipe(res, { end: true });
-    });
-
-    proxyReq.on('timeout', () => {
-        proxyReq.destroy();
-        log('GATEWAY', `Timeout reaching peer ${peerId} (${peerIp}:${peerPort})`, 'warn');
+        return res.status(503).json({
+            error: 'tunnel_disconnected',
+            message: `Control plane WebSocket tunnel to peer "${peerId}" is unavailable.`
+        });
+    } catch (tunnelErr: any) {
+        log('GATEWAY', `⚡ Reverse WebSocket tunnel to "${peerId}" failed (${tunnelErr.message})`, 'warn');
         if (!res.headersSent) {
-            res.status(504).json({
+            return res.status(504).json({
                 error: 'gateway_timeout',
-                message: `Peer "${peerId}" did not respond within 15 seconds.`,
-                peer_ip: peerIp
+                message: `WebSocket tunnel request to peer "${peerId}" failed: ${tunnelErr.message}`
             });
         }
-    });
-
-    proxyReq.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return; // client-abort cleanup, already logged
-        log('GATEWAY', `Error reaching peer ${peerId} (${peerIp}:${peerPort}): ${err.message}`, 'warn');
-        if (!res.headersSent) {
-            res.status(502).json({
-                error: 'gateway_error',
-                message: `Cannot reach peer "${peerId}": ${err.message}`,
-                peer_ip: peerIp
-            });
-        }
-    });
-
-    // Forward the request body to the peer.
-    if (!['GET', 'HEAD'].includes(req.method)) {
-        const bodyStr = (req.body != null && typeof req.body === 'object')
-            ? JSON.stringify(req.body)
-            : typeof req.body === 'string' ? req.body : '';
-        const bodyBuf = Buffer.from(bodyStr, 'utf8');
-        proxyReq.setHeader('content-length', bodyBuf.length);
-        if (bodyBuf.length > 0) proxyReq.write(bodyBuf);
-        proxyReq.end();
-    } else {
-        proxyReq.end();
     }
-
-    req.on('aborted', () => {
-        if (!proxyResReceived && !proxyReq.destroyed) proxyReq.destroy();
-    });
 });
 log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
@@ -18358,22 +18305,25 @@ tcpAppManager.multicastManager.setClusterHooks({
 
         // 1. Direct WebSocket Reverse Tunnel (when running on Leader)
         if (matchedTunnelId) {
-            try {
-                const tunnelRes = await fleetTunnelManager.forwardRequest(
-                    matchedTunnelId,
-                    {
-                        method,
-                        path: targetPath,
-                        headers,
-                        body: method === 'POST' ? (body || {}) : undefined
-                    },
-                    3000
-                );
-                if (tunnelRes && tunnelRes.status >= 200 && tunnelRes.status < 300) {
-                    const parsed = typeof tunnelRes.body === 'string' ? JSON.parse(tunnelRes.body) : tunnelRes.body;
+            const tunnelRes = await fleetTunnelManager.forwardRequest(
+                matchedTunnelId,
+                {
+                    method,
+                    path: targetPath,
+                    headers,
+                    body: method === 'POST' ? (body || {}) : undefined
+                },
+                3000
+            );
+            if (tunnelRes) {
+                const parsed = typeof tunnelRes.body === 'string'
+                    ? (() => { try { return JSON.parse(tunnelRes.body); } catch { return { error: tunnelRes.body }; } })()
+                    : tunnelRes.body;
+                if (tunnelRes.status >= 200 && tunnelRes.status < 300) {
                     return parsed;
                 }
-            } catch {}
+                throw new Error(parsed?.error || `HTTP ${tunnelRes.status} via WebSocket tunnel to '${peerId}'`);
+            }
         }
 
         // 2. Spoke-to-Leader Hub Relay (when running on a Peer such as BR8 and controlling DC1 or BR5)
@@ -18381,83 +18331,10 @@ tcpAppManager.multicastManager.setClusterHooks({
             ? registryManager.isLeader()
             : (registryManager?.getStatus?.()?.mode === 'leader');
         if (!isLeader && fleetTunnelManager.hasActiveLeaderTunnel()) {
-            try {
-                return await fleetTunnelManager.relayNodeRequestViaLeader(peerId, method, subPath, body, 3500);
-            } catch (relayErr: any) {
-                const errMsg = relayErr?.message || '';
-                if (/EHOSTUNREACH|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|Timeout reaching node|not found in Fleet/i.test(errMsg)) {
-                    throw relayErr;
-                }
-                log('CUSTOM_TCP', `Spoke-to-Leader multicast relay for '${peerId}' failed (${errMsg}) — trying direct HTTP fallback`, 'warn');
-            }
+            return await fleetTunnelManager.relayNodeRequestViaLeader(peerId, method, subPath, body, 3500);
         }
 
-        // 3. Resolve IP & port for Direct HTTP fallback
-        let peerIp = peer?.ip_private || peer?.ip_public;
-        let peerPort = peer?.port || (peer as any)?.meta?.port || 8080;
-
-        if (!peerIp && target) {
-            peerIp = target.host;
-            peerPort = target.ports?.dashboard || 8080;
-        }
-        if (!peerIp && /^\d{1,3}(\.\d{1,3}){3}$/.test(peerId)) {
-            peerIp = peerId;
-        }
-        if (!peerIp) {
-            const regStatus = registryManager.getStatus();
-            if (regStatus.leader_info?.ip && (
-                peerNorm === normalizeMulticastNodeName(regStatus.leader_info.site_name) ||
-                peerNorm === normalizeMulticastNodeName(regStatus.leader_info.instance_id) ||
-                peerNorm === 'dc1'
-            )) {
-                peerIp = regStatus.leader_info.ip;
-            }
-        }
-
-        if (!peerIp) {
-            throw new Error(`Node '${peerId}' not found in Fleet Registry or Targets`);
-        }
-
-        // Direct HTTP fallback (fast 2s timeout to avoid stalling cluster orchestration when a VM is down)
-        return await new Promise<any>((resolve, reject) => {
-            const bodyStr = method === 'POST' ? JSON.stringify(body || {}) : '';
-            if (method === 'POST') {
-                headers['content-length'] = String(Buffer.byteLength(bodyStr));
-            }
-            const req = http.request(
-                {
-                    hostname: peerIp,
-                    port: peerPort,
-                    path: targetPath,
-                    method,
-                    headers,
-                    timeout: 2000
-                },
-                (res) => {
-                    let raw = '';
-                    res.on('data', (chunk) => { raw += chunk.toString(); });
-                    res.on('end', () => {
-                        try {
-                            const json = JSON.parse(raw);
-                            if ((res.statusCode || 500) >= 400) {
-                                reject(new Error(json.error || `HTTP ${res.statusCode}`));
-                            } else {
-                                resolve(json);
-                            }
-                        } catch {
-                            reject(new Error(`Invalid JSON response from ${peerId} (${peerIp}:${peerPort})`));
-                        }
-                    });
-                }
-            );
-            req.on('timeout', () => {
-                req.destroy();
-                reject(new Error(`Timeout reaching node ${peerId} (${peerIp}:${peerPort})`));
-            });
-            req.on('error', (err) => reject(err));
-            if (method === 'POST' && bodyStr) req.write(bodyStr);
-            req.end();
-        });
+        throw new Error(`Control plane WebSocket tunnel to node '${peerId}' is disconnected`);
     }
 });
 
