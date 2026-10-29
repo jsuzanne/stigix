@@ -1226,6 +1226,12 @@ export class FleetTunnelManager {
             this.spokeClientSocket = null;
         }
 
+        if (this.spokeClientSocket && !this.spokeClientSocket.connected && (this.spokeClientSocket as any).active === false) {
+            log('TUNNEL', `Spoke tunnel socket is inactive — recreating outbound tunnel to ${targetUrl}`, 'warn');
+            try { this.spokeClientSocket.disconnect(); } catch {}
+            this.spokeClientSocket = null;
+        }
+
         if (!this.spokeClientSocket) {
             this.connectSpokeOutbound(targetUrl, targetHost, targetPort);
         }
@@ -1233,27 +1239,32 @@ export class FleetTunnelManager {
 
     private connectSpokeOutbound(targetUrl: string, host: string, port: number): void {
         const regStatus = this.registryManager.getStatus();
-        const instanceId = regStatus.instance_id || 'spoke-node';
-        const siteName = regStatus.site_name || instanceId;
-        const localIp = regStatus.detected_ip || '127.0.0.1';
-
-        const signingSecret = this.nodeToken || this.secretKey;
-        const token = jwt.sign(
-            { username: 'stigix-tunnel-spoke', role: 'admin', peer: instanceId, site: siteName },
-            signingSecret,
-            { expiresIn: '24h' }
-        );
+        const defaultInstanceId = regStatus.instance_id || 'spoke-node';
+        const defaultSiteName = regStatus.site_name || defaultInstanceId;
+        const defaultLocalIp = regStatus.detected_ip || '127.0.0.1';
 
         this.spokeCurrentLeaderUrl = targetUrl;
         const wsUrl = `${targetUrl}/fleet-tunnel`;
 
         const socket = ioClient(wsUrl, {
-            auth: {
-                token,
-                nodeToken: this.nodeToken || undefined,
-                instanceId,
-                siteName,
-                ip: localIp
+            auth: (cb) => {
+                const liveReg = this.registryManager.getStatus();
+                const instanceId = liveReg.instance_id || defaultInstanceId;
+                const siteName = liveReg.site_name || defaultSiteName || instanceId;
+                const localIp = liveReg.detected_ip || defaultLocalIp;
+                const signingSecret = this.nodeToken || this.secretKey;
+                const token = jwt.sign(
+                    { username: 'stigix-tunnel-spoke', role: 'admin', peer: instanceId, site: siteName },
+                    signingSecret,
+                    { expiresIn: '24h' }
+                );
+                cb({
+                    token,
+                    nodeToken: this.nodeToken || undefined,
+                    instanceId,
+                    siteName,
+                    ip: localIp
+                });
             },
             transports: ['websocket', 'polling'],
             maxHttpBufferSize: 100 * 1024 * 1024,
@@ -1376,6 +1387,21 @@ export class FleetTunnelManager {
             epHealth.lastErrorAt = Date.now();
             log('TUNNEL', `Outbound reverse tunnel connection failed (${host}:${port}) [attempt ${this.consecutiveConnectErrors}]: ${err.message}`, 'warn');
 
+            // Socket.IO v4 disables auto-reconnect when a server namespace middleware rejects with next(new Error(...)).
+            // Unless explicitly revoked, recycle the client socket so syncSpokeOutboundTunnel() dials fresh with a newly signed JWT.
+            if (!(socket as any).active && err?.message !== 'token_revoked') {
+                log('TUNNEL', `♻️ Server middleware rejected handshake (${err.message}); recycling inactive Socket.IO instance for fresh dial...`, 'warn');
+                try {
+                    socket.disconnect();
+                } catch {}
+                if (this.spokeClientSocket === socket) {
+                    this.spokeClientSocket = null;
+                    this.spokeCurrentLeaderUrl = null;
+                }
+                setTimeout(() => this.syncSpokeOutboundTunnel(), 3000);
+                return;
+            }
+
             // Trigger smart score-based failover if multiple candidate endpoints exist and current endpoint failed 3 times
             if (this.candidateLeaderUrls.length > 1 && this.consecutiveConnectErrors >= 3) {
                 this.currentCandidateIndex = this.selectBestCandidateIndex(targetUrl);
@@ -1401,6 +1427,16 @@ export class FleetTunnelManager {
             if (this.spokeTelemetryInterval) {
                 clearInterval(this.spokeTelemetryInterval);
                 this.spokeTelemetryInterval = null;
+            }
+
+            // In Socket.IO v4, 'io server disconnect' sets socket.active = false and permanently stops auto-reconnection.
+            // Tear down the dead socket reference so the 15s sync loop (or immediate timer) creates a fresh connection.
+            if (reason === 'io server disconnect' || !(socket as any).active) {
+                if (this.spokeClientSocket === socket) {
+                    this.spokeClientSocket = null;
+                    this.spokeCurrentLeaderUrl = null;
+                    setTimeout(() => this.syncSpokeOutboundTunnel(), 3000);
+                }
             }
 
             // Record unexpected WebSocket disconnect (flap) and evaluate hysteresis-guarded failover
@@ -1596,24 +1632,26 @@ export class FleetTunnelManager {
         this.peerNodeTokens.set(String(targetSiteName).toLowerCase(), dialNodeToken);
         this.peerNodeTokens.set(String(host).toLowerCase(), dialNodeToken);
 
-        const token = jwt.sign(
-            { username: 'stigix-leader-dial', role: 'admin', peer: targetId, site: localSite },
-            dialNodeToken,
-            { expiresIn: '24h' }
-        );
-
         const wsUrl = `http://${host}:${port}/fleet-tunnel`;
         log('TUNNEL', `🌐 [M6 DIAL] Leader dialing outbound reverse tunnel to Cloud Peer: ${targetSiteName} (${wsUrl})...`);
 
         const socket = ioClient(wsUrl, {
-            auth: {
-                token,
-                nodeToken: dialNodeToken,
-                instanceId: localId,
-                siteName: localSite,
-                ip: localStatus.detected_ip || '127.0.0.1',
-                isLeaderDial: true,
-                realm: this.getRealmHash()
+            auth: (cb) => {
+                const freshStatus = this.registryManager.getStatus();
+                const freshToken = jwt.sign(
+                    { username: 'stigix-leader-dial', role: 'admin', peer: targetId, site: localSite },
+                    dialNodeToken,
+                    { expiresIn: '24h' }
+                );
+                cb({
+                    token: freshToken,
+                    nodeToken: dialNodeToken,
+                    instanceId: localId,
+                    siteName: localSite,
+                    ip: freshStatus.detected_ip || localStatus.detected_ip || '127.0.0.1',
+                    isLeaderDial: true,
+                    realm: this.getRealmHash()
+                });
             },
             transports: ['websocket', 'polling'],
             maxHttpBufferSize: 100 * 1024 * 1024,

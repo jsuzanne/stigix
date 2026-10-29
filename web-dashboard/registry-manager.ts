@@ -534,6 +534,14 @@ export class RegistryManager {
 
         let mode = sysMode !== 'auto' ? sysMode : (process.env.STIGIX_REGISTRY_MODE || 'standalone');
 
+        // Self-healing guard: if a node has an active cluster enrollment or static leader configured,
+        // never let a stale 'standalone' setting silence its fallback HTTP heartbeats.
+        const hasActiveClusterBinding = Boolean(this.getClusterEnrollment()?.enrolled || this.staticLeaderUrl);
+        if (mode === 'standalone' && hasActiveClusterBinding && process.env.STIGIX_REGISTRY_MODE !== 'standalone') {
+            log('REGISTRY', `Node has active cluster enrollment/static leader; overriding stale 'standalone' registry_mode to 'peer' for heartbeat resilience.`);
+            mode = 'peer';
+        }
+
         // Standalone Mode: 100% offline/independent. No discovery, no registration, no Cloudflare traffic.
         if (mode === 'standalone') {
             log('REGISTRY', `Node operating in standalone mode. Remote registry and clustering disabled.`);

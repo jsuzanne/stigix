@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.41] - 2026-10-29
+
+### Fixed
+- **Perpetual WebSocket Reverse Tunnel JWT Renewal & Socket.IO v4 Lockup Recovery (`web-dashboard/fleet-tunnel.ts`)**:
+  - Replaced the static `auth: { token, ... }` handshake object in `connectSpokeOutbound()` and `dialOutboundPeer()` with a dynamic Socket.IO v4 `auth: (cb) => { ... }` callback that mints a freshly signed 24h JWT on every initial connection and future reconnection attempt, preventing 24-hour uptime tunnel expirations when Cloudflare or intermediate proxies recycle long-lived WebSockets.
+  - Added self-healing recovery in `syncSpokeOutboundTunnel()`, `connect_error`, and `disconnect` handlers to detect and recycle inactive Socket.IO client instances (`socket.active === false` after server middleware rejection or `io server disconnect`) so outbound reverse tunnels never permanently stall.
+- **Cluster Enrollment Heartbeat Resilience Override (`web-dashboard/registry-manager.ts`)**:
+  - Added a self-healing guard in `RegistryManager.start()` that overrides a stale `"registry_mode": "standalone"` setting in `system-settings.json` to `"peer"` whenever the node has an active cluster enrollment (`cluster-enrollment.json`) or static controller (`static-leader.json`), ensuring fallback HTTP heartbeats remain active.
+
 ## [3.1.40] - 2026-10-28
 
 ### Improved
