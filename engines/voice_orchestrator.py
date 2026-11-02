@@ -45,12 +45,15 @@ def get_next_call_id():
     config = load_voice_config()
     state = config.get('state', {})
     counter = state.get('counter', 0)
+    total_calls = state.get('total_calls', counter if 0 < counter < 9999 else 0)
     
     # Implementation of cyclic counter (0-9999) for deterministic port mapping
     counter = (counter + 1) % 10000
+    total_calls += 1
     
     # Update state and save back to config
     state['counter'] = counter
+    state['total_calls'] = total_calls
     config['state'] = state
     
     try:
@@ -399,6 +402,7 @@ def main():
         config = load_voice_config()
         if 'state' not in config: config['state'] = {}
         config['state']['counter'] = 0
+        config['state']['total_calls'] = 0
         with open(VOICE_CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
         # 2. Disable simulation by default — UNLESS auto_restart_voice is enabled

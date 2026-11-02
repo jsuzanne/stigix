@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.43] - 2026-11-02
+
+### Fixed
+- **Cumulative VoIP Total Calls Counter vs. 100-Call QoS Sliding Window (`engines/stigix-go/voice.go`, `engines/voice_orchestrator.py`, `web-dashboard/server.ts`, `web-dashboard/src/Voice.tsx`)**:
+  - Added a monotonic `state.total_calls` counter in `voice-config.json` (auto-initialized from existing `state.counter` for seamless continuity on running nodes and unaffected by the 10,000-call source-port cyclic wrap-around) while preserving the 100-call sliding window (`readVoiceStatsWindow(200)`) for real-time QoS averages (MOS, Loss, Latency, Jitter, RTT Min/Max).
+  - Unified `/api/admin/system/dashboard-data` and `/api/admin/system/live-status` to use fast non-shell tail reads of the last 200 lines of `voice-stats.jsonl` and expose `totalCalls`, eliminating the 30-line truncation in Remote Peer View and displaying `• QoS Window: Last 100 calls` in the Voice telemetry table header.
+
 ## [3.1.42] - 2026-10-29
 
 ### Changed

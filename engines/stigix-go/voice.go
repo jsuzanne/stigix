@@ -27,7 +27,8 @@ type VoiceConfig struct {
 	} `json:"control"`
 	Servers []VoiceServerEntry `json:"servers"`
 	State   struct {
-		Counter int `json:"counter"`
+		Counter    int `json:"counter"`
+		TotalCalls int `json:"total_calls,omitempty"`
 	} `json:"state"`
 }
 
@@ -471,8 +472,16 @@ func runVoiceEngine(ctx context.Context, configDir, logDir string) {
 		if v, ok := stateMap["counter"].(float64); ok {
 			counter = int(v)
 		}
+		totalCalls := 0
+		if v, ok := stateMap["total_calls"].(float64); ok {
+			totalCalls = int(v)
+		} else if counter > 0 && counter < 9999 {
+			totalCalls = counter
+		}
 		next := (counter + 1) % 10000
+		totalCalls++
 		stateMap["counter"] = next
+		stateMap["total_calls"] = totalCalls
 		_ = writeAtomicJSONIndent(cfgFile, doc)
 		return fmt.Sprintf("CALL-%04d", next)
 	}

@@ -113,6 +113,7 @@ export default function Voice(props: VoiceProps) {
     const [config, setConfig] = useState<VoiceControl | null>(null);
     const [rawServers, setRawServers] = useState('');
     const [calls, setCalls] = useState<VoiceCall[]>([]);
+    const [totalCallsCount, setTotalCallsCount] = useState<number>(0);
     // Tracks browser wall-clock time when each call_id first appeared — avoids server timezone issues
     const seenAtMap = React.useRef<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
@@ -202,6 +203,9 @@ export default function Voice(props: VoiceProps) {
             });
             setCalls(externalStatus.stats);
         }
+        if (typeof externalStatus.totalCalls === 'number') {
+            setTotalCallsCount(externalStatus.totalCalls);
+        }
         if (externalStatus.control && !isDirty) {
             setEnabled(externalStatus.control.enabled);
             setConfig(prev => ({ ...prev, ...externalStatus.control }));
@@ -220,6 +224,7 @@ export default function Voice(props: VoiceProps) {
         setAllRegistryTargets([]);
         setRawServers('');
         setTargetRows([]);
+        setTotalCallsCount(0);
     }, [activePeerId]);
 
     // ════════════════════════════════════════════════
@@ -337,6 +342,7 @@ export default function Voice(props: VoiceProps) {
             if (data.success) {
                 if (!isDirty) setRawServers(data.servers);
                 if (!isDirty) setConfig((prev: any) => ({ ...prev, ...data }));
+                if (typeof data.totalCalls === 'number') setTotalCallsCount(data.totalCalls);
                 setLoading(false);
                 setConfigLoaded(true);
             }
@@ -387,12 +393,19 @@ export default function Voice(props: VoiceProps) {
 
     const resetIds = async () => {
         if (!confirm('Reset CALL-XXXX counter to CALL-0000?')) return;
-        try { await gFetch('/api/voice/counter', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
+        try {
+            await gFetch('/api/voice/counter', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            setTotalCallsCount(0);
+        } catch { }
     };
 
     const resetLogs = async () => {
         if (!confirm('Reset all voice call history?')) return;
-        try { await gFetch('/api/voice/stats', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
+        try {
+            await gFetch('/api/voice/stats', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+            setCalls([]);
+            setTotalCallsCount(0);
+        } catch { }
     };
 
     const buildRawServers = (rows: TargetRow[], codec: string, duration: string) =>
@@ -476,14 +489,35 @@ export default function Voice(props: VoiceProps) {
 
     const qosSummary = React.useMemo(() => {
         const fin = calls.filter(c => c.event === 'end' && c.loss_pct !== undefined);
-        if (!fin.length) return null;
+        if (!fin.length && !totalCallsCount) return null;
+        let maxCallIdNum = 0;
+        for (const c of calls) {
+            if (c.call_id && c.call_id.startsWith('CALL-')) {
+                const n = parseInt(c.call_id.substring(5), 10);
+                if (!isNaN(n) && n < 9999 && n > maxCallIdNum) maxCallIdNum = n;
+            }
+        }
+        const cumulativeCalls = calls.length === 0 ? 0 : Math.max(totalCallsCount, maxCallIdNum, fin.length);
+        if (!fin.length) {
+            return {
+                totalCalls: cumulativeCalls,
+                sampleSize: 0,
+                avgLoss: '0.0',
+                avgRtt: '0.0',
+                minRtt: '0',
+                maxRtt: '0',
+                avgJitter: '0.0',
+                avgMos: 'N/A',
+            };
+        }
         const loss = fin.reduce((a, c) => a + (c.loss_pct || 0), 0) / fin.length;
         const rtts = fin.map(c => c.avg_rtt_ms || 0).filter(Boolean);
         const jitters = fin.map(c => c.jitter_ms || 0).filter(Boolean);
         const mos = fin.map(c => c.mos_score || 0).filter(Boolean);
         const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
         return {
-            totalCalls: fin.length,
+            totalCalls: cumulativeCalls,
+            sampleSize: fin.length,
             avgLoss: loss.toFixed(1),
             avgRtt: avg(rtts).toFixed(1),
             minRtt: rtts.length ? Math.min(...rtts).toFixed(1) : '0',
@@ -491,7 +525,7 @@ export default function Voice(props: VoiceProps) {
             avgJitter: avg(jitters).toFixed(1),
             avgMos: mos.length ? avg(mos).toFixed(2) : 'N/A',
         };
-    }, [calls]);
+    }, [calls, totalCallsCount]);
 
     const perTargetStats = React.useMemo(() => {
         const fin = calls.filter(c => c.event === 'end' && c.loss_pct !== undefined);
@@ -826,7 +860,8 @@ export default function Voice(props: VoiceProps) {
                     {[
                         {
                             label: 'Avg MOS',
-                            value: qosSummary ? qosSummary.avgMos : '—',
+                            value: qosSummary && qosSummary.sampleSize > 0 ? qosSummary.avgMos : '—',
+                            title: qosSummary?.sampleSize ? `Sliding window average over the last ${qosSummary.sampleSize} completed calls` : undefined,
                             icon: Activity,
                             color: !qosSummary || qosSummary.avgMos === 'N/A'
                                 ? 'text-text-muted opacity-50'
@@ -838,15 +873,17 @@ export default function Voice(props: VoiceProps) {
                         },
                         {
                             label: 'Total Calls',
-                            value: qosSummary ? qosSummary.totalCalls : 0,
+                            value: qosSummary ? qosSummary.totalCalls.toLocaleString() : 0,
+                            title: qosSummary?.sampleSize ? `Cumulative calls since last reset (QoS averages computed over last ${qosSummary.sampleSize} calls)` : undefined,
                             icon: Phone,
                             color: qosSummary ? 'text-text-primary' : 'text-text-muted opacity-50'
                         },
                         {
                             label: 'Avg Loss',
-                            value: qosSummary ? `${qosSummary.avgLoss}%` : '—',
+                            value: qosSummary && qosSummary.sampleSize > 0 ? `${qosSummary.avgLoss}%` : '—',
+                            title: qosSummary?.sampleSize ? `Sliding window average over the last ${qosSummary.sampleSize} completed calls` : undefined,
                             icon: Wifi,
-                            color: !qosSummary
+                            color: !qosSummary || !qosSummary.sampleSize
                                 ? 'text-text-muted opacity-50'
                                 : parseFloat(qosSummary.avgLoss) < 1
                                     ? 'text-green-500'
@@ -854,25 +891,29 @@ export default function Voice(props: VoiceProps) {
                         },
                         {
                             label: 'Avg Latency',
-                            value: qosSummary ? `${qosSummary.avgRtt}ms` : '—',
+                            value: qosSummary && qosSummary.sampleSize > 0 ? `${qosSummary.avgRtt}ms` : '—',
+                            title: qosSummary?.sampleSize ? `Sliding window average over the last ${qosSummary.sampleSize} completed calls` : undefined,
                             icon: Clock,
-                            color: qosSummary ? 'text-blue-500' : 'text-text-muted opacity-50'
+                            color: qosSummary && qosSummary.sampleSize > 0 ? 'text-blue-500' : 'text-text-muted opacity-50'
                         },
                         {
                             label: 'Avg Jitter',
-                            value: qosSummary ? `${qosSummary.avgJitter}ms` : '—',
+                            value: qosSummary && qosSummary.sampleSize > 0 ? `${qosSummary.avgJitter}ms` : '—',
+                            title: qosSummary?.sampleSize ? `Sliding window average over the last ${qosSummary.sampleSize} completed calls` : undefined,
                             icon: Activity,
-                            color: qosSummary ? 'text-purple-500' : 'text-text-muted opacity-50'
+                            color: qosSummary && qosSummary.sampleSize > 0 ? 'text-purple-500' : 'text-text-muted opacity-50'
                         },
                         {
                             label: 'RTT Min/Max',
-                            value: qosSummary ? `${qosSummary.minRtt}/${qosSummary.maxRtt}ms` : '—',
+                            value: qosSummary && qosSummary.sampleSize > 0 ? `${qosSummary.minRtt}/${qosSummary.maxRtt}ms` : '—',
+                            title: qosSummary?.sampleSize ? `Min/Max RTT over the last ${qosSummary.sampleSize} completed calls` : undefined,
                             icon: BarChart2,
                             color: 'text-text-secondary'
                         },
                     ].map((s, i) => (
                         <div
                             key={i}
+                            title={s.title}
                             className="bg-card-secondary/50 border border-border rounded-xl px-3.5 py-2.5 shadow-sm hover:border-blue-500/30 transition-colors flex items-center justify-between gap-2"
                         >
                             <div className="flex items-center gap-1.5 min-w-0">
@@ -967,6 +1008,11 @@ export default function Voice(props: VoiceProps) {
                                 </h3>
                                 <p className="text-[9px] text-text-muted font-bold mt-1 pl-4 opacity-60">
                                     {enabledRows.length} target{enabledRows.length !== 1 ? 's' : ''} enabled • Profile: {globalCodec} ({globalDuration}s)
+                                    {qosSummary && qosSummary.sampleSize > 0 && (
+                                        <span className="ml-2 text-blue-500/90">
+                                            • QoS Window: Last {qosSummary.sampleSize} calls
+                                        </span>
+                                    )}
                                     {excludedCount > 0 && (
                                         <span className="ml-2 opacity-60">
                                             — {excludedCount} excluded (no Voice capability)

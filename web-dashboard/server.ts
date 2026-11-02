@@ -5164,6 +5164,65 @@ const sanitizeVoiceControl = (rawControl: any) => {
     };
 };
 
+const resolveVoiceTotalCalls = (vConfig: any, voiceStats?: any[]): number => {
+    try {
+        if (fs.existsSync(VOICE_STATS_FILE)) {
+            const st = fs.statSync(VOICE_STATS_FILE);
+            if (st.size === 0) return 0;
+        } else {
+            return 0;
+        }
+    } catch { }
+
+    const state = vConfig?.state || {};
+    let total = 0;
+    if (typeof state.total_calls === 'number' && state.total_calls >= 0) {
+        total = state.total_calls;
+    } else if (typeof state.counter === 'number' && state.counter > 0 && state.counter < 9999) {
+        total = state.counter;
+    }
+
+    if (Array.isArray(voiceStats) && voiceStats.length > 0) {
+        const endedInWindow = voiceStats.filter(c => c && c.event === 'end').length;
+        let maxCallIdNum = 0;
+        if (typeof state.total_calls !== 'number') {
+            for (const c of voiceStats) {
+                if (typeof c?.call_id === 'string' && c.call_id.startsWith('CALL-')) {
+                    const n = parseInt(c.call_id.slice(5), 10);
+                    if (!isNaN(n) && n < 9999 && n > maxCallIdNum) maxCallIdNum = n;
+                }
+            }
+        }
+        total = Math.max(total, maxCallIdNum, endedInWindow);
+    }
+    return total;
+};
+
+const readVoiceStatsWindow = async (maxLines = 200): Promise<any[]> => {
+    if (!fs.existsSync(VOICE_STATS_FILE)) return [];
+    const fd = await fs.promises.open(VOICE_STATS_FILE, 'r');
+    try {
+        const { size } = await fd.stat();
+        if (size === 0) return [];
+        // ~240 bytes per line -> 48 KB easily covers 200 lines (100 completed calls + 100 start events)
+        const readSize = Math.min(size, 49152);
+        const buf = Buffer.alloc(readSize);
+        await fd.read(buf, 0, readSize, size - readSize);
+        const raw = buf.toString('utf8');
+        // If we started mid-file, drop the first (potentially partial) line
+        const lines = (size > readSize ? raw.slice(raw.indexOf('\n') + 1) : raw)
+            .split('\n')
+            .filter(l => l.trim());
+        return lines
+            .slice(-maxLines)
+            .map(l => { try { return JSON.parse(l); } catch { return null; } })
+            .filter(Boolean)
+            .reverse();
+    } finally {
+        await fd.close();
+    }
+};
+
 // API: Voice Control - Status
 app.get('/api/voice/status', authenticateToken, (req, res) => {
     try {
@@ -5210,7 +5269,12 @@ app.get('/api/voice/config', authenticateToken, (req, res) => {
         const config = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
         // Parse servers back to raw string for frontend textarea
         const rawServers = (config.servers || []).map((s: any) => `${s.target}|${s.codec}|${s.weight}|${s.duration}`).join('\n');
-        res.json({ success: true, servers: rawServers, control: sanitizeVoiceControl(config.control) });
+        res.json({
+            success: true,
+            servers: rawServers,
+            control: sanitizeVoiceControl(config.control),
+            totalCalls: resolveVoiceTotalCalls(config)
+        });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -5325,6 +5389,12 @@ app.delete('/api/voice/stats', authenticateToken, (req, res) => {
         if (fs.existsSync(VOICE_STATS_FILE)) {
             fs.writeFileSync(VOICE_STATS_FILE, '');
         }
+        if (fs.existsSync(VOICE_CONFIG_FILE)) {
+            const config = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
+            if (!config.state) config.state = {};
+            config.state.total_calls = 0;
+            fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
+        }
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -5338,10 +5408,11 @@ app.delete('/api/voice/counter', authenticateToken, (req, res) => {
             const config = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
             if (!config.state) config.state = {};
             config.state.counter = 9999; // Write 9999 so the next call is CALL-0000
+            config.state.total_calls = 0;
             fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
         } else {
             // If config doesn't exist, create it with just the counter
-            const config = { servers: [], control: {}, state: { counter: 9999 } };
+            const config = { servers: [], control: {}, state: { counter: 9999, total_calls: 0 } };
             fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
         }
         res.json({ success: true });
@@ -14602,22 +14673,16 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
         // 6. Voice Status & Stats (Non-blocking)
         let voiceStats: any[] = [];
         let voiceControl = { enabled: false };
+        let voiceTotalCalls = 0;
         try {
+            let vConfig: any = null;
             if (fs.existsSync(VOICE_CONFIG_FILE)) {
                 const vData = await fs.promises.readFile(VOICE_CONFIG_FILE, 'utf8');
-                const vConfig = JSON.parse(vData);
+                vConfig = JSON.parse(vData);
                 voiceControl = vConfig.control || { enabled: false };
             }
-            if (fs.existsSync(VOICE_STATS_FILE)) {
-                const { stdout: vsOut } = await promisify(exec)(`tail -n 200 "${VOICE_STATS_FILE}"`);
-                voiceStats = vsOut.toString().trim().split('\n')
-                    .filter(l => l.trim())
-                    .map(l => {
-                        try { return JSON.parse(l); } catch (err) { return null; }
-                    })
-                    .filter(l => l)
-                    .reverse();
-            }
+            voiceStats = await readVoiceStatsWindow(200);
+            voiceTotalCalls = resolveVoiceTotalCalls(vConfig, voiceStats);
         } catch (e) { }
 
         // 7. Digital Experience (DEM) - REMOVED from aggregate fetch
@@ -14637,7 +14702,8 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
             convergenceTests: convergenceResults,
             voice: {
                 control: voiceControl,
-                stats: voiceStats
+                stats: voiceStats,
+                totalCalls: voiceTotalCalls
             },
             dem: demData,
             registry: (() => {
@@ -14686,36 +14752,24 @@ app.get('/api/admin/system/live-status', authenticateToken, async (req, res) => 
             }));
         } catch { }
 
-        // 2. Voice — read config + last 30 stats lines (capped, no exec)
+        // 2. Voice — read config + last 200 stats lines (100 completed calls window, no exec)
         let voiceStats: any[] = [];
         let voiceControl = { enabled: false };
+        let voiceTotalCalls = 0;
         try {
+            let vConfig: any = null;
             if (fs.existsSync(VOICE_CONFIG_FILE)) {
                 const vData = await fs.promises.readFile(VOICE_CONFIG_FILE, 'utf8');
-                const vConfig = JSON.parse(vData);
+                vConfig = JSON.parse(vData);
                 voiceControl = vConfig.control || { enabled: false };
             }
-            if (fs.existsSync(VOICE_STATS_FILE)) {
-                // Read last ~4 KB (≈ 30 entries) without spawning a shell
-                const fd = await fs.promises.open(VOICE_STATS_FILE, 'r');
-                const { size } = await fd.stat();
-                const readSize = Math.min(size, 4096);
-                const buf = Buffer.alloc(readSize);
-                await fd.read(buf, 0, readSize, size - readSize);
-                await fd.close();
-                voiceStats = buf.toString('utf8')
-                    .split('\n')
-                    .filter(l => l.trim())
-                    .map(l => { try { return JSON.parse(l); } catch { return null; } })
-                    .filter(Boolean)
-                    .reverse()
-                    .slice(0, 30);
-            }
+            voiceStats = await readVoiceStatsWindow(200);
+            voiceTotalCalls = resolveVoiceTotalCalls(vConfig, voiceStats);
         } catch { }
 
         res.json({
             convergenceTests: convergenceResults,
-            voice: { control: voiceControl, stats: voiceStats },
+            voice: { control: voiceControl, stats: voiceStats, totalCalls: voiceTotalCalls },
             timestamp: Date.now()
         });
     } catch (e: any) {
