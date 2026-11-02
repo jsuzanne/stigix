@@ -414,24 +414,36 @@ func runVoiceEngine(ctx context.Context, configDir, logDir string) {
 	statsFile := filepath.Join(logDir, "voice-stats.jsonl")
 	cfgFile := filepath.Join(configDir, "voice-config.json")
 
-	// Check auto_restart_voice on startup
+	// Clean slate on startup: reset call counter, cumulative total_calls, and stats log
+	autoRestartVoice := false
 	sysSettingsPath := filepath.Join(configDir, "system-settings.json")
 	if raw, err := os.ReadFile(sysSettingsPath); err == nil {
 		var s struct {
 			AutoRestartVoice *bool `json:"auto_restart_voice"`
 		}
-		if json.Unmarshal(raw, &s) == nil && s.AutoRestartVoice != nil && !*s.AutoRestartVoice {
-			if vRaw, err := os.ReadFile(cfgFile); err == nil {
-				var doc map[string]any
-				if json.Unmarshal(vRaw, &doc) == nil {
-					if ctrl, ok := doc["control"].(map[string]any); ok {
-						ctrl["enabled"] = false
-						_ = writeAtomicJSONIndent(cfgFile, doc)
-					}
-				}
-			}
+		if json.Unmarshal(raw, &s) == nil && s.AutoRestartVoice != nil {
+			autoRestartVoice = *s.AutoRestartVoice
 		}
 	}
+	if vRaw, err := os.ReadFile(cfgFile); err == nil {
+		var doc map[string]any
+		if json.Unmarshal(vRaw, &doc) == nil && doc != nil {
+			stateMap, ok := doc["state"].(map[string]any)
+			if !ok {
+				stateMap = make(map[string]any)
+				doc["state"] = stateMap
+			}
+			stateMap["counter"] = 0
+			stateMap["total_calls"] = 0
+			if !autoRestartVoice {
+				if ctrl, ok := doc["control"].(map[string]any); ok {
+					ctrl["enabled"] = false
+				}
+			}
+			_ = writeAtomicJSONIndent(cfgFile, doc)
+		}
+	}
+	_ = os.WriteFile(statsFile, []byte(""), 0644)
 
 	loadCfg := func() VoiceConfig {
 		cfgMu.Lock()

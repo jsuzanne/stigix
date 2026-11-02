@@ -216,7 +216,8 @@ export class ProvisioningManager {
                 'statistics',
                 'test_history',
                 'status_history',
-                'current_loop_state'
+                'current_loop_state',
+                'state'
             ]);
 
             const keys = Object.keys(data).sort();
@@ -966,13 +967,20 @@ export class ProvisioningManager {
                 mergedPayload = this.buildEffectiveItems(type, globalPayload);
                 this.atomicWriteActiveFile(type, activeFile, mergedPayload);
             } else if (type === 'voice-config') {
-                // Safeguard: keep local peer's egress_interface / interface intact!
+                // Safeguard: keep local peer's runtime state (call counters) and local interface/enabled state intact!
                 let localVoiceConfig: any = {};
                 if (fs.existsSync(activeFile)) {
                     try { localVoiceConfig = JSON.parse(fs.readFileSync(activeFile, 'utf8')); } catch {}
                 }
+                const mergedControl = {
+                    ...(normalizedGlobal.control || {}),
+                    ...(localVoiceConfig.control?.interface ? { interface: localVoiceConfig.control.interface } : {}),
+                    ...(typeof localVoiceConfig.control?.enabled === 'boolean' ? { enabled: localVoiceConfig.control.enabled } : {})
+                };
                 mergedPayload = {
                     ...normalizedGlobal,
+                    control: mergedControl,
+                    state: localVoiceConfig.state || { counter: 0, total_calls: 0 },
                     egress_interface: localVoiceConfig.egress_interface || localVoiceConfig.interface || normalizedGlobal.egress_interface || normalizedGlobal.interface
                 };
                 fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');

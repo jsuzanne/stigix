@@ -2768,20 +2768,25 @@ try {
 // Global interface for other services
 const GLOBAL_INTERFACE = getInterface();
 
-// Sync Voice interface with unified config if needed
+// Sync Voice interface with unified config and reset runtime call counters on startup
 try {
     if (fs.existsSync(VOICE_CONFIG_FILE)) {
         const config = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
+        config.state = { counter: 0, total_calls: 0 };
         if (config.control) {
             if (!config.control.interface || config.control.interface === 'eth0') {
                 config.control.interface = GLOBAL_INTERFACE;
-                fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
                 log('VOICE-INIT', `Synced interface to: ${GLOBAL_INTERFACE}`);
             }
         }
+        fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
+        log('VOICE-INIT', 'Reset voice call counter and total_calls to 0 on startup');
+    }
+    if (fs.existsSync(VOICE_STATS_FILE)) {
+        fs.writeFileSync(VOICE_STATS_FILE, '');
     }
 } catch (e) {
-    console.warn('[VOICE-INIT] Failed to sync voice interface', e);
+    console.warn('[VOICE-INIT] Failed to sync voice interface / reset counter', e);
 }
 
 // --- Auth Endpoints ---
@@ -5347,10 +5352,12 @@ app.post('/api/voice/config/import', authenticateToken, (req, res) => {
         // Sanitize imported control
         config.control = sanitizeVoiceControl(config.control);
 
-        // Preserve state if possible
+        // Preserve local runtime state (never overwrite local counters from an imported config)
         if (fs.existsSync(VOICE_CONFIG_FILE)) {
             const current = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
-            config.state = config.state || current.state;
+            config.state = current.state || { counter: 0, total_calls: 0 };
+        } else {
+            config.state = { counter: 0, total_calls: 0 };
         }
         fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
         triggerAutoSyncFleetBundle('voice-config');
