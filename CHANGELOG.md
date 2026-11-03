@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.46] - 2026-11-03
+
+### Fixed
+- **Zero-Layout-Shift Live LQM Telemetry Refresh in SD-WAN Overlay Tunnel Inspector (`web-dashboard/src/Topology.tsx`)**:
+  - Locked the height and layout structure of the floating SD-WAN Overlay Tunnel Inspector modal so that the asynchronous LQM telemetry probe (`probeLiveTunnelLqm`) updates `RTT LATENCY`, `LOSS (IN / OUT)`, `JITTER (IN / OUT)`, and `LINK MOS (IN / OUT)` values in-place without resizing or shifting any modal fields.
+  - Always render the 2-line diagnostic status banner, VEP endpoint rows, and 4-column LQM telemetry strip from the initial click (`...` placeholders while probing), and moved the shared-circuit `EST.` badge inline on the `RTT LATENCY` header cell.
+  - Preserved already-populated tunnel metadata (`status_reason`, `status_reason_code`, `status_reason_detail`, `uptime_sec`, `flap_count`, `cipher`, `keepalive_interval_ms`, `anynet_type`, `local_vep_id`, `peer_vep_id`) during live LQM refreshes.
+
 ## [3.1.45] - 2026-11-03
 
 ### Fixed

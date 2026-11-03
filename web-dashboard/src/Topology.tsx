@@ -1953,17 +1953,17 @@ function TopologyContent({ token, theme }: TopologyProps) {
                         ...prev,
                         _liveInspectedVpnId: targetVpnId,
                         inspectedAt: liveData.inspectedAt,
-                        status_reason: liveData.status_reason ?? prev.status_reason,
-                        status_reason_code: liveData.status_reason_code ?? prev.status_reason_code,
-                        status_reason_detail: liveData.status_reason_detail ?? prev.status_reason_detail,
-                        uptime_sec: liveData.uptime_sec ?? prev.uptime_sec,
-                        flap_count: liveData.flap_count ?? prev.flap_count,
-                        cipher: liveData.cipher || prev.cipher,
-                        keepalive_interval_ms: liveData.keepalive_interval_ms ?? prev.keepalive_interval_ms,
-                        keepalive_retries: liveData.keepalive_retries ?? prev.keepalive_retries,
-                        anynet_type: liveData.anynet_type || prev.anynet_type,
-                        local_vep_id: liveData.src_vep_id || prev.local_vep_id,
-                        peer_vep_id: liveData.dst_vep_id || prev.peer_vep_id,
+                        status_reason: prev.status_reason ?? liveData.status_reason,
+                        status_reason_code: prev.status_reason_code ?? liveData.status_reason_code,
+                        status_reason_detail: prev.status_reason_detail ?? liveData.status_reason_detail,
+                        uptime_sec: prev.uptime_sec ?? liveData.uptime_sec,
+                        flap_count: prev.flap_count ?? liveData.flap_count,
+                        cipher: prev.cipher || liveData.cipher,
+                        keepalive_interval_ms: prev.keepalive_interval_ms ?? liveData.keepalive_interval_ms,
+                        keepalive_retries: prev.keepalive_retries ?? liveData.keepalive_retries,
+                        anynet_type: prev.anynet_type || liveData.anynet_type,
+                        local_vep_id: prev.local_vep_id || liveData.src_vep_id,
+                        peer_vep_id: prev.peer_vep_id || liveData.dst_vep_id,
                         latency: isLiveDown ? null : (liveData.latency ?? prev.latency ?? null),
                         packet_loss: isLiveDown ? null : (liveData.packet_loss ?? prev.packet_loss ?? null),
                         packet_loss_ingress: isLiveDown ? null : (liveData.packet_loss_ingress ?? prev.packet_loss_ingress ?? null),
@@ -5648,9 +5648,27 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             ? 'DOWN'
                                             : 'INACTIVE';
 
-                                const statusReason = inspectedLink.status_reason ?? null;
-                                const statusReasonCode = inspectedLink.status_reason_code ?? null;
-                                const statusReasonDetail = inspectedLink.status_reason_detail ?? null;
+                                const statusReason = inspectedLink.status_reason || (
+                                    resolvedState === 'ACTIVE'
+                                        ? 'Active Forwarding Path'
+                                        : resolvedState === 'DOWN'
+                                            ? 'Tunnel Unreachable'
+                                            : 'Standby / Backup Path'
+                                );
+                                const statusReasonCode = inspectedLink.status_reason_code || (
+                                    resolvedState === 'ACTIVE'
+                                        ? 'OPERATIONAL'
+                                        : resolvedState === 'DOWN'
+                                            ? 'LINK_DOWN'
+                                            : 'STANDBY'
+                                );
+                                const statusReasonDetail = inspectedLink.status_reason_detail || (
+                                    resolvedState === 'ACTIVE'
+                                        ? 'Tunnel BFD/Keepalive and routing state are healthy'
+                                        : resolvedState === 'DOWN'
+                                            ? 'No BFD/keepalive response from remote peer endpoint'
+                                            : 'Tunnel is up and ready; standby path not carrying active flows'
+                                );
                                 const uptimeSec = inspectedLink.uptime_sec ?? null;
                                 const flapCount = inspectedLink.flap_count ?? 0;
                                 const cipher = inspectedLink.cipher || 'aes-256-cbc';
@@ -5721,47 +5739,41 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             </button>
                                         </div>
 
-                                        {/* Root-Cause Diagnostic Alert Banner */}
-                                        {(statusReason || resolvedState !== 'ACTIVE') && (
-                                            <div className={cn(
-                                                "mt-2.5 p-2.5 rounded-xl border flex items-start gap-2.5 text-xs",
-                                                resolvedState === 'DOWN'
-                                                    ? "bg-rose-500/10 border-rose-500/30 text-rose-200"
-                                                    : resolvedState === 'INACTIVE'
-                                                        ? "bg-blue-500/10 border-blue-500/30 text-blue-200"
-                                                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
-                                            )}>
-                                                <AlertTriangle size={15} className={cn(
-                                                    "shrink-0 mt-0.5",
-                                                    resolvedState === 'DOWN' ? "text-rose-400" : resolvedState === 'INACTIVE' ? "text-blue-400" : "text-emerald-400"
-                                                )} />
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                                                        <span className="font-black text-[11px] tracking-tight">
-                                                            {resolvedState === 'DOWN' ? 'Link is "Down"' : resolvedState === 'INACTIVE' ? 'Link is "Inactive"' : 'Transit Active'}
-                                                            {statusReason ? ` — Reason: ${statusReason}` : ''}
-                                                        </span>
-                                                        {statusReasonCode && (
-                                                            <span className={cn(
-                                                                "px-1.5 py-0.5 rounded font-mono text-[8px] font-bold uppercase tracking-wider border shrink-0",
-                                                                resolvedState === 'DOWN'
-                                                                    ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                                                                    : resolvedState === 'INACTIVE'
-                                                                        ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
-                                                                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                                            )}>
-                                                                {statusReasonCode}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {statusReasonDetail && (
-                                                        <div className="text-[10px] font-mono text-text-secondary mt-0.5 truncate" title={statusReasonDetail}>
-                                                            {statusReasonDetail}
-                                                        </div>
-                                                    )}
+                                        {/* Root-Cause Diagnostic Alert Banner (Fixed 2-line height) */}
+                                        <div className={cn(
+                                            "mt-2.5 p-2.5 rounded-xl border flex items-start gap-2.5 text-xs",
+                                            resolvedState === 'DOWN'
+                                                ? "bg-rose-500/10 border-rose-500/30 text-rose-200"
+                                                : resolvedState === 'INACTIVE'
+                                                    ? "bg-blue-500/10 border-blue-500/30 text-blue-200"
+                                                    : "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+                                        )}>
+                                            <AlertTriangle size={15} className={cn(
+                                                "shrink-0 mt-0.5",
+                                                resolvedState === 'DOWN' ? "text-rose-400" : resolvedState === 'INACTIVE' ? "text-blue-400" : "text-emerald-400"
+                                            )} />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-black text-[11px] tracking-tight truncate">
+                                                        {resolvedState === 'DOWN' ? 'Link is "Down"' : resolvedState === 'INACTIVE' ? 'Link is "Inactive"' : 'Transit Active'}
+                                                        {statusReason ? ` — Reason: ${statusReason}` : ''}
+                                                    </span>
+                                                    <span className={cn(
+                                                        "px-1.5 py-0.5 rounded font-mono text-[8px] font-bold uppercase tracking-wider border shrink-0",
+                                                        resolvedState === 'DOWN'
+                                                            ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                                            : resolvedState === 'INACTIVE'
+                                                                ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                                                                : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                    )}>
+                                                        {statusReasonCode}
+                                                    </span>
+                                                </div>
+                                                <div className="text-[10px] font-mono text-text-secondary mt-0.5 truncate" title={statusReasonDetail}>
+                                                    {statusReasonDetail}
                                                 </div>
                                             </div>
-                                        )}
+                                        </div>
 
                                         {/* Dual Endpoints (Source vs Remote Peer) with VEP ID & 1-Click ION CLI Copy */}
                                         <div className="grid grid-cols-2 gap-2.5 my-2.5">
@@ -5785,28 +5797,26 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                 <div className="text-[10px] text-text-secondary font-mono pt-1 border-t border-border/30 truncate" title={inspectedLink.debug_source_ip || inspectedLink.ip}>
                                                     IP: <span className="text-emerald-400 font-bold">{inspectedLink.debug_source_ip || inspectedLink.ip || inspectedLink.interface_ip || 'N/A'}</span>
                                                 </div>
-                                                {localVepId && (
-                                                    <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between gap-1">
-                                                        <div className="text-[9px] font-mono text-text-muted truncate" title={`Local VEP ID: ${localVepId}`}>
-                                                            VEP: <span className="text-text-secondary font-bold">{localVepId}</span>
-                                                        </div>
-                                                        {localIonCli && (
-                                                            <button
-                                                                onClick={() => handleCopyCli('local_cli', localIonCli)}
-                                                                className={cn(
-                                                                    "px-1.5 py-0.5 rounded text-[8px] font-mono font-bold flex items-center gap-1 border transition-all cursor-pointer shrink-0",
-                                                                    copiedCliKey === 'local_cli'
-                                                                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                                                        : "bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
-                                                                )}
-                                                                title={`Copy ION CLI command for ${inspectedLink.sourceDeviceName || 'Source'}:\n${localIonCli}`}
-                                                            >
-                                                                <Terminal size={9} />
-                                                                {copiedCliKey === 'local_cli' ? 'Copied CLI!' : 'Copy ION CLI'}
-                                                            </button>
-                                                        )}
+                                                <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between gap-1 min-h-[20px]">
+                                                    <div className="text-[9px] font-mono text-text-muted truncate" title={localVepId ? `Local VEP ID: ${localVepId}` : 'Local VEP ID'}>
+                                                        VEP: <span className="text-text-secondary font-bold">{localVepId || '—'}</span>
                                                     </div>
-                                                )}
+                                                    {localIonCli && (
+                                                        <button
+                                                            onClick={() => handleCopyCli('local_cli', localIonCli)}
+                                                            className={cn(
+                                                                "px-1.5 py-0.5 rounded text-[8px] font-mono font-bold flex items-center gap-1 border transition-all cursor-pointer shrink-0",
+                                                                copiedCliKey === 'local_cli'
+                                                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                                    : "bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
+                                                            )}
+                                                            title={`Copy ION CLI command for ${inspectedLink.sourceDeviceName || 'Source'}:\n${localIonCli}`}
+                                                        >
+                                                            <Terminal size={9} />
+                                                            {copiedCliKey === 'local_cli' ? 'Copied CLI!' : 'Copy ION CLI'}
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             {/* Remote Peer Endpoint Box */}
@@ -5829,28 +5839,26 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                                 <div className="text-[10px] text-text-secondary font-mono pt-1 border-t border-border/30 truncate" title={inspectedLink.debug_peer_ip}>
                                                     IP: <span className="text-purple-400 font-bold">{resolveWanIp(inspectedLink.peer_site_name || inspectedLink.peerSite, inspectedLink.peer_device_name || inspectedLink.peerDevice, inspectedLink.peer_wan_interface || inspectedLink.destCircuit, inspectedLink.debug_peer_ip)}</span>
                                                 </div>
-                                                {peerVepId && (
-                                                    <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between gap-1">
-                                                        <div className="text-[9px] font-mono text-text-muted truncate" title={`Peer VEP ID: ${peerVepId}`}>
-                                                            VEP: <span className="text-text-secondary font-bold">{peerVepId}</span>
-                                                        </div>
-                                                        {peerIonCli && (
-                                                            <button
-                                                                onClick={() => handleCopyCli('peer_cli', peerIonCli)}
-                                                                className={cn(
-                                                                    "px-1.5 py-0.5 rounded text-[8px] font-mono font-bold flex items-center gap-1 border transition-all cursor-pointer shrink-0",
-                                                                    copiedCliKey === 'peer_cli'
-                                                                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                                                        : "bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border-purple-500/30"
-                                                                )}
-                                                                title={`Copy ION CLI command for ${inspectedLink.peer_device_name || 'Peer'}:\n${peerIonCli}`}
-                                                            >
-                                                                <Terminal size={9} />
-                                                                {copiedCliKey === 'peer_cli' ? 'Copied CLI!' : 'Copy ION CLI'}
-                                                            </button>
-                                                        )}
+                                                <div className="mt-1 pt-1 border-t border-border/30 flex items-center justify-between gap-1 min-h-[20px]">
+                                                    <div className="text-[9px] font-mono text-text-muted truncate" title={peerVepId ? `Peer VEP ID: ${peerVepId}` : 'Peer VEP ID'}>
+                                                        VEP: <span className="text-text-secondary font-bold">{peerVepId || '—'}</span>
                                                     </div>
-                                                )}
+                                                    {peerIonCli && (
+                                                        <button
+                                                            onClick={() => handleCopyCli('peer_cli', peerIonCli)}
+                                                            className={cn(
+                                                                "px-1.5 py-0.5 rounded text-[8px] font-mono font-bold flex items-center gap-1 border transition-all cursor-pointer shrink-0",
+                                                                copiedCliKey === 'peer_cli'
+                                                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                                    : "bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border-purple-500/30"
+                                                            )}
+                                                            title={`Copy ION CLI command for ${inspectedLink.peer_device_name || 'Peer'}:\n${peerIonCli}`}
+                                                        >
+                                                            <Terminal size={9} />
+                                                            {copiedCliKey === 'peer_cli' ? 'Copied CLI!' : 'Copy ION CLI'}
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
 
@@ -5956,61 +5964,102 @@ function TopologyContent({ token, theme }: TopologyProps) {
                                             })()}
                                         </div>
 
-                                        {/* Live LQM Directional Telemetry Strip (Ingress / Egress Loss, Jitter, MOS) */}
-                                        {resolvedState !== 'DOWN' && (inspectedLink.latency != null || inspectedLink.packet_loss != null || inspectedLink.jitter != null || inspectedLink.mos != null) && (
-                                            <div className="mb-2.5 px-2.5 py-2 rounded-xl bg-card-secondary/40 border border-border/50 text-[10px] font-mono">
-                                                {inspectedLink.lqm_estimated && (
-                                                    <div className="flex items-center justify-between text-[8px] text-amber-300/90 font-sans font-bold uppercase tracking-wider mb-1 pb-1 border-b border-border/40">
-                                                        <span>Estimated from shared WAN circuit ({inspectedLink.lqm_estimated_source || 'Same WAN'})</span>
-                                                        <span className="font-mono text-[8px] px-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300">CIRCUIT EST.</span>
-                                                    </div>
-                                                )}
-                                                <div className="grid grid-cols-4 gap-1.5">
-                                                    <div className="min-w-0">
-                                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">RTT LATENCY</div>
-                                                        <div className={cn(
-                                                            "font-bold truncate",
-                                                            (inspectedLink.latency ?? 0) >= 150 ? "text-rose-400" : (inspectedLink.latency ?? 0) >= 80 ? "text-amber-400" : "text-emerald-400"
-                                                        )}>
-                                                            {inspectedLink.latency != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.latency} ms` : '—'}
+                                        {/* Live LQM Directional Telemetry Strip (Always rendered with fixed height when tunnel is not DOWN) */}
+                                        {resolvedState !== 'DOWN' && (() => {
+                                            const hasAnyLqm = inspectedLink.latency != null || inspectedLink.packet_loss != null || inspectedLink.jitter != null || inspectedLink.mos != null;
+                                            const isProbingInitial = isInspectingLink && !hasAnyLqm;
+                                            const est = inspectedLink.lqm_estimated ? '~' : '';
+                                            return (
+                                                <div className="mb-2.5 px-2.5 py-2 rounded-xl bg-card-secondary/40 border border-border/50 text-[10px] font-mono">
+                                                    <div className="grid grid-cols-4 gap-1.5">
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center justify-between gap-1">
+                                                                <span className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate">RTT LATENCY</span>
+                                                                {inspectedLink.lqm_estimated && (
+                                                                    <span
+                                                                        className="font-mono text-[7px] px-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 shrink-0"
+                                                                        title={`Estimated from shared WAN circuit (${inspectedLink.lqm_estimated_source || 'Same WAN'})`}
+                                                                    >
+                                                                        EST.
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className={cn(
+                                                                "font-bold truncate whitespace-nowrap",
+                                                                isProbingInitial ? "text-text-muted animate-pulse" :
+                                                                inspectedLink.latency == null ? "text-text-muted" :
+                                                                (inspectedLink.latency ?? 0) >= 150 ? "text-rose-400" : (inspectedLink.latency ?? 0) >= 80 ? "text-amber-400" : "text-emerald-400"
+                                                            )}>
+                                                                {isProbingInitial ? '...' : inspectedLink.latency != null ? `${est}${inspectedLink.latency} ms` : '—'}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">LOSS (IN / OUT)</div>
-                                                        <div className={cn(
-                                                            "font-bold truncate",
-                                                            (inspectedLink.packet_loss ?? 0) >= 5 ? "text-rose-400" : (inspectedLink.packet_loss ?? 0) >= 1 ? "text-amber-400" : "text-emerald-400"
-                                                        )}>
-                                                            {inspectedLink.packet_loss_ingress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.packet_loss_ingress}%` : '0%'}
-                                                            <span className="text-text-muted mx-1">/</span>
-                                                            {inspectedLink.packet_loss_egress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.packet_loss_egress}%` : '0%'}
+                                                        <div className="min-w-0">
+                                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate">LOSS (IN / OUT)</div>
+                                                            <div className={cn(
+                                                                "font-bold truncate whitespace-nowrap",
+                                                                isProbingInitial ? "text-text-muted animate-pulse" :
+                                                                !hasAnyLqm ? "text-text-muted" :
+                                                                (inspectedLink.packet_loss ?? 0) >= 5 ? "text-rose-400" : (inspectedLink.packet_loss ?? 0) >= 1 ? "text-amber-400" : "text-emerald-400"
+                                                            )}>
+                                                                {isProbingInitial ? (
+                                                                    '... / ...'
+                                                                ) : !hasAnyLqm ? (
+                                                                    '— / —'
+                                                                ) : (
+                                                                    <>
+                                                                        {inspectedLink.packet_loss_ingress != null ? `${est}${inspectedLink.packet_loss_ingress}%` : '0%'}
+                                                                        <span className="text-text-muted mx-1">/</span>
+                                                                        {inspectedLink.packet_loss_egress != null ? `${est}${inspectedLink.packet_loss_egress}%` : '0%'}
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">JITTER (IN / OUT)</div>
-                                                        <div className={cn(
-                                                            "font-bold truncate",
-                                                            (inspectedLink.jitter ?? 0) >= 30 ? "text-rose-400" : (inspectedLink.jitter ?? 0) >= 15 ? "text-amber-400" : "text-cyan-300"
-                                                        )}>
-                                                            {inspectedLink.jitter_ingress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.jitter_ingress}ms` : '0ms'}
-                                                            <span className="text-text-muted mx-1">/</span>
-                                                            {inspectedLink.jitter_egress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.jitter_egress}ms` : '0ms'}
+                                                        <div className="min-w-0">
+                                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate">JITTER (IN / OUT)</div>
+                                                            <div className={cn(
+                                                                "font-bold truncate whitespace-nowrap",
+                                                                isProbingInitial ? "text-text-muted animate-pulse" :
+                                                                !hasAnyLqm ? "text-text-muted" :
+                                                                (inspectedLink.jitter ?? 0) >= 30 ? "text-rose-400" : (inspectedLink.jitter ?? 0) >= 15 ? "text-amber-400" : "text-cyan-300"
+                                                            )}>
+                                                                {isProbingInitial ? (
+                                                                    '... / ...'
+                                                                ) : !hasAnyLqm ? (
+                                                                    '— / —'
+                                                                ) : (
+                                                                    <>
+                                                                        {inspectedLink.jitter_ingress != null ? `${est}${inspectedLink.jitter_ingress}ms` : '0ms'}
+                                                                        <span className="text-text-muted mx-1">/</span>
+                                                                        {inspectedLink.jitter_egress != null ? `${est}${inspectedLink.jitter_egress}ms` : '0ms'}
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider">LINK MOS (IN / OUT)</div>
-                                                        <div className={cn(
-                                                            "font-bold truncate",
-                                                            (inspectedLink.mos ?? 4.4) < 3.0 ? "text-rose-400" : (inspectedLink.mos ?? 4.4) < 3.6 ? "text-amber-400" : "text-emerald-400"
-                                                        )}>
-                                                            {inspectedLink.mos_ingress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.mos_ingress}` : '—'}
-                                                            <span className="text-text-muted mx-1">/</span>
-                                                            {inspectedLink.mos_egress != null ? `${inspectedLink.lqm_estimated ? '~' : ''}${inspectedLink.mos_egress}` : '—'}
+                                                        <div className="min-w-0">
+                                                            <div className="text-[8px] font-black text-text-muted uppercase tracking-wider truncate">LINK MOS (IN / OUT)</div>
+                                                            <div className={cn(
+                                                                "font-bold truncate whitespace-nowrap",
+                                                                isProbingInitial ? "text-text-muted animate-pulse" :
+                                                                !hasAnyLqm ? "text-text-muted" :
+                                                                (inspectedLink.mos ?? 4.4) < 3.0 ? "text-rose-400" : (inspectedLink.mos ?? 4.4) < 3.6 ? "text-amber-400" : "text-emerald-400"
+                                                            )}>
+                                                                {isProbingInitial ? (
+                                                                    '... / ...'
+                                                                ) : !hasAnyLqm ? (
+                                                                    '— / —'
+                                                                ) : (
+                                                                    <>
+                                                                        {inspectedLink.mos_ingress != null ? `${est}${inspectedLink.mos_ingress}` : '—'}
+                                                                        <span className="text-text-muted mx-1">/</span>
+                                                                        {inspectedLink.mos_egress != null ? `${est}${inspectedLink.mos_egress}` : '—'}
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
 
                                         {/* Status Pill */}
                                         <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
