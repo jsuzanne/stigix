@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stigix — Architecture Blueprint Slides (Neon Edition)</title>
+  <style>
+    :root {
+      --bg-outer: #050811;
+      --bg-board: #0b101e;
+      --bg-panel: #11182b;
+      --bg-card: #162038;
+      --border-dim: #212f4d;
+      --border-mid: #2f426b;
+      --text-white: #f8fafc;
+      --text-light: #cbd5e1;
+      --text-muted: #788ba8;
+      --neon-green: #10b981;
+      --neon-green-glow: rgba(16, 185, 129, 0.35);
+      --neon-cyan: #06b6d4;
+      --neon-cyan-bright: #38bdf8;
+      --neon-cyan-glow: rgba(56, 189, 248, 0.35);
+      --neon-amber: #f59e0b;
+      --neon-amber-glow: rgba(245, 158, 11, 0.3);
+      --neon-purple: #a855f7;
+      --neon-purple-glow: rgba(168, 85, 247, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-outer);
+      color: var(--text-white);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    /* Language switching */
+    [data-lang="en"] .lang-fr { display: none !important; }
+    [data-lang="fr"] .lang-en { display: none !important; }
+
+    /* Top Slide Switcher Bar */
+    .deck-bar {
+      width: 1420px;
+      max-width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0d1323;
+      border: 1px solid var(--border-dim);
+      border-radius: 12px;
+      padding: 10px 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .slide-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      background: var(--bg-card);
+      color: var(--text-light);
+      border: 1px solid var(--border-mid);
+      padding: 8px 15px;
+      border-radius: 8px;
+      font-size: 0.81rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .tab:hover {
+      border-color: var(--neon-cyan-bright);
+      color: #fff;
+    }
+
+    .tab.active {
+      background: linear-gradient(135deg, #059669, #0284c7);
+      border-color: var(--neon-green);
+      color: #fff;
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
+    }
+
+    .bar-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      background: var(--bg-card);
+      color: var(--text-white);
+      border: 1px solid var(--border-mid);
+      padding: 7px 13px;
+      border-radius: 7px;
+      font-size: 0.79rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      border-color: var(--neon-cyan-bright);
+    }
+
+    /* ================= CYBER-NEON BOARD CONTAINER (Exact Reference Look) ================= */
+    .board {
+      width: 1420px;
+      max-width: 100%;
+      min-height: 760px;
+      background-color: var(--bg-board);
+      background-image:
+        radial-gradient(circle at 88% 10%, rgba(16, 185, 129, 0.08) 0%, transparent 32%),
+        radial-gradient(circle at 50% 52%, rgba(6, 182, 212, 0.09) 0%, transparent 45%),
+        radial-gradient(circle at 15% 82%, rgba(168, 85, 247, 0.07) 0%, transparent 35%),
+        linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 100% 100%, 34px 34px, 34px 34px;
+      border: 2px solid #263657;
+      border-radius: 18px;
+      padding: 26px 32px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.8), inset 0 0 40px rgba(16, 185, 129, 0.03);
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .board.active {
+      display: flex;
+    }
+
+    body.show-all .board {
+      display: flex !important;
+      margin-bottom: 30px;
+    }
+
+    /* Constellation SVG overlay in top right */
+    .constellation {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 520px;
+      height: 180px;
+      pointer-events: none;
+      opacity: 0.28;
+    }
+
+    /* BOARD HEADER */
+    .board-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      position: relative;
+      z-index: 2;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+    }
+
+    .logo-stigix {
+      font-size: 2.15rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: var(--neon-green);
+      text-shadow: 0 0 18px rgba(16, 185, 129, 0.45);
+    }
+
+    .logo-sep {
+      font-size: 1.7rem;
+      color: #334872;
+      font-weight: 300;
+    }
+
+    .board-title {
+      font-size: 1.55rem;
+      font-weight: 500;
+      color: var(--text-white);
+      letter-spacing: -0.01em;
+    }
+
+    .board-sub {
+      font-size: 0.87rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .slide-pill {
+      background: rgba(22, 32, 56, 0.9);
+      border: 1px solid var(--border-mid);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--neon-cyan-bright);
+    }
+
+    /* TOP BAND (Control Plane / Context) */
+    .top-band {
+      background: rgba(17, 24, 43, 0.9);
+      border: 1px solid var(--border-dim);
+      border-radius: 12px;
+      padding: 12px 20px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .band-eyebrow {
+      font-size: 0.71rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-weight: 600;
+    }
+
+    .top-flow {
+      display: grid;
+      grid-template-columns: 1fr 0.45fr 1.25fr 0.45fr 1fr;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .cp-node {
+      background: var(--bg-card);
+      border: 1px solid var(--border-mid);
+      border-radius: 10px;
+      padding: 10px 14px;
+      text-align: center;
+    }
+
+    .cp-node strong {
+      display: block;
+      font-size: 0.86rem;
+      color: var(--text-white);
+    }
+
+    .cp-node span {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .cp-center-list {
+      background: rgba(11, 16, 30, 0.8);
+      border: 1px solid var(--border-mid);
+      border-radius: 10px;
+      padding: 8px 14px;
+      display: flex;
+      justify-content: space-around;
+      gap: 10px;
+      font-size: 0.75rem;
+      color: var(--text-light);
+    }
+
+    .dashed-link {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      font-size: 0.67rem;
+      color: var(--text-muted);
+    }
+
+    .dashed-line {
+      width: 100%;
+      border-top: 1.5px dashed #516894;
+    }
+
+    /* MIDDLE 3-COLUMN STAGE (Exact Reference Proportions) */
+    .stage-box {
+      background: rgba(17, 24, 43, 0.78);
+      border: 1px solid var(--border-dim);
+      border-radius: 14px;
+      display: grid;
+      grid-template-columns: 1.12fr 1.18fr 1.12fr;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      z-index: 2;
+    }
+
+    .stage-col {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid rgba(33, 47, 77, 0.75);
+    }
+
+    .stage-col:last-child {
+      border-right: none;
+    }
+
+    .col-banner {
+      background: rgba(22, 32, 56, 0.8);
+      border-bottom: 1px solid var(--border-dim);
+      padding: 9px 14px;
+      text-align: center;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-light);
+      text-transform: uppercase;
+    }
+
+    .col-content {
+      padding: 16px 18px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    /* Appliance Box with Circular Glowing Icons */
+    .appliance-box {
+      background: rgba(22, 32, 56, 0.92);
+      border: 1.5px solid var(--border-mid);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+    }
+
+    .appliance-box.glow-cyan {
+      border-color: rgba(56, 189, 248, 0.55);
+      box-shadow: 0 0 22px rgba(56, 189, 248, 0.12);
+    }
+
+    .appliance-box.glow-green {
+      border-color: rgba(16, 185, 129, 0.55);
+      box-shadow: 0 0 22px rgba(16, 185, 129, 0.12);
+    }
+
+    .appliance-box.glow-purple {
+      border-color: rgba(168, 85, 247, 0.6);
+      box-shadow: 0 0 22px rgba(168, 85, 247, 0.15);
+    }
+
+    .app-title {
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    .app-title h3 {
+      font-size: 1.02rem;
+      font-weight: 700;
+      color: var(--text-white);
+    }
+
+    .app-title span {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+    }
+
+    .circle-icons-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .c-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      padding: 4px;
+    }
+
+    .c-badge {
+      position: absolute;
+      top: 0;
+      left: 6px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #1e2b4a;
+      border: 1px solid #435b8f;
+      font-size: 0.62rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-light);
+    }
+
+    .c-ring {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(11, 16, 30, 0.85);
+      border: 1.5px solid var(--border-mid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.15rem;
+      margin-bottom: 6px;
+    }
+
+    .c-ring.cyan { border-color: var(--neon-cyan-bright); box-shadow: 0 0 12px rgba(56, 189, 248, 0.25); }
+    .c-ring.green { border-color: var(--neon-green); box-shadow: 0 0 12px rgba(16, 185, 129, 0.25); }
+    .c-ring.amber { border-color: var(--neon-amber); box-shadow: 0 0 12px rgba(245, 158, 11, 0.25); }
+    .c-ring.purple { border-color: var(--neon-purple); box-shadow: 0 0 12px rgba(168, 85, 247, 0.25); }
+
+    .c-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-white);
+      line-height: 1.2;
+    }
+
+    .c-sub {
+      font-size: 0.64rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+      line-height: 1.15;
+    }
+
+    /* Secondary Boxes (Router, VyOS, SaaS Cloud) */
+    .aux-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .aux-box {
+      background: rgba(11, 16, 30, 0.82);
+      border: 1px solid var(--border-mid);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+
+    .aux-box h4 {
+      font-size: 0.77rem;
+      font-weight: 800;
+      margin-bottom: 3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .aux-box p {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+
+    /* Center Cloud & Neon Tunnels */
+    .cloud-zone {
+      flex: 1;
+      background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.1) 0%, rgba(6, 182, 212, 0.07) 48%, rgba(11, 16, 30, 0.35) 80%);
+      border: 1.5px solid rgba(56, 189, 248, 0.25);
+      border-radius: 26px;
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+    }
+
+    .pill-metric {
+      background: rgba(11, 16, 30, 0.92);
+      border: 1px solid var(--neon-cyan-bright);
+      padding: 4px 14px;
+      border-radius: 8px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+    }
+
+    .pill-metric.green {
+      border-color: var(--neon-green);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+    }
+
+    .neon-tube {
+      width: 100%;
+      background: rgba(11, 16, 30, 0.94);
+      border-radius: 999px;
+      padding: 11px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .neon-tube.cyan {
+      border: 2px solid var(--neon-cyan-bright);
+      box-shadow: 0 0 22px var(--neon-cyan-glow), inset 0 0 12px rgba(56, 189, 248, 0.18);
+    }
+
+    .neon-tube.green {
+      border: 2px solid var(--neon-green);
+      box-shadow: 0 0 22px var(--neon-green-glow), inset 0 0 12px rgba(16, 185, 129, 0.18);
+    }
+
+    .neon-tube.purple {
+      border: 2px solid var(--neon-purple);
+      box-shadow: 0 0 22px var(--neon-purple-glow), inset 0 0 12px rgba(168, 85, 247, 0.18);
+    }
+
+    .tube-title {
+      font-size: 0.8rem;
+      font-weight: 800;
+    }
+
+    .tube-desc {
+      font-size: 0.67rem;
+      color: var(--text-light);
+      margin-top: 2px;
+    }
+
+    .bolts-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--neon-amber);
+      font-size: 0.75rem;
+      font-weight: 800;
+    }
+
+    /* BOTTOM 3-PANEL FOOTER (Exact Reference Match) */
+    .bottom-row {
+      display: grid;
+      grid-template-columns: 0.92fr 1.36fr 0.92fr;
+      gap: 16px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .b-panel {
+      background: rgba(17, 24, 43, 0.92);
+      border: 1px solid var(--border-dim);
+      border-radius: 12px;
+      padding: 12px 16px;
+    }
+
+    .b-panel.center-glow {
+      border-color: rgba(16, 185, 129, 0.5);
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.12);
+    }
+
+    .b-panel-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--text-white);
+      text-align: left;
+    }
+
+    .b-panel.center-glow .b-panel-title {
+      text-align: center;
+    }
+
+    .gauge-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .gauge-card {
+      background: rgba(11, 16, 30, 0.92);
+      border: 1.5px solid var(--neon-green);
+      border-radius: 10px;
+      padding: 10px 6px 8px;
+      text-align: center;
+      position: relative;
+      box-shadow: inset 0 0 12px rgba(16, 185, 129, 0.12);
+    }
+
+    .gauge-card.cyan { border-color: var(--neon-cyan-bright); box-shadow: inset 0 0 12px rgba(56, 189, 248, 0.12); }
+    .gauge-card.purple { border-color: var(--neon-purple); box-shadow: inset 0 0 12px rgba(168, 85, 247, 0.12); }
+    .gauge-card.amber { border-color: var(--neon-amber); box-shadow: inset 0 0 12px rgba(245, 158, 11, 0.12); }
+
+    .gauge-label {
+      font-size: 0.72rem;
+      color: var(--text-light);
+      font-weight: 600;
+    }
+
+    .gauge-val {
+      font-size: 0.92rem;
+      font-weight: 800;
+      color: var(--neon-green);
+      margin-top: 3px;
+    }
+
+    .gauge-sub {
+      font-size: 0.63rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .legend-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.71rem;
+      color: var(--text-light);
+    }
+
+    .l-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .line-ind {
+      width: 24px;
+      height: 3px;
+      flex-shrink: 0;
+    }
+    .line-ind.cyan { background: var(--neon-cyan-bright); box-shadow: 0 0 6px var(--neon-cyan-bright); }
+    .line-ind.green { background: var(--neon-green); box-shadow: 0 0 6px var(--neon-green); }
+    .line-ind.dashed { border-top: 2px dashed #94a3b8; }
+    .line-ind.amber { border-top: 2px dashed var(--neon-amber); }
+
+    .check-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.71rem;
+      color: var(--text-light);
+    }
+
+    .check-list li {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    @media print {
+      body { padding: 0; background: #0b101e; }
+      .deck-bar { display: none !important; }
+      .board {
+        display: flex !important;
+        page-break-after: always;
+        box-shadow: none;
+        margin-bottom: 20px;
+      }
+    }
+  </style>
+</head>
+<body data-lang="en">
+
+  <!-- Slide Deck Navigation Bar -->
+  <nav class="deck-bar">
+    <div class="slide-tabs">
+      <button class="tab active" onclick="selectBoard(0)">
+        Slide 1 · <span class="lang-en">Sender vs. Receiver Data-Plane</span><span class="lang-fr">Data-Plane : Sender vs Receiver</span>
+      </button>
+      <button class="tab" onclick="selectBoard(1)">
+        Slide 2 · <span class="lang-en">3 Modes: Standalone vs. Peer vs. Leader</span><span class="lang-fr">Les 3 Modes : Standalone, Peer & Leader</span>
+      </button>
+      <button class="tab" onclick="selectBoard(2)">
+        Slide 3 · <span class="lang-en">Mesh Provisioning &amp; Peer Autonomy</span><span class="lang-fr">Provisioning Mesh &amp; Autonomie du Peer</span>
+      </button>
+    </div>
+    <div class="bar-actions">
+      <button class="btn" onclick="document.body.classList.toggle('show-all')">📄 <span class="lang-en">Show All 3 Slides</span><span class="lang-fr">Afficher les 3 Slides</span></button>
+      <button class="btn" onclick="toggleLang()">🌐 <span class="lang-en">Switch to FR</span><span class="lang-fr">Switch to EN</span></button>
+      <button class="btn" onclick="window.print()">🖨️ Export PDF</button>
+    </div>
+  </nav>
+
+  <!-- =========================================================================
+       SLIDE 1: DATA-PLANE ARCHITECTURE (SENDER VS RECEIVER)
+       ========================================================================= -->
+  <section class="board active" id="board-0">
+    <!-- Subtle network constellation in background -->
+    <svg class="constellation" viewBox="0 0 500 180" fill="none">
+      <stroke stroke="#38bdf8" stroke-width="0.7">
+        <line x1="80" y1="20" x2="190" y2="70" stroke="#38bdf8"/>
+        <line x1="190" y1="70" x2="320" y2="30" stroke="#38bdf8"/>
+        <line x1="320" y1="30" x2="450" y2="90" stroke="#38bdf8"/>
+        <line x1="190" y1="70" x2="260" y2="140" stroke="#38bdf8"/>
+        <line x1="260" y1="140" x2="450" y2="90" stroke="#38bdf8"/>
+      </stroke>
+      <circle cx="80" cy="20" r="3" fill="#10b981"/>
+      <circle cx="190" cy="70" r="3.5" fill="#38bdf8"/>
+      <circle cx="320" cy="30" r="3" fill="#10b981"/>
+      <circle cx="450" cy="90" r="4" fill="#38bdf8"/>
+      <circle cx="260" cy="140" r="3" fill="#a855f7"/>
+    </svg>
+
+    <!-- Header -->
+    <header class="board-header">
+      <div>
+        <div class="brand-row">
+          <span class="logo-stigix">stigix</span>
+          <span class="logo-sep">|</span>
+          <span class="board-title">
+            <span class="lang-en">Data-Plane Architecture: Every Node is Sender &amp; Receiver</span>
+            <span class="lang-fr">Architecture Data-Plane : Chaque Instance est Sender &amp; Receiver</span>
+          </span>
+        </div>
+        <p class="board-sub">
+          <span class="lang-en">Distinguishing North-South / Local LAN Flows (Sender Only) from East-West Site-to-Site Flows (Stigix Sender ⇄ Stigix Receiver)</span>
+          <span class="lang-fr">Distinction entre les flux North-South / LAN Local (Sender seul) et les flux East-West Inter-Sites (Stigix Sender ⇄ Stigix Receiver)</span>
+        </p>
+      </div>
+      <div class="slide-pill">SLIDE 1 / 3 &bull; DATA-PLANE</div>
+    </header>
+
+    <!-- Top Control-Plane Enrichment Band -->
+    <div class="top-band">
+      <div class="band-eyebrow">
+        <span class="lang-en">Optional Control-Plane Enrichment &amp; Topology Integration (Available in Standalone, Peer &amp; Leader Modes)</span>
+        <span class="lang-fr">Enrichissement Control-Plane &amp; Topologie (Disponible en modes Standalone, Peer &amp; Leader)</span>
+      </div>
+      <div class="top-flow">
+        <div class="cp-node">
+          <strong>🖥️ Stigix Web UI &amp; FastMCP</strong>
+          <span>Local or Fleet Control Plane</span>
+        </div>
+        <div class="dashed-link">
+          <span>REST / MCP</span>
+          <div class="dashed-line"></div>
+          <span>➔</span>
+        </div>
+        <div class="cp-center-list">
+          <span>🌐 Discover Sites &amp; Tenants</span>
+          <span>🗺️ Live VPN &amp; Underlay Topology</span>
+          <span>🔐 1-Click Forward-Trust CAs</span>
+        </div>
+        <div class="dashed-link">
+          <span>SASE API</span>
+          <div class="dashed-line"></div>
+          <span>➔</span>
+        </div>
+        <div class="cp-node" style="border-color: rgba(245, 158, 11, 0.5);">
+          <strong style="color: var(--neon-amber);">☁️ Prisma SASE &amp; SD-WAN</strong>
+          <span>Control Plane Integration</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main 3-Column Stage -->
+    <div class="stage-box">
+      <!-- Column 1: Branch / Sender -->
+      <div class="stage-col">
+        <div class="col-banner">
+          <span class="lang-en">BRANCH / TEST SITE (INITIATOR)</span>
+          <span class="lang-fr">SITE BRANCHE / TEST (INITIATEUR)</span>
+        </div>
+        <div class="col-content">
+          <div class="appliance-box glow-cyan">
+            <div class="app-title">
+              <h3>📤 Stigix Generator (Sender Role)</h3>
+              <span>Docker or VM &bull; Active on Standalone, Peer &amp; Leader</span>
+            </div>
+            <div class="circle-icons-row">
+              <div class="c-item">
+                <span class="c-badge">1</span>
+                <div class="c-ring cyan">🌐</div>
+                <div class="c-label">SaaS &amp; Probes</div>
+                <div class="c-sub">67 Apps, Ping, HTTP, DNS, UDP</div>
+              </div>
+              <div class="c-item">
+                <span class="c-badge">2</span>
+                <div class="c-ring green">🎙️</div>
+                <div class="c-label">Voice &amp; UDP</div>
+                <div class="c-sub">RTP Caller &amp; 1000 PPS Failover</div>
+              </div>
+              <div class="c-item">
+                <span class="c-badge">3</span>
+                <div class="c-ring amber">🔌</div>
+                <div class="c-label">IoT Simulation</div>
+                <div class="c-sub">100 L2/L3 Devices (DHCP/ARP)</div>
+              </div>
+              <div class="c-item">
+                <span class="c-badge">4</span>
+                <div class="c-ring green">📦</div>
+                <div class="c-label">TCP, PCAP, XFR</div>
+                <div class="c-sub">Custom TCP, PCAP Client, Speedtest</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="aux-grid">
+            <div class="aux-box" style="border-color: rgba(56, 189, 248, 0.45);">
+              <h4 style="color: var(--neon-cyan-bright);">🖧 Local Router / SD-WAN ION</h4>
+              <p>
+                <span class="lang-en"><strong>Replies to IoT ARP &amp; DHCP</strong> on the local LAN and classifies IoT devices.</span>
+                <span class="lang-fr"><strong>Répond aux requêtes ARP &amp; DHCP</strong> de l'IoT sur le LAN et classifie les devices.</span>
+              </p>
+            </div>
+            <div class="aux-box" style="border-color: rgba(245, 158, 11, 0.45);">
+              <h4 style="color: var(--neon-amber);">⚡ VyOS WAN Emulator</h4>
+              <p>
+                <span class="lang-en">Injects underlay latency, loss, jitter &amp; port shut directly from topology.</span>
+                <span class="lang-fr">Injecte latence, perte, jitter &amp; coupure de port depuis la topologie.</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 2: SD-WAN & SASE Fabric -->
+      <div class="stage-col">
+        <div class="col-banner">
+          <span class="lang-en">SD-WAN &amp; SASE FABRIC</span>
+          <span class="lang-fr">FABRIC SD-WAN &amp; SASE</span>
+        </div>
+        <div class="col-content">
+          <div class="cloud-zone">
+            <div class="pill-metric">
+              North-South SASE Inspection: <span style="color: var(--neon-cyan-bright);">SSL Decryption &bull; URL/DNS/C2/AI</span>
+            </div>
+
+            <div class="neon-tube cyan">
+              <div>
+                <div class="tube-title" style="color: var(--neon-cyan-bright);">🔒 North-South Path (Stigix Sender ➔ SaaS / Cloud)</div>
+                <div class="tube-desc">1. SaaS DEM (67 Apps) &bull; Synthetic Probes &bull; SASE Security Validation</div>
+              </div>
+              <span style="font-size: 1.2rem; color: var(--neon-cyan-bright);">➔</span>
+            </div>
+
+            <div class="bolts-row">
+              <span>⚡⚡⚡</span>
+              <span class="lang-en">Dynamic Underlay Impairments &amp; Sub-Second Failover</span>
+              <span class="lang-fr">Dégradations Underlay &amp; Bascule Sub-Seconde</span>
+              <span>➔</span>
+            </div>
+
+            <div class="neon-tube green">
+              <div>
+                <div class="tube-title" style="color: var(--neon-green);">🔄 East-West Encrypted Tunnel (Stigix ⇄ Stigix)</div>
+                <div class="tube-desc">2. Voice RTP &bull; 1000 PPS Failover &bull; 4. Custom TCP &bull; PCAP &bull; XFR</div>
+              </div>
+              <span style="font-size: 1.2rem; color: var(--neon-green);">⇄</span>
+            </div>
+
+            <div class="pill-metric green">
+              East-West Site-to-Site SLA: <span style="color: var(--neon-green);">Sub-Second Failover &bull; Live MOS</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 3: Data Center & Cloud Target -->
+      <div class="stage-col">
+        <div class="col-banner">
+          <span class="lang-en">DATA CENTER &amp; CLOUD TARGETS (RESPONDER)</span>
+          <span class="lang-fr">DATA CENTER &amp; CIBLES CLOUD (RÉPONDEUR)</span>
+        </div>
+        <div class="col-content">
+          <div class="appliance-box glow-green">
+            <div class="app-title">
+              <h3>📥 Stigix Target (Receiver Role)</h3>
+              <span>Docker or VM &bull; Active Daemons Built into Every Stigix Node</span>
+            </div>
+            <div class="circle-icons-row">
+              <div class="c-item">
+                <span class="c-badge">1</span>
+                <div class="c-ring green">🎙️</div>
+                <div class="c-label">Voice &amp; Failover</div>
+                <div class="c-sub">UDP 6100 Echo &amp; UDP 6200</div>
+              </div>
+              <div class="c-item">
+                <span class="c-badge">2</span>
+                <div class="c-ring green">🔄</div>
+                <div class="c-label">Custom TCP</div>
+                <div class="c-sub">Ports 8083+ &amp; 8 Chaos Modes</div>
+              </div>
+              <div class="c-item">
+                <span class="c-badge">3</span>
+                <div class="c-ring green">📦</div>
+                <div class="c-label">PCAP Server ⬇️</div>
+                <div class="c-sub">Stateful L7 Server Responder</div>
+              </div>
+              <div class="c-item">
+                <span class="c-badge">4</span>
+                <div class="c-ring green">🚀</div>
+                <div class="c-label">XFR &amp; EICAR</div>
+                <div class="c-sub">XFR 9000, iPerf 5201, HTTP 8082</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="aux-grid">
+            <div class="aux-box" style="border-color: rgba(56, 189, 248, 0.45);">
+              <h4 style="color: var(--neon-cyan-bright);">☁️ SaaS &amp; Cloud Worker</h4>
+              <p>
+                <span class="lang-en">67 real SaaS apps &amp; Stigix Cloudflare Worker answer North-South DEM &amp; Security tests.</span>
+                <span class="lang-fr">Les 67 apps SaaS et le Worker Cloudflare répondent aux tests DEM &amp; Sécurité.</span>
+              </p>
+            </div>
+            <div class="aux-box" style="border-color: rgba(56, 189, 248, 0.45);">
+              <h4 style="color: var(--neon-cyan-bright);">🎯 Probe IP Endpoints</h4>
+              <p>
+                <span class="lang-en">Probes target SaaS, Cloud Worker, or SD-WAN IPs (Stigix IP replies as plain OS IP, <em>no shared telemetry</em>).</span>
+                <span class="lang-fr">Cible SaaS, Cloud ou SD-WAN (une IP Stigix répond sans télémétrie partagée).</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom 3 Panels -->
+    <div class="bottom-row">
+      <div class="b-panel">
+        <div class="b-panel-title">Legend</div>
+        <div class="legend-rows">
+          <div class="l-row"><span class="line-ind cyan"></span> <span><strong>North-South (Sender Only):</strong> SaaS, Probes, SASE Security</span></div>
+          <div class="l-row"><span class="line-ind green"></span> <span><strong>East-West (Stigix ⇄ Stigix):</strong> Voice, Failover, Custom TCP, PCAP, XFR</span></div>
+          <div class="l-row"><span class="line-ind dashed"></span> <span><strong>API / Control Plane:</strong> Prisma SASE API &amp; Topology Discovery</span></div>
+          <div class="l-row"><span class="line-ind amber"></span> <span><strong>Local LAN / Underlay:</strong> Router replies to ARP/DHCP &bull; VyOS Chaos</span></div>
+        </div>
+      </div>
+
+      <div class="b-panel center-glow">
+        <div class="b-panel-title">Measured Outcomes Across Both Paths</div>
+        <div class="gauge-cards">
+          <div class="gauge-card">
+            <div class="gauge-label">Failover Blackout</div>
+            <div class="gauge-val">0.0s &uarr;</div>
+            <div class="gauge-sub">1000 PPS UDP (6200)</div>
+          </div>
+          <div class="gauge-card cyan">
+            <div class="gauge-label">SaaS &amp; TCP RTT</div>
+            <div class="gauge-val" style="color: var(--neon-cyan-bright);">18ms &uarr;</div>
+            <div class="gauge-sub">DNS/TLS/TTFB &amp; p95</div>
+          </div>
+          <div class="gauge-card">
+            <div class="gauge-label">Voice Quality</div>
+            <div class="gauge-val">MOS 4.4 &uarr;</div>
+            <div class="gauge-sub">RTP Echo (6100)</div>
+          </div>
+          <div class="gauge-card">
+            <div class="gauge-label">Throughput</div>
+            <div class="gauge-val">10 Gbps</div>
+            <div class="gauge-sub">XFR (9000) / iPerf3</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="b-panel">
+        <div class="b-panel-title">Who Replies on the Wire?</div>
+        <ul class="check-list">
+          <li><span style="color:var(--neon-green);">✔</span> <span><strong>IoT DHCP / ARP:</strong> Local SD-WAN Router replies (not Stigix).</span></li>
+          <li><span style="color:var(--neon-green);">✔</span> <span><strong>Synthetic Probes:</strong> SaaS, Cloud Worker, or Prisma SD-WAN IPs.</span></li>
+          <li><span style="color:var(--neon-green);">✔</span> <span><strong>East-West Tests:</strong> Remote Stigix active daemons reply with telemetry.</span></li>
+          <li><span style="color:var(--neon-green);">✔</span> <span><strong>Symmetry:</strong> Every node has 100% of Sender &amp; Receiver engines.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 2: THE 3 OPERATING MODES (STANDALONE vs MESH PEER vs MESH LEADER)
+       ========================================================================= -->
+  <section class="board" id="board-1">
+    <!-- Header -->
+    <header class="board-header">
+      <div>
+        <div class="brand-row">
+          <span class="logo-stigix">stigix</span>
+          <span class="logo-sep">|</span>
+          <span class="board-title">
+            <span class="lang-en">Control-Plane Modes: Standalone vs. Mesh Peer vs. Mesh Leader</span>
+            <span class="lang-fr">Modes Control-Plane : Standalone vs Mesh Peer vs Mesh Leader</span>
+          </span>
+        </div>
+        <p class="board-sub">
+          <span class="lang-en">One Unified Container Image &bull; Operate Independently (Standalone) or as a Coordinated Multi-Site Fleet (Leader + Autonomous Peers)</span>
+          <span class="lang-fr">Une seule image Docker &bull; Opérez en solo (Standalone) ou en flotte multi-sites coordonnée (Leader + Peers autonomes)</span>
+        </p>
+      </div>
+      <div class="slide-pill">SLIDE 2 / 3 &bull; 3 OPERATING MODES</div>
+    </header>
+
+    <!-- Top Band: Mode Switching Principle -->
+    <div class="top-band">
+      <div class="band-eyebrow">
+        <span>Seamless Role Promotion (No Reinstall Required &bull; Switch via Web UI, CLI, or 1-Command Magic Join)</span>
+      </div>
+      <div class="top-flow">
+        <div class="cp-node" style="border-color: var(--neon-green);">
+          <strong style="color: var(--neon-green);">🟢 1. Standalone Mode (Default)</strong>
+          <span>100% Offline / Local &bull; 0 External Calls</span>
+        </div>
+        <div class="dashed-link">
+          <span>Join Token</span>
+          <div class="dashed-line"></div>
+          <span>STX-JOIN-v1</span>
+        </div>
+        <div class="cp-node" style="border-color: var(--neon-cyan-bright);">
+          <strong style="color: var(--neon-cyan-bright);">🔵 2. Mesh Peer Mode (Spoke / Branch)</strong>
+          <span>Pulls Leader Config (30s) + Keeps Local Autonomy</span>
+        </div>
+        <div class="dashed-link">
+          <span>WebSocket</span>
+          <div class="dashed-line"></div>
+          <span>/fleet-tunnel</span>
+        </div>
+        <div class="cp-node" style="border-color: var(--neon-purple);">
+          <strong style="color: var(--neon-purple);">🟣 3. Mesh Leader Mode (Controller / Hub)</strong>
+          <span>All Peer Capabilities + Global Config Publisher &amp; Fleet View</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main 3-Column Stage Comparing the 3 Modes Visually -->
+    <div class="stage-box">
+
+      <!-- Column 1: STANDALONE -->
+      <div class="stage-col">
+        <div class="col-banner" style="color: var(--neon-green);">
+          🟢 MODE 1 : STANDALONE (INDEPENDENT NODE)
+        </div>
+        <div class="col-content">
+          <div class="appliance-box glow-green">
+            <div class="app-title">
+              <h3>📦 Standalone Instance</h3>
+              <span>Single-Site Lab, Ad-Hoc PoC, or Air-Gapped Validation</span>
+            </div>
+            <div class="circle-icons-row">
+              <div class="c-item">
+                <div class="c-ring green">⚡</div>
+                <div class="c-label">100% Engine</div>
+                <div class="c-sub">All Senders &amp; Receivers Active</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring green">🖥️</div>
+                <div class="c-label">Local Web UI</div>
+                <div class="c-sub">Full Dashboard on Port 8080</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring green">🗺️</div>
+                <div class="c-label">Topology</div>
+                <div class="c-sub">Displays SD-WAN &amp; VyOS Map</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring green">📍</div>
+                <div class="c-label">Local Config</div>
+                <div class="c-sub">100% Stored Locally on Node</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="aux-grid">
+            <div class="aux-box">
+              <h4 style="color: var(--neon-green);">📌 Manual Targets</h4>
+              <p>Add remote targets manually via Static IP / JSON or optional Cloudflare Worker.</p>
+            </div>
+            <div class="aux-box">
+              <h4 style="color: var(--neon-green);">🔒 Zero External Calls</h4>
+              <p>No background polling or external registry traffic out-of-the-box.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 2: MESH PEER -->
+      <div class="stage-col">
+        <div class="col-banner" style="color: var(--neon-cyan-bright);">
+          🔵 MODE 2 : MESH PEER (BRANCH / SPOKE)
+        </div>
+        <div class="col-content">
+          <div class="appliance-box glow-cyan">
+            <div class="app-title">
+              <h3>🔵 Mesh Peer Instance (e.g., BR1, BR8)</h3>
+              <span>Connected to Leader &bull; Synchronized Yet Locally Autonomous</span>
+            </div>
+            <div class="circle-icons-row">
+              <div class="c-item">
+                <div class="c-ring cyan">🌐</div>
+                <div class="c-label">30s Auto-Pull</div>
+                <div class="c-sub">Inherits 10 Leader Config Bundles</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring amber">✏️</div>
+                <div class="c-label">Local Autonomy</div>
+                <div class="c-sub">Override Global or Add Local Items</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring cyan">⚡</div>
+                <div class="c-label">Auto-Targets</div>
+                <div class="c-sub">Auto-Discovers Leader &amp; Peers</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring cyan">🔌</div>
+                <div class="c-label">NAT-Friendly</div>
+                <div class="c-sub">Outbound WebSocket (0 Inbound Port)</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="aux-grid">
+            <div class="aux-box" style="border-color: rgba(245, 158, 11, 0.45);">
+              <h4 style="color: var(--neon-amber);">✏️ Protected Overrides</h4>
+              <p>Branch operators can customize probes/apps locally without losing Leader updates.</p>
+            </div>
+            <div class="aux-box" style="border-color: rgba(56, 189, 248, 0.45);">
+              <h4 style="color: var(--neon-cyan-bright);">🗺️ Full Local UI &amp; Map</h4>
+              <p>Has its own local Web UI, displays topology, and starts/stops local traffic freely.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 3: MESH LEADER -->
+      <div class="stage-col">
+        <div class="col-banner" style="color: var(--neon-purple);">
+          🟣 MODE 3 : MESH LEADER (HUB &amp; CONTROLLER)
+        </div>
+        <div class="col-content">
+          <div class="appliance-box glow-purple">
+            <div class="app-title">
+              <h3>👑 Mesh Leader Instance (e.g., DC1)</h3>
+              <span>Everything a Peer Can Do + Central Fleet Controller</span>
+            </div>
+            <div class="circle-icons-row">
+              <div class="c-item">
+                <div class="c-ring purple">👑</div>
+                <div class="c-label">Config Publisher</div>
+                <div class="c-sub">Authors &amp; Pushes 10 Global Bundles</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring purple">🌐</div>
+                <div class="c-label">Fleet View</div>
+                <div class="c-sub">Command Center &amp; Target Registry</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring purple">🕹️</div>
+                <div class="c-label">Remote View</div>
+                <div class="c-sub">1-Click UI Proxy to Any Peer</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring purple">🤖</div>
+                <div class="c-label">Fleet FastMCP</div>
+                <div class="c-sub">Multi-Site AI Test Orchestration</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="aux-grid">
+            <div class="aux-box" style="border-color: rgba(168, 85, 247, 0.45);">
+              <h4 style="color: var(--neon-purple);">🎯 Primary DC Target</h4>
+              <p>Often placed at DC1 to answer East-West Voice, Failover, Custom TCP &amp; PCAP tests.</p>
+            </div>
+            <div class="aux-box" style="border-color: rgba(168, 85, 247, 0.45);">
+              <h4 style="color: var(--neon-purple);">🔐 CA &amp; PCAP Distributor</h4>
+              <p>Extracts Prisma CAs and compiles PCAPs once to auto-sync across all Peers.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Summary Band -->
+    <div class="bottom-row">
+      <div class="b-panel">
+        <div class="b-panel-title">What All 3 Modes Share (100% Common)</div>
+        <div class="legend-rows">
+          <div class="l-row"><span style="color:var(--neon-green);">✔</span> <span>Full <strong>Sender</strong> (SaaS, Probes, IoT, Security, Voice, TCP, PCAP)</span></div>
+          <div class="l-row"><span style="color:var(--neon-green);">✔</span> <span>Full <strong>Receiver</strong> (Ports 6100, 6200, 8083+, 9000, 5201, 8082)</span></div>
+          <div class="l-row"><span style="color:var(--neon-green);">✔</span> <span>Interactive <strong>SD-WAN &amp; VyOS Topology</strong> visualization</span></div>
+          <div class="l-row"><span style="color:var(--neon-green);">✔</span> <span>Full <strong>Local Web Dashboard</strong> &amp; API Studio</span></div>
+        </div>
+      </div>
+
+      <div class="b-panel center-glow">
+        <div class="b-panel-title">Key Capabilities Progression Across Modes</div>
+        <div class="gauge-cards">
+          <div class="gauge-card">
+            <div class="gauge-label">Data-Plane</div>
+            <div class="gauge-val">100% Equal</div>
+            <div class="gauge-sub">All 3 Modes</div>
+          </div>
+          <div class="gauge-card cyan">
+            <div class="gauge-label">Target Discovery</div>
+            <div class="gauge-val" style="color: var(--neon-cyan-bright);">Zero-Touch</div>
+            <div class="gauge-sub">Peer &amp; Leader</div>
+          </div>
+          <div class="gauge-card amber">
+            <div class="gauge-label">Config Sync</div>
+            <div class="gauge-val" style="color: var(--neon-amber);">Pull + Override</div>
+            <div class="gauge-sub">Peer Autonomy</div>
+          </div>
+          <div class="gauge-card purple">
+            <div class="gauge-label">Fleet Control</div>
+            <div class="gauge-val" style="color: var(--neon-purple);">Publish &amp; Proxy</div>
+            <div class="gauge-sub">Leader Exclusive</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="b-panel">
+        <div class="b-panel-title">Why This Architecture Matters</div>
+        <ul class="check-list">
+          <li><span style="color:var(--neon-green);">✔</span> <span><strong>Zero Lock-In on Peers:</strong> Branches can always adapt tests locally.</span></li>
+          <li><span style="color:var(--neon-green);">✔</span> <span><strong>Draft-to-Publish Safety:</strong> Leader edits stay draft until clicked Publish.</span></li>
+          <li><span style="color:var(--neon-green);">✔</span> <span><strong>No Firewall Headaches:</strong> Peers connect outbound via WebSocket.</span></li>
+          <li><span style="color:var(--neon-green);">✔</span> <span><strong>AI-Ready Fleet:</strong> Claude / Copilot orchestrates Leader + Peers at once.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 3: CENTRAL PROVISIONING VS PEER LOCAL AUTONOMY
+       ========================================================================= -->
+  <section class="board" id="board-2">
+    <!-- Header -->
+    <header class="board-header">
+      <div>
+        <div class="brand-row">
+          <span class="logo-stigix">stigix</span>
+          <span class="logo-sep">|</span>
+          <span class="board-title">
+            <span class="lang-en">Mesh Provisioning: Central Leader Sync vs. Local Peer Autonomy</span>
+            <span class="lang-fr">Provisioning Mesh : Synchronisation Centrale vs Autonomie du Peer</span>
+          </span>
+        </div>
+        <p class="board-sub">
+          <span class="lang-en">How the Leader Pushes 10 Configuration Bundles Every 30 Seconds Without Ever Overwriting Branch Customizations</span>
+          <span class="lang-fr">Comment le Leader pousse 10 bundles de configuration toutes les 30s sans jamais écraser les personnalisations locales</span>
+        </p>
+      </div>
+      <div class="slide-pill">SLIDE 3 / 3 &bull; SYNC &amp; AUTONOMY</div>
+    </header>
+
+    <!-- Top Band: The 10 Synchronized Bundles -->
+    <div class="top-band">
+      <div class="band-eyebrow">
+        <span>The 10 Configuration Bundles Authored on the Leader &amp; Pulled Automatically by Every Mesh Peer (30s Cycle)</span>
+        <span style="color: var(--neon-green);">Zero Container Restart &bull; Live Hot-Reload</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;">
+        <div class="cp-node" style="padding: 6px 10px;"><strong>1. 🌐 SaaS Apps</strong><span>67 Apps &amp; Weights</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>2. 🎯 Synthetic Probes</strong><span>HTTP, Ping, DNS, UDP</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>3. ⏱️ Convergence</strong><span>Failover Targets</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>4. ☁️ Prisma SASE API</strong><span>TSG &amp; Credentials</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>5. 🔐 Trust CA Bundle</strong><span>SSL Decryption Certs</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>6. 🛡️ Security Suites</strong><span>URL, DNS, C2, AISA</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>7. 🎙️ Voice Profiles</strong><span>RTP Codecs &amp; Targets</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>8. 🔌 IoT Catalog</strong><span>100 Device Personas</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>9. 🔄 Custom TCP Apps</strong><span>Ports &amp; Chaos Profiles</span></div>
+        <div class="cp-node" style="padding: 6px 10px;"><strong>10. 📦 PCAP Profiles</strong><span>Compiled .stx-replay</span></div>
+      </div>
+    </div>
+
+    <!-- Main 3-Column Stage: Leader Publish -> Merge Engine -> 4 Peer Badge States -->
+    <div class="stage-box">
+
+      <!-- Left: Leader Authoring -->
+      <div class="stage-col">
+        <div class="col-banner" style="color: var(--neon-purple);">
+          1. MESH LEADER (AUTHOR &amp; PUBLISHER)
+        </div>
+        <div class="col-content">
+          <div class="appliance-box glow-purple">
+            <div class="app-title">
+              <h3>👑 Central Config Authoring</h3>
+              <span>Draft Mode Safety Before Fleet Rollout</span>
+            </div>
+            <div class="circle-icons-row" style="grid-template-columns: repeat(2, 1fr);">
+              <div class="c-item">
+                <div class="c-ring purple">📝</div>
+                <div class="c-label">1. Edit Locally</div>
+                <div class="c-sub">Changes stay in local draft while testing on Leader</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring purple">🚀</div>
+                <div class="c-label">2. Click [Publish]</div>
+                <div class="c-sub">Increments revision (rev 1 ➔ rev 2) for the fleet</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="aux-box" style="border-color: rgba(168, 85, 247, 0.45);">
+            <h4 style="color: var(--neon-purple);">🕹️ Remote View Control</h4>
+            <p>Need to help a branch user? The Leader can open any Peer's UI remotely via WebSocket tunnel to inspect or start/stop tests.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Non-Destructive Sync Engine -->
+      <div class="stage-col">
+        <div class="col-banner" style="color: var(--neon-cyan-bright);">
+          2. NON-DESTRUCTIVE 30S PULL ENGINE
+        </div>
+        <div class="col-content">
+          <div class="cloud-zone">
+            <div class="pill-metric">
+              Every 30 Seconds: <span style="color: var(--neon-cyan-bright);">Peer Checks Leader Revision</span>
+            </div>
+
+            <div class="neon-tube purple">
+              <div>
+                <div class="tube-title" style="color: var(--neon-purple);">🌐 Global Revision Push (rev N)</div>
+                <div class="tube-desc">New items &amp; global updates sent over /fleet-tunnel</div>
+              </div>
+              <span style="font-size: 1.2rem; color: var(--neon-purple);">➔</span>
+            </div>
+
+            <div class="bolts-row">
+              <span>🛡️</span>
+              <span>Smart Local Merge (Never Overwrites Branch Overrides)</span>
+            </div>
+
+            <div class="neon-tube green">
+              <div>
+                <div class="tube-title" style="color: var(--neon-green);">✏️ Local Autonomy Preserved</div>
+                <div class="tube-desc">Overridden &amp; Local items stay 100% intact on the Peer</div>
+              </div>
+              <span style="font-size: 1.2rem; color: var(--neon-green);">✔</span>
+            </div>
+
+            <div class="pill-metric green">
+              Opt-Out Anytime: <span style="color: var(--neon-green);">[ Mesh Provisioning: ON / OFF ]</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Peer 4 Autonomy States -->
+      <div class="stage-col">
+        <div class="col-banner" style="color: var(--neon-green);">
+          3. MESH PEER (4 UI AUTONOMY BADGES)
+        </div>
+        <div class="col-content">
+          <div class="appliance-box glow-green">
+            <div class="app-title">
+              <h3>🔵 Branch Peer UI Badges</h3>
+              <span>Visual Transparency for Every Probe &amp; Application</span>
+            </div>
+            <div class="circle-icons-row" style="grid-template-columns: repeat(2, 1fr); gap: 10px;">
+              <div class="c-item">
+                <div class="c-ring green">🌐</div>
+                <div class="c-label" style="color: var(--neon-green);">Global</div>
+                <div class="c-sub">Pure Leader item. Auto-updates on new revisions.</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring amber">✏️</div>
+                <div class="c-label" style="color: var(--neon-amber);">Overridden</div>
+                <div class="c-sub">Modified on Peer. Protected during Leader syncs!</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring cyan">📍</div>
+                <div class="c-label" style="color: var(--neon-cyan-bright);">Local</div>
+                <div class="c-sub">Created on Peer. Private to this branch site.</div>
+              </div>
+              <div class="c-item">
+                <div class="c-ring purple">⚠️</div>
+                <div class="c-label" style="color: #f43f5e;">Orphaned</div>
+                <div class="c-sub">Deleted on Leader, kept on Peer because overridden.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Summary Band -->
+    <div class="bottom-row">
+      <div class="b-panel">
+        <div class="b-panel-title">Badge Legend on Peer UI</div>
+        <div class="legend-rows">
+          <div class="l-row"><span style="color:var(--neon-green);">🌐 Global:</span> <span>Inherited from Leader as-is</span></div>
+          <div class="l-row"><span style="color:var(--neon-amber);">✏️ Overridden:</span> <span>Global item customized locally on Peer</span></div>
+          <div class="l-row"><span style="color:var(--neon-cyan-bright);">📍 Local:</span> <span>Created locally on Peer only</span></div>
+          <div class="l-row"><span style="color:#f43f5e;">⚠️ Orphaned:</span> <span>Safe guard when Leader deletes an overridden item</span></div>
+        </div>
+      </div>
+
+      <div class="b-panel center-glow">
+        <div class="b-panel-title">Peer Autonomy Guarantees</div>
+        <div class="gauge-cards">
+          <div class="gauge-card">
+            <div class="gauge-label">Sync Interval</div>
+            <div class="gauge-val">30s Pull</div>
+            <div class="gauge-sub">Zero Downtime</div>
+          </div>
+          <div class="gauge-card amber">
+            <div class="gauge-label">Local Edits</div>
+            <div class="gauge-val" style="color: var(--neon-amber);">100% Safe</div>
+            <div class="gauge-sub">Never Overwritten</div>
+          </div>
+          <div class="gauge-card cyan">
+            <div class="gauge-label">Traffic Control</div>
+            <div class="gauge-val" style="color: var(--neon-cyan-bright);">Independent</div>
+            <div class="gauge-sub">Start/Stop Locally</div>
+          </div>
+          <div class="gauge-card purple">
+            <div class="gauge-label">Version Mix</div>
+            <div class="gauge-val" style="color: var(--neon-purple);">Compatible</div>
+            <div class="gauge-sub">Upgrade Independently</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="b-panel">
+        <div class="b-panel-title">Real-World Branch Example</div>
+        <ul class="check-list">
+          <li><span style="color:var(--neon-green);">1.</span> <span>Leader publishes a probe to <code>10.0.0.1</code> (<code>🌐 Global</code>).</span></li>
+          <li><span style="color:var(--neon-amber);">2.</span> <span>Branch BR5 changes timeout to <code>3000ms</code> (becomes <code>✏️ Overridden</code>).</span></li>
+          <li><span style="color:var(--neon-cyan-bright);">3.</span> <span>BR5 also creates a local printer ping probe (<code>📍 Local</code>).</span></li>
+          <li><span style="color:var(--neon-green);">4.</span> <span>Leader publishes rev 2: BR5 gets updates AND keeps its custom timeout!</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    let current = 0;
+    const boards = document.querySelectorAll('.board');
+    const tabs = document.querySelectorAll('.tab');
+
+    function selectBoard(idx) {
+      document.body.classList.remove('show-all');
+      current = idx;
+      boards.forEach((b, i) => b.classList.toggle('active', i === idx));
+      tabs.forEach((t, i) => t.classList.toggle('active', i === idx));
+    }
+
+    function toggleLang() {
+      const b = document.body;
+      b.setAttribute('data-lang', b.getAttribute('data-lang') === 'fr' ? 'en' : 'fr');
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') selectBoard((current + 1) % boards.length);
+      if (e.key === 'ArrowLeft') selectBoard((current - 1 + boards.length) % boards.length);
+    });
+  </script>
+</body>
+</html>

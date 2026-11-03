@@ -1055,6 +1055,8 @@ def get_bulk_topology(sdk, all_site_ids, el_status_map=None, id_to_el_name=None,
     corr_by_wan_pair = {}
     core_bgp_down_by_el = {}
     core_bgp_down_by_site = {}
+    core_bgp_est_by_el = {}
+    core_bgp_est_by_site = {}
     vpnlinks_meta_by_id = {}
 
     def _fetch_corr_events():
@@ -1126,21 +1128,27 @@ def get_bulk_topology(sdk, all_site_ids, el_status_map=None, id_to_el_name=None,
         s_name = (s_obj.get('name') or '').lower()
         is_hub_site = (s_obj.get('element_cluster_role') == 'HUB' or 'dc' in s_name or 'hub' in s_name)
         # Core BGP peers in DC have direction empty or != 'wan' AND belong to a Hub/DC
-        if is_hub_site and direction != 'wan' and b_state != 'Established':
-            peer_id = b_item.get('peer_ip') or b_item.get('peer_ip_v4') or b_item.get('router_id') or b_item.get('name') or 'Core BGP Peer'
-            info = {
-                'router_id': peer_id,
-                'state': b_state,
-                'downtime': pstat.get('downtime') or 'N/A',
-                'element_id': b_eid,
-                'element_name': id_to_el_name.get(b_eid, b_eid),
-                'site_id': b_sid,
-                'site_name': s_obj.get('name', b_sid),
-            }
-            if b_eid:
-                core_bgp_down_by_el.setdefault(str(b_eid), []).append(info)
-            if b_sid:
-                core_bgp_down_by_site.setdefault(str(b_sid), []).append(info)
+        if is_hub_site and direction != 'wan':
+            if b_state == 'Established':
+                if b_eid:
+                    core_bgp_est_by_el[str(b_eid)] = core_bgp_est_by_el.get(str(b_eid), 0) + 1
+                if b_sid:
+                    core_bgp_est_by_site[str(b_sid)] = core_bgp_est_by_site.get(str(b_sid), 0) + 1
+            else:
+                peer_id = b_item.get('peer_ip') or b_item.get('peer_ip_v4') or b_item.get('router_id') or b_item.get('name') or 'Core BGP Peer'
+                info = {
+                    'router_id': peer_id,
+                    'state': b_state,
+                    'downtime': pstat.get('downtime') or 'N/A',
+                    'element_id': b_eid,
+                    'element_name': id_to_el_name.get(b_eid, b_eid),
+                    'site_id': b_sid,
+                    'site_name': s_obj.get('name', b_sid),
+                }
+                if b_eid:
+                    core_bgp_down_by_el.setdefault(str(b_eid), []).append(info)
+                if b_sid:
+                    core_bgp_down_by_site.setdefault(str(b_sid), []).append(info)
 
     # Process unique links to hydrate their vpnlinks metadata if present
     all_vpns = set()
@@ -1325,12 +1333,17 @@ def get_bulk_topology(sdk, all_site_ids, el_status_map=None, id_to_el_name=None,
                         src_sid = str(site_id or '')
                         peer_is_hub = (site_id_to_obj.get(peer_sid, {}).get('element_cluster_role') == 'HUB' or 'dc' in (site_id_to_obj.get(peer_sid, {}).get('name') or '').lower())
                         src_is_hub = (site_id_to_obj.get(src_sid, {}).get('element_cluster_role') == 'HUB' or 'dc' in (site_id_to_obj.get(src_sid, {}).get('name') or '').lower())
-                        bgp_downs = (
-                            core_bgp_down_by_el.get(ep1_el)
-                            or core_bgp_down_by_el.get(ep2_el)
-                            or (core_bgp_down_by_site.get(peer_sid) if peer_is_hub else None)
-                            or (core_bgp_down_by_site.get(src_sid) if src_is_hub else None)
-                        )
+                        bgp_downs = None
+                        if ep1_el or ep2_el:
+                            if ep1_el and core_bgp_down_by_el.get(ep1_el) and not core_bgp_est_by_el.get(ep1_el):
+                                bgp_downs = core_bgp_down_by_el.get(ep1_el)
+                            elif ep2_el and core_bgp_down_by_el.get(ep2_el) and not core_bgp_est_by_el.get(ep2_el):
+                                bgp_downs = core_bgp_down_by_el.get(ep2_el)
+                        else:
+                            if peer_is_hub and core_bgp_down_by_site.get(peer_sid) and not core_bgp_est_by_site.get(peer_sid):
+                                bgp_downs = core_bgp_down_by_site.get(peer_sid)
+                            elif src_is_hub and core_bgp_down_by_site.get(src_sid) and not core_bgp_est_by_site.get(src_sid):
+                                bgp_downs = core_bgp_down_by_site.get(src_sid)
                         if bgp_downs:
                             b0 = bgp_downs[0]
                             reason = "Core Peering is down in DC"

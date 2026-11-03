@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.45] - 2026-11-03
+
+### Fixed
+- **SD-WAN Overlay Tunnel Live Inspection HA Cluster Standby vs. `PEERING_CORE_DOWN` False Positive (`web-dashboard/server.ts`, `engines/getflow.py`, `Scripts/getflow.py`)**:
+  - Fixed a false-positive `PEERING_CORE_DOWN` (`Core Peering is down in DC`) overwrite in `GET /api/topology/vpn-link/:vpnId/inspect` when inspecting `INACTIVE` (`usable: false`) tunnels terminating on standby HA Datacenter routers (e.g. `DC1-R2`, `DC2-R2`). Previously, `server.ts` matched non-`Established` BGP peers across both endpoints without filtering for Hub/DC role, causing down spoke/branch BGP peers (e.g. `BR1`) to overwrite the standby status reason ~1 second after opening the modal.
+  - Scoped Core BGP peer checks strictly to the Hub/DC ION element (`element_id`) terminating the tunnel and only trigger `PEERING_CORE_DOWN` when that Hub/DC element has at least one down Core BGP peer (`direction !== 'wan'`) **and** zero (`0`) `Established` Core BGP sessions.
+  - Unified live tunnel inspection fallback reason strings and codes (`STANDBY_NOT_USABLE`, `STANDBY_USABLE`, `FORWARDING_ACTIVE`) in `server.ts` with `getflow.py` to prevent UI banner flickering on modal open.
+
+### Added
+- **Node Operating Modes & Data-Plane Architecture Documentation & Visual Decks (`docs/NODE_MODES_AND_CAPABILITIES.md`, `docs/stigix-modes-datasheet.html`, `docs/stigix-modes-slides.html`, `docs/stigix-architecture-blueprint.html`, `docs/images/stigix-node-modes-architecture.png`)**:
+  - Added comprehensive reference documentation, interactive HTML datasheet, 4-slide presentation deck, and Cyber-Neon blueprint diagrams detailing Stigix Sender/Receiver data-plane capabilities across Standalone, Mesh Peer, and Mesh Leader modes.
+
 ## [3.1.44] - 2026-11-02
 
 ### Fixed

@@ -4097,6 +4097,13 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
         const nameToSiteId: Record<string, string> = {};
         const elIdToName: Record<string, string> = {};
         const elNameToSiteId: Record<string, string> = {};
+        const elIdToSiteId: Record<string, string> = {};
+        const hubSiteIds = new Set<string>();
+        const hubElementIds = new Set<string>();
+        const isHubName = (name: string) => {
+            const n = String(name || '').toLowerCase();
+            return n.includes('dc') || n.includes('hub');
+        };
         let matchedVpnCached: any = null;
         let matchedWanCircuitName = '';
         let siblingActiveCandidates: Array<{ vpnLink: any; siteId: string }> = [];
@@ -4104,16 +4111,27 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
         for (const s of (topologyCache?.data?.sites || [])) {
             const sid = s.site_id || s.id;
             const sname = s.site_name || s.name;
+            const srole = String(s.element_cluster_role || s.site_role || '').toUpperCase();
+            const siteIsHub = srole === 'HUB' || isHubName(sname);
             if (sid && sname) {
                 siteIdToName[String(sid)] = String(sname);
                 nameToSiteId[String(sname)] = String(sid);
+            }
+            if (sid && siteIsHub) {
+                hubSiteIds.add(String(sid));
             }
             for (const d of (s.devices || [])) {
                 const eid = d.device_id || d.element_id || d.id;
                 const ename = d.device_name || d.name;
                 if (eid && ename) {
                     elIdToName[String(eid)] = String(ename);
-                    if (sid) elNameToSiteId[String(ename)] = String(sid);
+                    if (sid) {
+                        elNameToSiteId[String(ename)] = String(sid);
+                        elIdToSiteId[String(eid)] = String(sid);
+                    }
+                }
+                if (eid && (siteIsHub || isHubName(ename))) {
+                    hubElementIds.add(String(eid));
                 }
                 for (const wif of (d.wan_interfaces || [])) {
                     const vlinks: any[] = wif.vpn_links || [];
@@ -4457,43 +4475,95 @@ app.get('/api/topology/vpn-link/:vpnId/inspect', authenticateToken, async (req, 
         let statusReasonDetail: string | null = null;
 
         if (tunnelState === 'NOT_USABLE') {
-            const bgpMatches: any[] = [];
+            // Track Core BGP peers strictly on Hub/DC elements (never Spoke/Branch sites)
+            const coreBgpEstByEl: Record<string, number> = {};
+            const coreBgpEstBySite: Record<string, number> = {};
+            const coreBgpDownByEl: Record<string, any[]> = {};
+            const coreBgpDownBySite: Record<string, any[]> = {};
+
             for (const bItem of (bgpJson?.items || [])) {
                 const dir = String(bItem?.direction || '').toLowerCase();
+                if (dir === 'wan') continue;
                 const bState = bItem?.peer_status?.state || 'Unknown';
-                if (dir !== 'wan' && bState !== 'Established') {
-                    const bEid = String(bItem?.element_id || '');
-                    const bSid = String(bItem?.site_id || '');
-                    const bSiteName = siteIdToName[bSid] || '';
-                    if (
-                        (ep1El && bEid === ep1El) ||
-                        (ep2El && bEid === ep2El) ||
-                        (ep1Site && bSid === ep1Site) ||
-                        (ep2Site && bSid === ep2Site) ||
-                        (srcSiteName && bSiteName === srcSiteName) ||
-                        (dstSiteName && bSiteName === dstSiteName)
-                    ) {
-                        bgpMatches.push({
-                            router_id: bItem?.router_id || bItem?.name || 'BGP Peer',
-                            state: bState,
-                            downtime: bItem?.peer_status?.downtime || 'N/A',
-                            element_name: elIdToName[bEid] || bSiteName || bEid,
-                        });
+                const bEid = String(bItem?.element_id || '');
+                const bSid = String(bItem?.site_id || elIdToSiteId[bEid] || '');
+                const bSiteName = siteIdToName[bSid] || '';
+                const bElName = elIdToName[bEid] || '';
+                const isHubPeer =
+                    (bEid && hubElementIds.has(bEid)) ||
+                    (bSid && hubSiteIds.has(bSid)) ||
+                    isHubName(bSiteName) ||
+                    isHubName(bElName);
+
+                if (!isHubPeer) continue;
+
+                if (bState === 'Established') {
+                    if (bEid) coreBgpEstByEl[bEid] = (coreBgpEstByEl[bEid] || 0) + 1;
+                    if (bSid) coreBgpEstBySite[bSid] = (coreBgpEstBySite[bSid] || 0) + 1;
+                } else {
+                    const peerId = bItem?.peer_ip || bItem?.peer_ip_v4 || bItem?.router_id || bItem?.name || 'Core BGP Peer';
+                    const info = {
+                        router_id: peerId,
+                        state: bState,
+                        downtime: bItem?.peer_status?.downtime || 'N/A',
+                        element_name: bElName || bSiteName || bEid,
+                    };
+                    if (bEid) {
+                        if (!coreBgpDownByEl[bEid]) coreBgpDownByEl[bEid] = [];
+                        coreBgpDownByEl[bEid].push(info);
+                    }
+                    if (bSid) {
+                        if (!coreBgpDownBySite[bSid]) coreBgpDownBySite[bSid] = [];
+                        coreBgpDownBySite[bSid].push(info);
                     }
                 }
             }
+
+            // Only flag PEERING_CORE_DOWN if the specific Hub/DC element terminating this tunnel
+            // has at least one down Core BGP peer AND zero Established Core BGP peers.
+            let bgpMatches: any[] = [];
+            if (ep1El || ep2El) {
+                if (ep1El && (coreBgpDownByEl[ep1El]?.length || 0) > 0 && !coreBgpEstByEl[ep1El]) {
+                    bgpMatches = coreBgpDownByEl[ep1El];
+                } else if (ep2El && (coreBgpDownByEl[ep2El]?.length || 0) > 0 && !coreBgpEstByEl[ep2El]) {
+                    bgpMatches = coreBgpDownByEl[ep2El];
+                }
+            } else {
+                const candSites = [
+                    ep1Site,
+                    ep2Site,
+                    srcSiteName ? nameToSiteId[srcSiteName] : '',
+                    dstSiteName ? nameToSiteId[dstSiteName] : '',
+                ].filter(Boolean);
+                for (const cSid of candSites) {
+                    if ((coreBgpDownBySite[cSid]?.length || 0) > 0 && !coreBgpEstBySite[cSid]) {
+                        bgpMatches = coreBgpDownBySite[cSid];
+                        break;
+                    }
+                }
+            }
+
             if (bgpMatches.length > 0) {
                 const b0 = bgpMatches[0];
                 statusReason = 'Core Peering is down in DC';
                 statusReasonCode = 'PEERING_CORE_DOWN';
-                statusReasonDetail = `${b0.element_name} Core BGP peer ${b0.router_id} is ${b0.state} (down ${b0.downtime})`;
+                statusReasonDetail = `${b0.element_name} Core BGP peer (${b0.router_id}) is ${b0.state} (down ${b0.downtime})`;
             } else if (bestEventCode) {
                 statusReason = LIVE_VPN_FAULT_REASON_MAP[bestEventCode] || bestEventCode;
                 statusReasonCode = bestEventCode;
             } else {
-                statusReason = 'Tunnel Up but marked Not Usable by controller';
-                statusReasonCode = 'VPN_NOT_USABLE';
+                statusReason = 'Inactive (Cluster / Standby Member Path — Not Usable)';
+                statusReasonCode = 'STANDBY_NOT_USABLE';
+                statusReasonDetail = 'Tunnel is Up physically but marked Not Usable by controller (standby cluster member or backup circuit)';
             }
+        } else if (tunnelState === 'STANDBY') {
+            statusReason = 'Inactive (Standby Path — Up & Usable)';
+            statusReasonCode = 'STANDBY_USABLE';
+            statusReasonDetail = 'Tunnel is operational and ready for forwarding, but currently idle / passive standby';
+        } else if (tunnelState === 'ACTIVE') {
+            statusReason = 'Active (Primary Forwarding Transit Path)';
+            statusReasonCode = 'FORWARDING_ACTIVE';
+            statusReasonDetail = 'Tunnel is actively carrying overlay data traffic';
         } else if (tunnelState === 'DOWN') {
             if (bestEventCode) {
                 statusReason = LIVE_VPN_FAULT_REASON_MAP[bestEventCode] || bestEventCode;

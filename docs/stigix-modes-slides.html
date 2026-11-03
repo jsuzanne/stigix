@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stigix — Visual Architecture Slides & Diagrams</title>
+  <style>
+    :root {
+      --bg-base: #070b14;
+      --bg-slide: #0f1629;
+      --bg-card: #162038;
+      --bg-card-alt: #1b2847;
+      --border: #293856;
+      --border-subtle: #1e2a44;
+      --text-main: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --blue: #38bdf8;
+      --indigo: #6366f1;
+      --purple: #a855f7;
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+      --cyan: #06b6d4;
+    }
+
+    [data-theme="light"] {
+      --bg-base: #e2e8f0;
+      --bg-slide: #ffffff;
+      --bg-card: #f8fafc;
+      --bg-card-alt: #f1f5f9;
+      --border: #cbd5e1;
+      --border-subtle: #e2e8f0;
+      --text-main: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+      --blue: #0284c7;
+      --indigo: #4f46e5;
+      --purple: #7e22ce;
+      --emerald: #059669;
+      --amber: #d97706;
+      --rose: #e11d48;
+      --cyan: #0891b2;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    /* Top Navigation Bar */
+    .deck-nav {
+      width: 100%;
+      max-width: 1280px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-slide);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .slide-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      border-color: var(--blue);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, var(--indigo), var(--purple));
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .deck-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ctrl-btn {
+      padding: 7px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-main);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .ctrl-btn:hover {
+      border-color: var(--blue);
+    }
+
+    /* 16:9 Slide Container */
+    .slide {
+      width: 100%;
+      max-width: 1280px;
+      min-height: 700px;
+      background: var(--bg-slide);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 34px 42px;
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .slide.active {
+      display: flex;
+    }
+
+    body.show-all .slide {
+      display: flex !important;
+      margin-bottom: 32px;
+    }
+
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+
+    .slide-tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.14);
+      color: var(--blue);
+      margin-bottom: 6px;
+    }
+
+    .slide-title {
+      font-size: 1.65rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .slide-subtitle {
+      font-size: 0.92rem;
+      color: var(--text-secondary);
+      margin-top: 3px;
+    }
+
+    .slide-number {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+
+    .slide-footer {
+      margin-top: 22px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    /* Language visibility */
+    [data-lang="en"] .lang-fr { display: none !important; }
+    [data-lang="fr"] .lang-en { display: none !important; }
+
+    /* ================= SLIDE 1 DIAGRAM STYLES ================= */
+    .s1-canvas {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr 1fr;
+      gap: 20px;
+      align-items: stretch;
+      flex: 1;
+    }
+
+    .diagram-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .col-header {
+      text-align: center;
+      font-size: 0.8rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 8px;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+    }
+
+    .target-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      position: relative;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .target-box h4 {
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .target-box p {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .center-instance {
+      background: linear-gradient(180deg, rgba(99, 102, 241, 0.14), rgba(168, 85, 247, 0.1));
+      border: 2px solid var(--indigo);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      box-shadow: 0 0 35px rgba(99, 102, 241, 0.2);
+    }
+
+    .instance-badge {
+      text-align: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .instance-badge h3 {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: var(--blue);
+    }
+
+    .instance-badge span {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+
+    .half-engine {
+      background: var(--bg-slide);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-top: 10px;
+    }
+
+    .half-engine.sender {
+      border-left: 4px solid var(--blue);
+    }
+
+    .half-engine.receiver {
+      border-left: 4px solid var(--emerald);
+    }
+
+    .half-engine-title {
+      font-size: 0.84rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      font-size: 0.73rem;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .chip code {
+      color: var(--cyan);
+      font-weight: 700;
+    }
+
+    .arrow-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-top: 8px;
+      width: fit-content;
+    }
+
+    .arrow-ns {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--blue);
+    }
+
+    .arrow-ew {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--emerald);
+    }
+
+    /* ================= SLIDE 2 DIAGRAM STYLES ================= */
+    .s2-canvas {
+      display: grid;
+      grid-template-columns: 0.9fr 2.1fr;
+      gap: 24px;
+      flex: 1;
+    }
+
+    .mode-zone {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .mode-zone.standalone-zone {
+      border-top: 4px solid var(--emerald);
+    }
+
+    .mode-zone.mesh-zone {
+      border-top: 4px solid var(--purple);
+      background: linear-gradient(145deg, var(--bg-card), rgba(168, 85, 247, 0.06));
+    }
+
+    .zone-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .zone-header h3 {
+      font-size: 1.12rem;
+      font-weight: 800;
+    }
+
+    .node-box {
+      background: var(--bg-slide);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+
+    .node-box.leader-box {
+      border: 2px solid var(--purple);
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), var(--bg-slide));
+    }
+
+    .node-box.peer-box {
+      border: 2px solid var(--blue);
+    }
+
+    .mesh-connectors {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 12px 0;
+    }
+
+    .connector-pill {
+      background: var(--bg-slide);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      text-align: center;
+      font-size: 0.78rem;
+    }
+
+    .connector-pill strong {
+      display: block;
+      color: var(--cyan);
+      font-size: 0.82rem;
+    }
+
+    .peers-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .mini-list {
+      list-style: none;
+      font-size: 0.79rem;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .mini-list li strong {
+      color: var(--text-main);
+    }
+
+    /* ================= SLIDE 3 DIAGRAM STYLES ================= */
+    .s3-canvas {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+      flex: 1;
+    }
+
+    .bundle-bar {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+    .bundle-bar-title {
+      font-size: 0.86rem;
+      font-weight: 800;
+      color: var(--purple);
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .bundles-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+
+    .bundle-item {
+      background: var(--bg-slide);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .autonomy-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      flex: 1;
+    }
+
+    .auto-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .auto-badge {
+      display: inline-block;
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 800;
+      margin-bottom: 10px;
+      width: fit-content;
+    }
+
+    .b-global { background: rgba(16, 185, 129, 0.16); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.35); }
+    .b-override { background: rgba(245, 158, 11, 0.16); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.35); }
+    .b-local { background: rgba(56, 189, 248, 0.16); color: var(--blue); border: 1px solid rgba(56, 189, 248, 0.35); }
+    .b-orphan { background: rgba(244, 63, 94, 0.16); color: var(--rose); border: 1px solid rgba(244, 63, 94, 0.35); }
+
+    /* ================= SLIDE 4 MATRIX STYLES ================= */
+    .s4-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+      background: var(--bg-card);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .s4-table th {
+      background: var(--bg-card-alt);
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 800;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .s4-table td {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .s4-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    @media print {
+      .deck-nav { display: none !important; }
+      .slide {
+        display: flex !important;
+        page-break-after: always;
+        box-shadow: none !important;
+        margin-bottom: 20px;
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+<body data-lang="en">
+
+  <!-- Top Controls -->
+  <nav class="deck-nav">
+    <div class="slide-tabs">
+      <button class="tab-btn active" onclick="showSlide(0)">
+        1. <span class="lang-fr">Schéma Data-Plane (Sender vs Receiver)</span><span class="lang-en">Data-Plane Diagram (Sender vs Receiver)</span>
+      </button>
+      <button class="tab-btn" onclick="showSlide(1)">
+        2. <span class="lang-fr">Schéma des 3 Modes (Standalone / Peer / Leader)</span><span class="lang-en">3 Modes Diagram (Standalone / Peer / Leader)</span>
+      </button>
+      <button class="tab-btn" onclick="showSlide(2)">
+        3. <span class="lang-fr">Schéma Sync & Autonomie du Peer</span><span class="lang-en">Config Sync & Peer Autonomy</span>
+      </button>
+      <button class="tab-btn" onclick="showSlide(3)">
+        4. <span class="lang-fr">Matrice Executive (Résumé)</span><span class="lang-en">Executive Summary Matrix</span>
+      </button>
+    </div>
+    <div class="deck-controls">
+      <button class="ctrl-btn" onclick="toggleAllSlides()" id="viewAllBtn">📄 <span class="lang-fr">Tout afficher</span><span class="lang-en">Show All</span></button>
+      <button class="ctrl-btn" onclick="toggleLang()" id="langToggleBtn">🌐 <span class="lang-en">Switch to FR</span><span class="lang-fr">Switch to EN</span></button>
+      <button class="ctrl-btn" onclick="toggleTheme()">🌓 Theme</button>
+      <button class="ctrl-btn" onclick="window.print()">🖨️ PDF</button>
+    </div>
+  </nav>
+
+  <!-- =====================================================================
+       SLIDE 1: DATA-PLANE SYMMETRY (SENDER VS RECEIVER)
+       ===================================================================== -->
+  <section class="slide active" id="slide-0">
+    <div class="slide-header">
+      <div>
+        <span class="slide-tag">Slide 1 · Data-Plane Architecture</span>
+        <div class="slide-title">
+          <span class="lang-fr">Anatomie d'une Instance Stigix : Sender 📤 vs Receiver 📥</span>
+          <span class="lang-en">Anatomy of a Stigix Instance: Sender 📤 vs Receiver 📥</span>
+        </div>
+        <div class="slide-subtitle">
+          <span class="lang-fr">Chaque instance embarque les deux moteurs, mais la cible dépend du type de flux (North-South/LAN vs East-West Inter-Sites).</span>
+          <span class="lang-en">Every instance packs both engines, while the responder depends on the flow direction (North-South/LAN vs East-West Site-to-Site).</span>
+        </div>
+      </div>
+      <div class="slide-number">1 / 4</div>
+    </div>
+
+    <div class="s1-canvas">
+      <!-- LEFT COLUMN: NORTH-SOUTH & LOCAL LAN TARGETS -->
+      <div class="diagram-col">
+        <div class="col-header" style="color: var(--blue); border-color: rgba(56, 189, 248, 0.4);">
+          🌐 <span class="lang-fr">Cibles North-South & LAN (Sans Stigix en face)</span>
+          <span class="lang-en">North-South & LAN Targets (No Remote Stigix Needed)</span>
+        </div>
+
+        <div class="target-box">
+          <h4>🖧 <span class="lang-fr">Routeur Local / SD-WAN ION</span><span class="lang-en">Local Router / SD-WAN ION</span></h4>
+          <p class="lang-fr">
+            <strong>Qui répond ?</strong> C'est le routeur local (ou switch) qui répond aux requêtes <strong>ARP et DHCP</strong> des 100 équipements IoT émulés par Stigix et les classifie.
+          </p>
+          <p class="lang-en">
+            <strong>Who replies?</strong> The local router/switch answers <strong>ARP and DHCP</strong> requests from Stigix's 100 emulated IoT devices and fingerprints them.
+          </p>
+          <div class="arrow-badge arrow-ns">
+            <span class="lang-fr">⬅ Reçoit L2/L3 IoT (DHCP, ARP, Trafic)</span>
+            <span class="lang-en">⬅ Receives L2/L3 IoT (DHCP, ARP, Traffic)</span>
+          </div>
+        </div>
+
+        <div class="target-box">
+          <h4>☁️ <span class="lang-fr">SaaS, Cloud Worker & Endpoints IP</span><span class="lang-en">SaaS, Cloud Worker & IP Endpoints</span></h4>
+          <p class="lang-fr">
+            <strong>Qui répond ?</strong> Les 67 apps SaaS, le <strong>Cloudflare Worker Stigix</strong> ou les IPs <strong>Prisma SD-WAN</strong>. Si une sonde vise l'IP d'un Stigix, l'OS répond au Ping/TCP mais <em>sans télémétrie partagée</em>.
+          </p>
+          <p class="lang-en">
+            <strong>Who replies?</strong> 67 real SaaS apps, <strong>Stigix Cloudflare Worker</strong>, or <strong>Prisma SD-WAN</strong> IPs. If probing a Stigix IP, it acts as a standard IP endpoint (<em>no shared telemetry</em>).
+          </p>
+          <div class="arrow-badge arrow-ns">
+            <span class="lang-fr">⬅ Reçoit SaaS DEM & Synthetic Probes</span>
+            <span class="lang-en">⬅ Receives SaaS DEM & Synthetic Probes</span>
+          </div>
+        </div>
+
+        <div class="target-box">
+          <h4>🛡️ <span class="lang-fr">Prisma Access (SASE) / NGFW</span><span class="lang-en">Prisma Access (SASE) / NGFW</span></h4>
+          <p class="lang-fr">
+            <strong>Qui répond ?</strong> Le pare-feu SASE inspecte (SSL Decryption) et bloque les tests URL, DNS, C2 et AI Security (AISA).
+          </p>
+          <p class="lang-en">
+            <strong>Who replies?</strong> The SASE gateway inspects (SSL Decryption) and blocks URL, DNS, C2, and AI Security (AISA) tests.
+          </p>
+          <div class="arrow-badge arrow-ns">
+            <span class="lang-fr">⬅ Intercepte les flux Security & AISA</span>
+            <span class="lang-en">⬅ Inspects & Enforces Security & AISA Flows</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER COLUMN: THE STIGIX INSTANCE -->
+      <div class="center-instance">
+        <div class="instance-badge">
+          <h3>
+            <span class="lang-fr">📦 Instance Stigix (All-in-One)</span>
+            <span class="lang-en">📦 Stigix Instance (All-in-One)</span>
+          </h3>
+          <span class="lang-fr">Identique en mode <strong>Standalone</strong>, <strong>Peer</strong> ou <strong>Leader</strong></span>
+          <span class="lang-en">Identical in <strong>Standalone</strong>, <strong>Peer</strong>, or <strong>Leader</strong> mode</span>
+        </div>
+
+        <!-- SENDER HALF -->
+        <div class="half-engine sender">
+          <div class="half-engine-title">
+            <span style="color: var(--blue);">
+              <span class="lang-fr">📤 MOTEUR SENDER (Générateur / Client)</span>
+              <span class="lang-en">📤 SENDER ENGINE (Traffic Initiator / Client)</span>
+            </span>
+            <span style="font-size: 0.72rem; color: var(--text-secondary);">North-South & East-West</span>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px;">
+            <strong class="lang-fr">Vers Routeur / SaaS / SASE ( Gauche ⬅ ) :</strong>
+            <strong class="lang-en">Toward Router / SaaS / SASE ( Left ⬅ ) :</strong>
+          </div>
+          <div class="chip-list" style="margin-bottom: 10px;">
+            <span class="chip">🌐 67 SaaS Apps (DEM)</span>
+            <span class="chip">🎯 Probes (Ping/HTTP/DNS/UDP)</span>
+            <span class="chip">🔌 IoT L2/L3 (<code>stigix-go</code>)</span>
+            <span class="chip">🛡️ Security (URL/DNS/C2/AI)</span>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px;">
+            <strong class="lang-fr">Vers une autre Instance Stigix ( Droite ➡ ) :</strong>
+            <strong class="lang-en">Toward another Stigix Instance ( Right ➡ ) :</strong>
+          </div>
+          <div class="chip-list">
+            <span class="chip">🎙️ Voice RTP Caller</span>
+            <span class="chip">⏱️ Convergence 1000 PPS</span>
+            <span class="chip">🔄 Custom TCP Client</span>
+            <span class="chip">📦 PCAP Replay Client ⬆️</span>
+            <span class="chip">🚀 XFR / iPerf3 Client</span>
+          </div>
+        </div>
+
+        <!-- RECEIVER HALF -->
+        <div class="half-engine receiver">
+          <div class="half-engine-title">
+            <span style="color: var(--emerald);">
+              <span class="lang-fr">📥 MOTEUR RECEIVER (Démons Target Actifs)</span>
+              <span class="lang-en">📥 RECEIVER ENGINE (Active Target Daemons)</span>
+            </span>
+            <span style="font-size: 0.72rem; color: var(--text-secondary);">
+              <span class="lang-fr">East-West Inter-Sites</span>
+              <span class="lang-en">East-West Site-to-Site</span>
+            </span>
+          </div>
+          <p style="font-size: 0.76rem; color: var(--text-secondary); margin-bottom: 8px;">
+            <span class="lang-fr">Services en écoute automatique dès le démarrage pour répondre aux autres instances Stigix :</span>
+            <span class="lang-en">Daemons listening automatically on startup to respond to other Stigix instances:</span>
+          </p>
+          <div class="chip-list">
+            <span class="chip">🎙️ Voice Echo <code>UDP 6100</code></span>
+            <span class="chip">⏱️ Failover Echo <code>UDP 6200</code></span>
+            <span class="chip">🔄 Custom TCP <code>8083, 8443+</code></span>
+            <span class="chip">📦 PCAP Server ⬇️ <code>TCP/UDP</code></span>
+            <span class="chip">🚀 XFR <code>9000</code> / iPerf3 <code>5201</code></span>
+            <span class="chip">🦠 EICAR HTTP <code>8082</code></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: REMOTE STIGIX INSTANCE (EAST-WEST) -->
+      <div class="diagram-col">
+        <div class="col-header" style="color: var(--emerald); border-color: rgba(16, 185, 129, 0.4);">
+          🔄 <span class="lang-fr">Cibles East-West (Autre Instance Stigix ex: DC1)</span>
+          <span class="lang-en">East-West Targets (Remote Stigix Node e.g. DC1)</span>
+        </div>
+
+        <div class="target-box" style="border-left: 3px solid var(--emerald);">
+          <h4>🎙️⏱️ <span class="lang-fr">Réflecteurs Temps Réel (Voice & Failover)</span><span class="lang-en">Real-Time Reflectors (Voice & Failover)</span></h4>
+          <p class="lang-fr">
+            L'instance Stigix distante réfléchit les paquets RTP (<code>UDP 6100</code>) pour le calcul du <strong>MOS VoIP</strong> et les rafales 1000 PPS (<code>UDP 6200</code>) pour mesurer la <strong>bascule SD-WAN sub-seconde</strong>.
+          </p>
+          <p class="lang-en">
+            The remote Stigix node reflects RTP packets (<code>UDP 6100</code>) for <strong>VoIP MOS</strong> and 1000 PPS bursts (<code>UDP 6200</code>) for <strong>sub-second SD-WAN failover</strong>.
+          </p>
+          <div class="arrow-badge arrow-ew">
+            <span class="lang-fr">⇄ Télémétrie bidirectionnelle Stigix-to-Stigix</span>
+            <span class="lang-en">⇄ Bidirectional Stigix-to-Stigix Telemetry</span>
+          </div>
+        </div>
+
+        <div class="target-box" style="border-left: 3px solid var(--emerald);">
+          <h4>🔄📦 <span class="lang-fr">Serveurs Applicatifs L7 (Custom TCP & PCAP)</span><span class="lang-en">Stateful L7 Servers (Custom TCP & PCAP)</span></h4>
+          <p class="lang-fr">
+            L'instance distante ouvre les ports <code>8083+</code> (avec <strong>8 modes de chaos serveur</strong> : latence, drops, erreurs) et rejoue les réponses serveur <code>⬇️ Server ➔ Client</code> des captures PCAP.
+          </p>
+          <p class="lang-en">
+            The remote node listens on <code>8083+</code> (with <strong>8 server chaos modes</strong>: delay, drops, errors) and replays <code>⬇️ Server ➔ Client</code> PCAP steps.
+          </p>
+          <div class="arrow-badge arrow-ew">
+            <span class="lang-fr">⇄ Dialogue Applicatif L7 Stateful</span>
+            <span class="lang-en">⇄ Stateful L7 Application Dialogue</span>
+          </div>
+        </div>
+
+        <div class="target-box" style="border-left: 3px solid var(--emerald);">
+          <h4>🚀🦠 <span class="lang-fr">Serveurs Speedtest & EICAR Inter-Sites</span><span class="lang-en">Speedtest & East-West EICAR Servers</span></h4>
+          <p class="lang-fr">
+            Héberge les serveurs de débit <strong>XFR (<code>9000</code>)</strong> / <strong>iPerf3 (<code>5201</code>)</strong> et le serveur <strong>HTTP EICAR (<code>8082</code>)</strong> pour valider l'inspection IPS latérale entre sites.
+          </p>
+          <p class="lang-en">
+            Hosts <strong>XFR (<code>9000</code>)</strong> / <strong>iPerf3 (<code>5201</code>)</strong> throughput servers and the <strong>EICAR HTTP server (<code>8082</code>)</strong> for lateral IPS validation.
+          </p>
+          <div class="arrow-badge arrow-ew">
+            <span class="lang-fr">⇄ Débit Max & Sécurité East-West</span>
+            <span class="lang-en">⇄ Max Throughput & East-West Security</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <span>🕸️ Stigix Architecture Deck</span>
+      <span class="lang-fr">Utilisez les onglets en haut ou les flèches ⬅ ➡ du clavier pour naviguer</span>
+      <span class="lang-en">Use top tabs or keyboard arrows ⬅ ➡ to navigate</span>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       SLIDE 2: THE 3 OPERATIONAL MODES (STANDALONE vs PEER vs LEADER)
+       ===================================================================== -->
+  <section class="slide" id="slide-1">
+    <div class="slide-header">
+      <div>
+        <span class="slide-tag">Slide 2 · Control-Plane Topologies</span>
+        <div class="slide-title">
+          <span class="lang-fr">Les 3 Modes Opérationnels : Standalone vs Mesh (Leader & Peers)</span>
+          <span class="lang-en">The 3 Operational Modes: Standalone vs Mesh (Leader & Peers)</span>
+        </div>
+        <div class="slide-subtitle">
+          <span class="lang-fr">Comment une instance opère seule (Standalone) ou en flotte coordonnée (Leader + Peers avec autonomie locale).</span>
+          <span class="lang-en">How an instance operates independently (Standalone) or within a coordinated fleet (Leader + Peers with local autonomy).</span>
+        </div>
+      </div>
+      <div class="slide-number">2 / 4</div>
+    </div>
+
+    <div class="s2-canvas">
+      <!-- LEFT: STANDALONE -->
+      <div class="mode-zone standalone-zone">
+        <div>
+          <div class="zone-header">
+            <h3 style="color: var(--emerald);">🟢 Mode 1 : Standalone</h3>
+            <span class="chip">
+              <span class="lang-fr">Par défaut</span>
+              <span class="lang-en">Default</span>
+            </span>
+          </div>
+          <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 16px;">
+            <span class="lang-fr">Instance unique 100% autonome. Idéal pour un PoC monobranche, test SASE/IoT rapide ou environnement isolé.</span>
+            <span class="lang-en">100% autonomous single instance. Ideal for a single-branch PoC, quick SASE/IoT test, or air-gapped lab.</span>
+          </p>
+
+          <div class="node-box" style="border-color: var(--emerald);">
+            <strong style="color: var(--emerald); font-size: 0.95rem;">📦 Stigix Standalone Node</strong>
+            <ul class="mini-list">
+              <li>✅ <strong>Data-Plane 100%</strong> (Sender 📤 + Receiver 📥)</li>
+              <li>
+                <span class="lang-fr">🖥️ <strong>Web UI Locale</strong> complète (<code>:8080</code>)</span>
+                <span class="lang-en">🖥️ Full <strong>Local Web UI</strong> (<code>:8080</code>)</span>
+              </li>
+              <li>
+                <span class="lang-fr">🗺️ <strong>Topologie SD-WAN / VyOS</strong> locale</span>
+                <span class="lang-en">🗺️ Local <strong>SD-WAN / VyOS Topology</strong></span>
+              </li>
+              <li>
+                <span class="lang-fr">📍 <strong>Config 100% Locale</strong> (aucune synchro externe)</span>
+                <span class="lang-en">📍 <strong>100% Local Config</strong> (no external sync)</span>
+              </li>
+              <li>
+                <span class="lang-fr">📌 <strong>Targets manuelles</strong> (IP statiques ou Cloud Worker)</span>
+                <span class="lang-en">📌 <strong>Manual Targets</strong> (Static IPs or Cloud Worker)</span>
+              </li>
+              <li>
+                <span class="lang-fr">🤖 <strong>FastMCP / Copilot</strong> (portée locale)</span>
+                <span class="lang-en">🤖 <strong>FastMCP / Copilot</strong> (local scope)</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="connector-pill" style="border-style: solid; border-color: var(--border-subtle);">
+          <strong style="color: var(--emerald);">
+            <span class="lang-fr">🔒 0 Appel Externe</span>
+            <span class="lang-en">🔒 Zero Outbound Calls</span>
+          </strong>
+          <span class="lang-fr">Aucun heartbeat vers le Cloud ou un contrôleur.</span>
+          <span class="lang-en">Zero heartbeats to Cloud or external controllers.</span>
+        </div>
+      </div>
+
+      <!-- RIGHT: MESH FLEET (LEADER + PEERS) -->
+      <div class="mode-zone mesh-zone">
+        <div class="zone-header">
+          <h3 style="color: var(--purple);">
+            <span class="lang-fr">🟣🔵 Modes 2 & 3 : Architecture Mesh (Leader + Peers)</span>
+            <span class="lang-en">🟣🔵 Modes 2 & 3: Mesh Architecture (Leader + Peers)</span>
+          </h3>
+          <span class="chip">
+            <span class="lang-fr">Multi-Sites SD-WAN / SASE</span>
+            <span class="lang-en">Multi-Site SD-WAN / SASE</span>
+          </span>
+        </div>
+
+        <!-- LEADER BOX -->
+        <div class="node-box leader-box">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong style="color: var(--purple); font-size: 1rem;">
+              <span class="lang-fr">👑 MESH LEADER (ex: Data Center DC1) — Controller + Full Node</span>
+              <span class="lang-en">👑 MESH LEADER (e.g., Data Center DC1) — Controller + Full Node</span>
+            </strong>
+            <span class="chip">Hub & Controller</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px;">
+            <ul class="mini-list">
+              <li>
+                <span class="lang-fr">✅ <strong>Fait tout ce qu'un Peer sait faire</strong> (Sender & Receiver DC1)</span>
+                <span class="lang-en">✅ <strong>Does everything a Peer does</strong> (DC1 Sender & Receiver)</span>
+              </li>
+              <li>
+                <span class="lang-fr">📝 <strong>Crée & Publie (<code>Publish</code>)</strong> les 10 bundles de config globale</span>
+                <span class="lang-en">📝 <strong>Authors & Publishes (<code>Publish</code>)</strong> the 10 global config bundles</span>
+              </li>
+              <li>
+                <span class="lang-fr">🔑 <strong>Génère les tokens <code>Magic Join</code></strong> (onboarding en 30s)</span>
+                <span class="lang-en">🔑 <strong>Generates <code>Magic Join</code> tokens</strong> (30s peer onboarding)</span>
+              </li>
+            </ul>
+            <ul class="mini-list">
+              <li>
+                <span class="lang-fr">🌐 <strong>Vue Globale (Fleet Command Center)</strong> de tous les sites</span>
+                <span class="lang-en">🌐 <strong>Global View (Fleet Command Center)</strong> across all sites</span>
+              </li>
+              <li>
+                <span class="lang-fr">🕹️ <strong>Remote View Gateway</strong> : pilote l'UI des Peers à distance</span>
+                <span class="lang-en">🕹️ <strong>Remote View Gateway</strong>: control any Peer's UI remotely</span>
+              </li>
+              <li>
+                <span class="lang-fr">🤖 <strong>Orchestrateur AI / FastMCP</strong> multi-sites bout-en-bout</span>
+                <span class="lang-en">🤖 End-to-end multi-site <strong>AI / FastMCP Orchestrator</strong></span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- MESH CHANNELS -->
+        <div class="mesh-connectors">
+          <div class="connector-pill">
+            <strong>
+              <span class="lang-fr">🔌 Control-Plane : Tunnel WebSocket (<code>/fleet-tunnel</code>)</span>
+              <span class="lang-en">🔌 Control-Plane: WebSocket Tunnel (<code>/fleet-tunnel</code>)</span>
+            </strong>
+            <span class="lang-fr">Pull Config 30s · Auto-découverte Targets · Remote View (0 port entrant sur les Peers)</span>
+            <span class="lang-en">30s Config Pull · Target Auto-Discovery · Remote View (0 inbound ports on Peers)</span>
+          </div>
+          <div class="connector-pill">
+            <strong style="color: var(--emerald);">
+              <span class="lang-fr">⇄ Data-Plane : Trafic East-West Direct</span>
+              <span class="lang-en">⇄ Data-Plane: Direct East-West Traffic</span>
+            </strong>
+            <span class="lang-fr">Voice RTP (6100) · Convergence (6200) · Custom TCP (8083+) · PCAP · XFR (9000)</span>
+            <span class="lang-en">Voice RTP (6100) · Convergence (6200) · Custom TCP (8083+) · PCAP · XFR (9000)</span>
+          </div>
+        </div>
+
+        <!-- PEERS ROW -->
+        <div class="peers-row">
+          <div class="node-box peer-box">
+            <div style="display: flex; justify-content: space-between;">
+              <strong style="color: var(--blue); font-size: 0.92rem;">
+                <span class="lang-fr">🔵 MESH PEER 1 (ex: Branch BR1)</span>
+                <span class="lang-en">🔵 MESH PEER 1 (e.g., Branch BR1)</span>
+              </strong>
+              <span class="chip">Spoke</span>
+            </div>
+            <ul class="mini-list">
+              <li>
+                <span class="lang-fr">✅ <strong>Data-Plane 100%</strong> + Web UI locale & Topologie</span>
+                <span class="lang-en">✅ <strong>100% Data-Plane</strong> + Local Web UI & Topology</span>
+              </li>
+              <li>
+                <span class="lang-fr">🌐 <strong>Reçoit la config globale</strong> du Leader (Apps, Probes, Certs, PCAP)</span>
+                <span class="lang-en">🌐 <strong>Pulls global config</strong> from Leader (Apps, Probes, Certs, PCAP)</span>
+              </li>
+              <li>
+                <span class="lang-fr">✏️ <strong>Autonomie locale</strong> : surcharge (<code>Overridden</code>) ou crée en <code>Local</code></span>
+                <span class="lang-en">✏️ <strong>Local Autonomy</strong>: override (<code>Overridden</code>) or create <code>Local</code> items</span>
+              </li>
+              <li>
+                <span class="lang-fr">⚡ <strong>Auto-découvre</strong> DC1 et BR8 comme Targets (<code>Learned</code>)</span>
+                <span class="lang-en">⚡ <strong>Auto-discovers</strong> DC1 and BR8 as Targets (<code>Learned</code>)</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="node-box peer-box">
+            <div style="display: flex; justify-content: space-between;">
+              <strong style="color: var(--blue); font-size: 0.92rem;">
+                <span class="lang-fr">🔵 MESH PEER 2 (ex: Branch BR8)</span>
+                <span class="lang-en">🔵 MESH PEER 2 (e.g., Branch BR8)</span>
+              </strong>
+              <span class="chip">Spoke</span>
+            </div>
+            <ul class="mini-list">
+              <li>
+                <span class="lang-fr">✅ <strong>Data-Plane 100%</strong> + Web UI locale & Topologie</span>
+                <span class="lang-en">✅ <strong>100% Data-Plane</strong> + Local Web UI & Topology</span>
+              </li>
+              <li>
+                <span class="lang-fr">🌐 <strong>Reçoit la config globale</strong> du Leader automatiquement</span>
+                <span class="lang-en">🌐 <strong>Pulls global config</strong> from Leader automatically</span>
+              </li>
+              <li>
+                <span class="lang-fr">✏️ <strong>Autonomie locale</strong> : lance ses tests librement ou opt-out</span>
+                <span class="lang-en">✏️ <strong>Local Autonomy</strong>: runs local tests freely or opts out</span>
+              </li>
+              <li>
+                <span class="lang-fr">⚡ <strong>Auto-découvre</strong> DC1 et BR1 comme Targets (<code>Learned</code>)</span>
+                <span class="lang-en">⚡ <strong>Auto-discovers</strong> DC1 and BR1 as Targets (<code>Learned</code>)</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <span>🕸️ Stigix Architecture Deck</span>
+      <span class="lang-fr">Même image Docker partout — changement de rôle en 1 clic sans réinstallation</span>
+      <span class="lang-en">Same Docker image everywhere — switch role in 1 click without reinstalling</span>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       SLIDE 3: CONFIG PROVISIONING & PEER AUTONOMY
+       ===================================================================== -->
+  <section class="slide" id="slide-2">
+    <div class="slide-header">
+      <div>
+        <span class="slide-tag">Slide 3 · Central Governance vs Local Autonomy</span>
+        <div class="slide-title">
+          <span class="lang-fr">Comment le Leader pousse la Config sans brider l'Autonomie du Peer</span>
+          <span class="lang-en">How the Leader Pushes Config Without Locking Down Peer Autonomy</span>
+        </div>
+        <div class="slide-subtitle">
+          <span class="lang-fr">Synchronisation non-destructive toutes les 30s : le Peer hérite du standard global mais garde le dernier mot localement.</span>
+          <span class="lang-en">Non-destructive 30s pull sync: the Peer inherits the global baseline while keeping the final say locally.</span>
+        </div>
+      </div>
+      <div class="slide-number">3 / 4</div>
+    </div>
+
+    <div class="s3-canvas">
+      <!-- Top: The 10 Synchronized Bundles -->
+      <div class="bundle-bar">
+        <div class="bundle-bar-title">
+          <span>👑 <span class="lang-fr">Les 10 Bundles publiés par le Leader (<code>[ Publish ]</code> ➔ Pull automatique 30s par les Peers)</span><span class="lang-en">The 10 Bundles Published by the Leader (<code>[ Publish ]</code> ➔ 30s Auto-Pull by Peers)</span></span>
+          <span class="chip">Zero-Touch Hot Reload</span>
+        </div>
+        <div class="bundles-grid">
+          <div class="bundle-item">1. 🌐 SaaS Applications</div>
+          <div class="bundle-item">2. 🎯 Synthetic Probes</div>
+          <div class="bundle-item">3. ⏱️ Convergence Profiles</div>
+          <div class="bundle-item">4. ☁️ Prisma SASE API Keys</div>
+          <div class="bundle-item">5. 🔐 Forward-Trust CAs</div>
+          <div class="bundle-item">6. 🛡️ Security Test Suites</div>
+          <div class="bundle-item">7. 🎙️ Voice VoIP Profiles</div>
+          <div class="bundle-item">8. 🔌 IoT Device Catalog</div>
+          <div class="bundle-item">9. 🔄 Custom TCP Apps</div>
+          <div class="bundle-item">10. 📦 PCAP Replay Profiles</div>
+        </div>
+      </div>
+
+      <!-- Bottom: The 4 Autonomy States on a Peer -->
+      <div class="autonomy-cards">
+        <div class="auto-card">
+          <div>
+            <span class="auto-badge b-global">🌐 Global</span>
+            <h4 style="margin-bottom: 8px;">
+              <span class="lang-fr">1. Standard Hérité</span>
+              <span class="lang-en">1. Inherited Baseline</span>
+            </h4>
+            <p style="font-size: 0.82rem; color: var(--text-secondary);">
+              <span class="lang-fr">L'élément provient du Leader et n'a pas été modifié sur le Peer. Il se met à jour automatiquement à chaque nouvelle publication du Leader.</span>
+              <span class="lang-en">The item comes from the Leader and hasn't been modified locally. It updates automatically whenever the Leader publishes a new revision.</span>
+            </p>
+          </div>
+          <div class="chip" style="margin-top: 12px;">Sync: Auto-Updated</div>
+        </div>
+
+        <div class="auto-card">
+          <div>
+            <span class="auto-badge b-override">✏️ Overridden</span>
+            <h4 style="margin-bottom: 8px;">
+              <span class="lang-fr">2. Personnalisé sur le Peer</span>
+              <span class="lang-en">2. Customized on the Peer</span>
+            </h4>
+            <p style="font-size: 0.82rem; color: var(--text-secondary);">
+              <span class="lang-fr">L'opérateur du Peer modifie un paramètre (ex: IP cible ou timeout adapté à sa branche). <strong>Sa modification locale est protégée</strong> même si le Leader republie !</span>
+              <span class="lang-en">The branch operator edits a parameter (e.g., target IP or timeout for that branch). <strong>Local edits are preserved</strong> even when the Leader republishes!</span>
+            </p>
+          </div>
+          <div class="chip" style="margin-top: 12px; color: var(--amber);">Sync: Local Override Kept</div>
+        </div>
+
+        <div class="auto-card">
+          <div>
+            <span class="auto-badge b-local">📍 Local</span>
+            <h4 style="margin-bottom: 8px;">
+              <span class="lang-fr">3. Créé 100% en Local</span>
+              <span class="lang-en">3. Pure Branch-Local Item</span>
+            </h4>
+            <p style="font-size: 0.82rem; color: var(--text-secondary);">
+              <span class="lang-fr">Le Peer crée sa propre sonde ou application pour un test spécifique à son site. Elle reste privée à ce Peer et n'est jamais effacée par le Leader.</span>
+              <span class="lang-en">The Peer creates its own probe or app for site-specific testing. It stays private to that Peer and is never overwritten by the Leader.</span>
+            </p>
+          </div>
+          <div class="chip" style="margin-top: 12px; color: var(--blue);">Sync: 100% Independent</div>
+        </div>
+
+        <div class="auto-card">
+          <div>
+            <span class="auto-badge b-orphan">⚠️ Orphaned</span>
+            <h4 style="margin-bottom: 8px;">
+              <span class="lang-fr">4. Protection Anti-Casse</span>
+              <span class="lang-en">4. Safe Deletion Guard</span>
+            </h4>
+            <p style="font-size: 0.82rem; color: var(--text-secondary);">
+              <span class="lang-fr">Si le Leader supprime un élément global mais que ce Peer l'avait personnalisé (<code>Overridden</code>), Stigix le conserve en <code>Orphaned</code> pour ne pas interrompre les tests du site.</span>
+              <span class="lang-en">If the Leader deletes a global item that this Peer had customized (<code>Overridden</code>), Stigix keeps it as <code>Orphaned</code> so branch tests never break.</span>
+            </p>
+          </div>
+          <div class="chip" style="margin-top: 12px; color: var(--rose);">Sync: Protected Locally</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <span>🕸️ Stigix Architecture Deck</span>
+      <span class="lang-fr">Un Peer peut aussi désactiver totalement la synchro via le switch [ Mesh Provisioning: ON / OFF ]</span>
+      <span class="lang-en">A Peer can also opt out of central sync at any time via the [ Mesh Provisioning: ON / OFF ] toggle</span>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       SLIDE 4: EXECUTIVE SUMMARY MATRIX
+       ===================================================================== -->
+  <section class="slide" id="slide-3">
+    <div class="slide-header">
+      <div>
+        <span class="slide-tag">Slide 4 · Executive Cheat Sheet</span>
+        <div class="slide-title">
+          <span class="lang-fr">Tableau Récapitulatif : Que peut faire chaque Mode ?</span>
+          <span class="lang-en">Summary Matrix: What Can Each Mode Do?</span>
+        </div>
+        <div class="slide-subtitle">
+          <span class="lang-fr">Vue synthétique en un coup d'œil pour choisir et expliquer les modes Stigix.</span>
+          <span class="lang-en">At-a-glance comparison to choose and explain Stigix operating modes.</span>
+        </div>
+      </div>
+      <div class="slide-number">4 / 4</div>
+    </div>
+
+    <div style="flex: 1; display: flex; align-items: center;">
+      <table class="s4-table">
+        <thead>
+          <tr>
+            <th style="width: 25%;">
+              <span class="lang-fr">Fonctionnalité / Rôle</span>
+              <span class="lang-en">Capability / Role</span>
+            </th>
+            <th style="width: 25%; color: var(--emerald);">🟢 Standalone</th>
+            <th style="width: 25%; color: var(--blue);">🔵 Mesh Peer (Spoke)</th>
+            <th style="width: 25%; color: var(--purple);">🟣 Mesh Leader (Controller)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <strong>
+                <span class="lang-fr">📤 Générateur de Trafic (Sender)</span>
+                <span class="lang-en">📤 Traffic Generator (Sender)</span>
+              </strong><br>
+              <span style="font-size:0.75rem; color:var(--text-secondary);">SaaS, Probes, IoT, Security, Voice, TCP, PCAP</span>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui (100%)</strong></span>
+              <span class="lang-en">✅ <strong>Yes (100%)</strong></span>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui (100%)</strong></span>
+              <span class="lang-en">✅ <strong>Yes (100%)</strong></span>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui (100%)</strong></span>
+              <span class="lang-en">✅ <strong>Yes (100%)</strong></span>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <strong>
+                <span class="lang-fr">📥 Écouteurs East-West (Receiver)</span>
+                <span class="lang-en">📥 East-West Responders (Receiver)</span>
+              </strong><br>
+              <span style="font-size:0.75rem; color:var(--text-secondary);">Voice 6100, Failover 6200, TCP 8083+, PCAP, XFR 9000, EICAR 8082</span>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui (100%)</strong></span>
+              <span class="lang-en">✅ <strong>Yes (100%)</strong></span>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui (100%)</strong></span>
+              <span class="lang-en">✅ <strong>Yes (100%)</strong></span>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui (100% — Cible DC1 idéale)</strong></span>
+              <span class="lang-en">✅ <strong>Yes (100% — Primary DC1 Target)</strong></span>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <strong>
+                <span class="lang-fr">🗺️ Topologie SD-WAN & Chaos VyOS</span>
+                <span class="lang-en">🗺️ SD-WAN Topology & VyOS Chaos</span>
+              </strong>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui</strong> (Vue locale)</span>
+              <span class="lang-en">✅ <strong>Yes</strong> (Local view)</span>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui</strong> (Hérite des clés API SASE)</span>
+              <span class="lang-en">✅ <strong>Yes</strong> (Inherits SASE API keys)</span>
+            </td>
+            <td>
+              <span class="lang-fr">✅ <strong>Oui</strong> (Vue & contrôle global)</span>
+              <span class="lang-en">✅ <strong>Yes</strong> (Global view & control)</span>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <strong>
+                <span class="lang-fr">🎯 Découverte des Targets Stigix</span>
+                <span class="lang-en">🎯 Stigix Target Discovery</span>
+              </strong>
+            </td>
+            <td>
+              <span class="lang-fr">📌 Manuelle (IP statique)</span>
+              <span class="lang-en">📌 Manual (Static IP)</span>
+            </td>
+            <td>
+              <span class="lang-fr">⚡ <strong>Auto-découverte</strong> (Leader & Peers)</span>
+              <span class="lang-en">⚡ <strong>Auto-Discovery</strong> (Leader & Peers)</span>
+            </td>
+            <td>
+              <span class="lang-fr">⚡ <strong>Auto-découverte & Registre Central</strong></span>
+              <span class="lang-en">⚡ <strong>Auto-Discovery & Central Registry</strong></span>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <strong>
+                <span class="lang-fr">⚙️ Configuration (10 Bundles)</span>
+                <span class="lang-en">⚙️ Configuration (10 Bundles)</span>
+              </strong>
+            </td>
+            <td>
+              <span class="lang-fr">📍 Locale uniquement</span>
+              <span class="lang-en">📍 Local only</span>
+            </td>
+            <td>
+              <span class="lang-fr">🌐 <strong>Reçoit du Leader</strong> + ✏️ <strong>Override local</strong></span>
+              <span class="lang-en">🌐 <strong>Pulls from Leader</strong> + ✏️ <strong>Local Override</strong></span>
+            </td>
+            <td>
+              <span class="lang-fr">👑 <strong>Crée & Publie (<code>Publish</code>)</strong> vers le Mesh</span>
+              <span class="lang-en">👑 <strong>Authors & Publishes (<code>Publish</code>)</strong> to Mesh</span>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <strong>
+                <span class="lang-fr">🕹️ Administration à distance (Remote View)</span>
+                <span class="lang-en">🕹️ Remote Management (Remote View)</span>
+              </strong>
+            </td>
+            <td>—</td>
+            <td>
+              <span class="lang-fr">🔌 Client WebSocket sortant (0 port entrant)</span>
+              <span class="lang-en">🔌 Outbound WebSocket tunnel (0 inbound ports)</span>
+            </td>
+            <td>
+              <span class="lang-fr">🕹️ <strong>Pilote l'UI de tous les Peers en 1 clic</strong></span>
+              <span class="lang-en">🕹️ <strong>Controls any Peer's UI in 1 click</strong></span>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <strong>
+                <span class="lang-fr">🤖 AI Copilot & FastMCP</span>
+                <span class="lang-en">🤖 AI Copilot & FastMCP</span>
+              </strong>
+            </td>
+            <td>
+              <span class="lang-fr">🤖 Local uniquement</span>
+              <span class="lang-en">🤖 Local node only</span>
+            </td>
+            <td>
+              <span class="lang-fr">🤖 Local + piloté par le Leader</span>
+              <span class="lang-en">🤖 Local + controlled by Leader</span>
+            </td>
+            <td>
+              <span class="lang-fr">🤖 <strong>Orchestrateur Multi-Sites complet</strong></span>
+              <span class="lang-en">🤖 <strong>Full Multi-Site Orchestrator</strong></span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="slide-footer">
+      <span>🕸️ Stigix Architecture Deck</span>
+      <span class="lang-fr">Astuce : Cliquez sur "🖨️ PDF" en haut à droite pour exporter ces 4 slides en PDF paysage</span>
+      <span class="lang-en">Tip: Click "🖨️ PDF" in the top bar to export all 4 slides as a landscape PDF</span>
+    </div>
+  </section>
+
+  <script>
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+    const tabs = document.querySelectorAll('.tab-btn');
+
+    function showSlide(index) {
+      document.body.classList.remove('show-all');
+      currentSlide = index;
+      slides.forEach((s, i) => s.classList.toggle('active', i === index));
+      tabs.forEach((t, i) => t.classList.toggle('active', i === index));
+    }
+
+    function toggleAllSlides() {
+      document.body.classList.toggle('show-all');
+    }
+
+    function toggleLang() {
+      const b = document.body;
+      b.setAttribute('data-lang', b.getAttribute('data-lang') === 'fr' ? 'en' : 'fr');
+    }
+
+    function toggleTheme() {
+      const h = document.documentElement;
+      h.setAttribute('data-theme', h.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') showSlide((currentSlide + 1) % slides.length);
+      if (e.key === 'ArrowLeft') showSlide((currentSlide - 1 + slides.length) % slides.length);
+    });
+  </script>
+</body>
+</html>
