@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stigix — Project Evolution & Architectural Timeline (Dec 2025 – Nov 2026)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --background: #f8fafc;
+      --card: #ffffff;
+      --content: #f1f5f9;
+      --foreground: #0f172a;
+      --muted-foreground: #64748b;
+      --border: #e2e8f0;
+    }
+    html.dark {
+      --background: #090d16;
+      --card: #111827;
+      --content: #1e293b;
+      --foreground: #f8fafc;
+      --muted-foreground: #94a3b8;
+      --border: #1f2937;
+    }
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    }
+    .era-card {
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .era-card:hover {
+      transform: translateY(-3px);
+    }
+    .milestone-dot {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .milestone-dot:hover circle {
+      r: 9;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.85; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(1.45); }
+    }
+    .pulse-ring {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: pulseGlow 2.4s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="antialiased p-6 min-h-screen">
+  <div id="slide-root" class="max-w-7xl mx-auto space-y-6">
+
+    <!-- Top Header / Slide Banner -->
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-lg relative overflow-hidden">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div class="space-y-1.5">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 text-xs font-semibold tracking-wide uppercase">
+            <span id="hdr-pill">🚀 Genesis & Engineering Trajectory • Dec 8, 2025 ➔ Nov 2026</span>
+          </div>
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">
+            <span id="hdr-from">From</span>
+            <a href="https://github.com/jsuzanne/sdwan-traffic-generator-web" target="_blank" class="text-amber-500 hover:underline font-mono text-xl sm:text-2xl">sdwan-traffic-generator-web</a>
+            <span id="hdr-to">to</span>
+            <a href="https://github.com/jsuzanne/stigix" target="_blank" class="text-indigo-500 hover:underline">Stigix V3</a>
+          </h1>
+          <p id="hdr-sub" class="text-sm text-[var(--muted-foreground)] max-w-3xl">
+            11 months of continuous R&D: from a single-node Python/Bash web traffic script to a distributed Zero-Trust Native Go SD-WAN & SASE validation platform powered by AI (MCP/Copilot) across <strong>877 releases</strong>.
+          </p>
+        </div>
+
+        <!-- View Mode & Language Switcher -->
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+          <button onclick="setTab('slide')" id="btn-tab-slide" class="px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all bg-indigo-600 text-white border-indigo-500 shadow-sm">
+            📊 Executive Slide
+          </button>
+          <button onclick="setTab('matrix')" id="btn-tab-matrix" class="px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all bg-[var(--content)] text-[var(--foreground)] border-[var(--border)] hover:border-indigo-500/40">
+            🧬 Architecture Matrix (V0 ➔ V3)
+          </button>
+          <button onclick="toggleLang()" id="btn-lang" class="px-3 py-2 rounded-lg text-xs font-semibold border bg-[var(--content)] text-[var(--foreground)] border-[var(--border)] hover:border-indigo-500/40" title="Switch Language (EN / FR)">
+            🇬🇧 EN / 🇫🇷 FR
+          </button>
+          <button onclick="toggleTheme()" id="btn-theme" class="px-3 py-2 rounded-lg text-xs font-semibold border bg-[var(--content)] text-[var(--muted-foreground)] border-[var(--border)] hover:text-[var(--foreground)]" title="Toggle Light / Dark Theme">
+            ☀️ / 🌙
+          </button>
+          <button onclick="toggleFullscreen()" class="px-3 py-2 rounded-lg text-xs font-semibold border bg-[var(--content)] text-[var(--muted-foreground)] border-[var(--border)] hover:text-[var(--foreground)]" title="Fullscreen Presentation Mode">
+            ⛶
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Strip -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-5 pt-5 border-t border-[var(--border)]">
+        <div class="bg-[var(--content)] border border-[var(--border)] rounded-xl p-3">
+          <div id="kpi1-label" class="text-xs text-[var(--muted-foreground)] font-medium">Genesis Date</div>
+          <div id="kpi1-val" class="text-lg font-bold text-amber-500 mt-0.5">Dec 8, 2025</div>
+          <div class="text-xs text-[var(--muted-foreground)] truncate font-mono">sdwan-traffic-generator-web</div>
+        </div>
+        <div class="bg-[var(--content)] border border-[var(--border)] rounded-xl p-3">
+          <div id="kpi2-label" class="text-xs text-[var(--muted-foreground)] font-medium">Total Releases & Tags</div>
+          <div id="kpi2-val" class="text-lg font-bold text-indigo-500 mt-0.5">877 Releases</div>
+          <div id="kpi2-sub" class="text-xs text-[var(--muted-foreground)]">~2.6 releases / day avg.</div>
+        </div>
+        <div class="bg-[var(--content)] border border-[var(--border)] rounded-xl p-3">
+          <div id="kpi3-label" class="text-xs text-[var(--muted-foreground)] font-medium">Major Cycles</div>
+          <div id="kpi3-val" class="text-lg font-bold text-emerald-500 mt-0.5">4 Eras (V0 ➔ V3)</div>
+          <div id="kpi3-sub" class="text-xs text-[var(--muted-foreground)]">9 minor release streams</div>
+        </div>
+        <div class="bg-[var(--content)] border border-[var(--border)] rounded-xl p-3">
+          <div id="kpi4-label" class="text-xs text-[var(--muted-foreground)] font-medium">Core Runtime Engine</div>
+          <div class="text-lg font-bold text-cyan-500 mt-0.5">Native Go (V3)</div>
+          <div id="kpi4-sub" class="text-xs text-[var(--muted-foreground)]">-90% CPU / RAM footprint</div>
+        </div>
+        <div class="bg-[var(--content)] border border-[var(--border)] rounded-xl p-3 col-span-2 sm:col-span-1">
+          <div id="kpi5-label" class="text-xs text-[var(--muted-foreground)] font-medium">Current Release</div>
+          <div class="text-lg font-bold text-purple-500 mt-0.5 font-mono">v3.1.44</div>
+          <div id="kpi5-sub" class="text-xs text-[var(--muted-foreground)]">November 2026 • Active</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 1: EXECUTIVE SLIDE VIEW -->
+    <div id="view-slide" class="space-y-6">
+
+      <!-- Main Dual-Chart Card: S-Curve Version Evolution + Monthly Release Velocity -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-lg">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+          <div>
+            <h2 id="chart-title" class="text-base font-bold text-[var(--foreground)] flex items-center gap-2">
+              📈 Version Evolution S-Curve & Monthly Release Velocity
+            </h2>
+            <p id="chart-sub" class="text-xs text-[var(--muted-foreground)]">
+              Click any milestone node on the curve or an Era card below to inspect architectural breakthroughs.
+            </p>
+          </div>
+          <div class="flex items-center gap-4 text-xs">
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-3 h-1.5 rounded bg-indigo-500 inline-block"></span>
+              <span id="leg-curve" class="text-[var(--muted-foreground)]">Architectural progression & cumulative releases</span>
+            </span>
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-sm bg-cyan-500/30 border border-cyan-500/60 inline-block"></span>
+              <span id="leg-bars" class="text-[var(--muted-foreground)]">Releases / month (CHANGELOG)</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Interactive SVG Timeline & Velocity Graphic -->
+        <div class="w-full overflow-x-auto">
+          <svg viewBox="0 0 1000 340" class="w-full h-auto select-none" style="min-width: 720px;">
+            <defs>
+              <linearGradient id="curveGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#f59e0b" />
+                <stop offset="28%" stop-color="#10b981" />
+                <stop offset="68%" stop-color="#06b6d4" />
+                <stop offset="100%" stop-color="#8b5cf6" />
+              </linearGradient>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#6366f1" stop-opacity="0.24" />
+                <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0" />
+              </linearGradient>
+              <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.42" />
+                <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.08" />
+              </linearGradient>
+            </defs>
+
+            <!-- Era Background Zones -->
+            <rect x="60" y="20" width="160" height="255" rx="8" fill="#f59e0b" fill-opacity="0.06" />
+            <text x="140" y="38" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="700">ERA 0 • GENESIS</text>
+            <text x="140" y="53" text-anchor="middle" fill="#f59e0b" fill-opacity="0.8" font-size="12">sdwan-traffic-gen-web</text>
+
+            <rect x="226" y="20" width="445" height="255" rx="8" fill="#10b981" fill-opacity="0.06" />
+            <text x="448" y="38" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">ERA 1 • STIGIX V1 (v1.1 ➔ v1.4)</text>
+            <text x="448" y="53" text-anchor="middle" fill="#10b981" fill-opacity="0.8" font-size="12">All-in-One Docker • VoIP/IoT • VyOS • Prisma SASE • AI MCP (580 releases)</text>
+
+            <rect x="677" y="20" width="135" height="255" rx="8" fill="#06b6d4" fill-opacity="0.07" />
+            <text x="744" y="38" text-anchor="middle" fill="#06b6d4" font-size="12" font-weight="700">ERA 2 • STIGIX V2</text>
+            <text x="744" y="53" text-anchor="middle" fill="#06b6d4" fill-opacity="0.8" font-size="12">Fleet Sync & TCP Apps</text>
+
+            <rect x="818" y="20" width="152" height="255" rx="8" fill="#8b5cf6" fill-opacity="0.09" />
+            <text x="894" y="38" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700">ERA 3 • STIGIX V3</text>
+            <text x="894" y="53" text-anchor="middle" fill="#a78bfa" fill-opacity="0.85" font-size="12">Go Engine & WS Mesh</text>
+
+            <!-- Horizontal Grid Lines -->
+            <line x1="60" y1="275" x2="970" y2="275" stroke="currentColor" stroke-opacity="0.2" stroke-width="1" />
+            <line x1="60" y1="215" x2="970" y2="215" stroke="currentColor" stroke-opacity="0.08" stroke-dasharray="4 4" />
+            <line x1="60" y1="155" x2="970" y2="155" stroke="currentColor" stroke-opacity="0.08" stroke-dasharray="4 4" />
+            <line x1="60" y1="95"  x2="970" y2="95"  stroke="currentColor" stroke-opacity="0.08" stroke-dasharray="4 4" />
+
+            <!-- Monthly Release Velocity Bars -->
+            <g onclick="selectMilestone('v0')" class="cursor-pointer">
+              <rect x="82" y="247" width="38" height="28" rx="4" fill="url(#barGrad)" stroke="#f59e0b" stroke-opacity="0.4" />
+              <text x="101" y="242" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="12">~45</text>
+            </g>
+            <g onclick="selectMilestone('v1_1')" class="cursor-pointer">
+              <rect x="158" y="234" width="38" height="41" rx="4" fill="url(#barGrad)" stroke="#f59e0b" stroke-opacity="0.4" />
+              <text x="177" y="229" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="12">~65</text>
+            </g>
+            <g onclick="selectMilestone('v1_2')" class="cursor-pointer">
+              <rect x="234" y="198" width="38" height="77" rx="4" fill="url(#barGrad)" stroke="#10b981" stroke-opacity="0.5" />
+              <text x="253" y="193" text-anchor="middle" fill="#10b981" font-size="12" font-weight="600">123</text>
+            </g>
+            <g onclick="selectMilestone('v1_2')" class="cursor-pointer">
+              <rect x="310" y="252" width="38" height="23" rx="4" fill="url(#barGrad)" stroke="#10b981" stroke-opacity="0.4" />
+              <text x="329" y="247" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="12">37</text>
+            </g>
+            <g onclick="selectMilestone('v1_2')" class="cursor-pointer">
+              <rect x="386" y="206" width="38" height="69" rx="4" fill="url(#barGrad)" stroke="#10b981" stroke-opacity="0.5" />
+              <text x="405" y="201" text-anchor="middle" fill="#10b981" font-size="12" font-weight="600">110</text>
+            </g>
+            <g onclick="selectMilestone('v1_3')" class="cursor-pointer">
+              <rect x="462" y="120" width="38" height="155" rx="4" fill="url(#barGrad)" stroke="#10b981" stroke-opacity="0.8" />
+              <text x="481" y="114" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">248 🔥</text>
+            </g>
+            <g onclick="selectMilestone('v1_4')" class="cursor-pointer">
+              <rect x="538" y="247" width="38" height="28" rx="4" fill="url(#barGrad)" stroke="#10b981" stroke-opacity="0.4" />
+              <text x="557" y="242" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="12">44</text>
+            </g>
+            <g onclick="selectMilestone('v1_4')" class="cursor-pointer">
+              <rect x="614" y="263" width="38" height="12" rx="4" fill="url(#barGrad)" stroke="#10b981" stroke-opacity="0.35" />
+              <text x="633" y="258" text-anchor="middle" fill="currentColor" fill-opacity="0.55" font-size="12">16</text>
+            </g>
+            <g onclick="selectMilestone('v2_0')" class="cursor-pointer">
+              <rect x="705" y="245" width="42" height="30" rx="4" fill="url(#barGrad)" stroke="#06b6d4" stroke-opacity="0.6" />
+              <text x="726" y="240" text-anchor="middle" fill="#06b6d4" font-size="12" font-weight="600">47</text>
+            </g>
+            <g onclick="selectMilestone('v3_0')" class="cursor-pointer">
+              <rect x="828" y="187" width="44" height="88" rx="4" fill="url(#barGrad)" stroke="#8b5cf6" stroke-opacity="0.8" />
+              <text x="850" y="181" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700">140 ⚡</text>
+            </g>
+            <g onclick="selectMilestone('v3_1')" class="cursor-pointer">
+              <rect x="912" y="255" width="40" height="20" rx="4" fill="url(#barGrad)" stroke="#8b5cf6" stroke-opacity="0.8" />
+              <text x="932" y="249" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700">v3.1.44</text>
+            </g>
+
+            <!-- Area under S-Curve -->
+            <path d="M 101 262 C 160 258, 200 245, 253 222 C 330 190, 420 175, 481 155 C 550 135, 640 130, 726 112 C 780 100, 815 92, 850 82 C 885 74, 910 68, 932 64 L 932 275 L 101 275 Z" fill="url(#areaGrad)" />
+
+            <!-- S-Curve Trajectory Path -->
+            <path d="M 101 262 C 160 258, 200 245, 253 222 C 330 190, 420 175, 481 155 C 550 135, 640 130, 726 112 C 780 100, 815 92, 850 82 C 885 74, 910 68, 932 64" fill="none" stroke="url(#curveGrad)" stroke-width="4" stroke-linecap="round" />
+
+            <!-- Interactive Milestone Nodes on Curve -->
+            <g onclick="selectMilestone('v0')" class="milestone-dot">
+              <circle cx="101" cy="262" r="7" fill="#f59e0b" stroke="#18181b" stroke-width="2" />
+              <text x="101" y="296" text-anchor="middle" fill="currentColor" font-size="12" font-weight="600">Dec 8, 25</text>
+              <text x="101" y="312" text-anchor="middle" fill="#f59e0b" font-size="12" font-family="monospace">v1.0 Web</text>
+            </g>
+
+            <g onclick="selectMilestone('v1_2')" class="milestone-dot">
+              <circle cx="253" cy="222" r="7" fill="#10b981" stroke="#18181b" stroke-width="2" />
+              <text x="253" y="296" text-anchor="middle" fill="currentColor" font-size="12" font-weight="600">Feb 2026</text>
+              <text x="253" y="312" text-anchor="middle" fill="#10b981" font-size="12" font-family="monospace">v1.2 Stigix</text>
+            </g>
+
+            <g onclick="selectMilestone('v1_2')" class="milestone-dot">
+              <circle cx="405" cy="176" r="6" fill="#10b981" stroke="#18181b" stroke-width="2" />
+              <text x="405" y="296" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="12">Apr 2026</text>
+              <text x="405" y="312" text-anchor="middle" fill="#10b981" font-size="12" font-family="monospace">v1.2.2</text>
+            </g>
+
+            <g onclick="selectMilestone('v1_3')" class="milestone-dot">
+              <circle cx="481" cy="155" r="7" fill="#10b981" stroke="#18181b" stroke-width="2" />
+              <text x="481" y="296" text-anchor="middle" fill="currentColor" font-size="12" font-weight="600">May 2026</text>
+              <text x="481" y="312" text-anchor="middle" fill="#10b981" font-size="12" font-family="monospace">v1.3 / v1.4</text>
+            </g>
+
+            <g onclick="selectMilestone('v1_4')" class="milestone-dot">
+              <circle cx="595" cy="134" r="6" fill="#10b981" stroke="#18181b" stroke-width="2" />
+              <text x="595" y="296" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="12">Jun–Aug</text>
+              <text x="595" y="312" text-anchor="middle" fill="#10b981" font-size="12" font-family="monospace">v1.4.1 MCP</text>
+            </g>
+
+            <g onclick="selectMilestone('v2_0')" class="milestone-dot">
+              <circle cx="726" cy="112" r="8" fill="#06b6d4" stroke="#18181b" stroke-width="2" />
+              <text x="726" y="96" text-anchor="middle" fill="#06b6d4" font-size="12" font-weight="700">v2.0.0</text>
+              <text x="726" y="296" text-anchor="middle" fill="currentColor" font-size="12" font-weight="600">Sep 2, 26</text>
+              <text x="726" y="312" text-anchor="middle" fill="#06b6d4" font-size="12" font-family="monospace">V2 Fabric</text>
+            </g>
+
+            <g onclick="selectMilestone('v2_2')" class="milestone-dot">
+              <circle cx="792" cy="96" r="6.5" fill="#06b6d4" stroke="#18181b" stroke-width="2" />
+              <text x="792" y="296" text-anchor="middle" fill="currentColor" fill-opacity="0.7" font-size="12">Oct 6–10</text>
+              <text x="792" y="312" text-anchor="middle" fill="#06b6d4" font-size="12" font-family="monospace">v2.1 / v2.2</text>
+            </g>
+
+            <g onclick="selectMilestone('v3_0')" class="milestone-dot">
+              <circle cx="850" cy="82" r="8" fill="#8b5cf6" stroke="#18181b" stroke-width="2" />
+              <text x="850" y="67" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700">v3.0.0</text>
+              <text x="850" y="296" text-anchor="middle" fill="currentColor" font-size="12" font-weight="600">Oct 11, 26</text>
+              <text x="850" y="312" text-anchor="middle" fill="#a78bfa" font-size="12" font-family="monospace">V3 + Go</text>
+            </g>
+
+            <g onclick="selectMilestone('v3_1')" class="milestone-dot">
+              <circle cx="932" cy="64" r="14" fill="#8b5cf6" fill-opacity="0.25" class="pulse-ring" />
+              <circle cx="932" cy="64" r="8" fill="#8b5cf6" stroke="#ffffff" stroke-width="2" />
+              <text x="932" y="46" text-anchor="middle" fill="#c4b5fd" font-size="12" font-weight="700">v3.1.44</text>
+              <text x="932" y="296" text-anchor="middle" fill="currentColor" font-size="12" font-weight="700">Nov 2, 26</text>
+              <text x="932" y="312" text-anchor="middle" fill="#c4b5fd" font-size="12" font-family="monospace">WS Mesh</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Dynamic Milestone Inspector Banner -->
+        <div id="milestone-inspector" class="mt-4 bg-[var(--content)] border border-indigo-500/30 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span id="insp-badge" class="px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">v3.1.0 ➔ v3.1.44</span>
+              <span id="insp-date" class="text-xs text-[var(--muted-foreground)] font-medium">Oct 24 – Nov 2, 2026 (27 releases)</span>
+            </div>
+            <h3 id="insp-title" class="text-base font-bold text-[var(--foreground)]">
+              Era 3.1 — 100% WebSocket Reverse Tunnel Control Plane & Auto-Heal Watchdog
+            </h3>
+            <p id="insp-desc" class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+              Eliminated all legacy direct HTTP fallbacks in favor of a Zero-Trust Socket.IO v4 mesh with perpetual 24h dynamic JWT renewal, Out-of-Band Heartbeat Watchdog auto-reconnect, auto-calibrated SLA thresholds (LAN/SD-WAN/Cloudflare), and dual-counter VoIP telemetry with clean-slate startup reset.
+            </p>
+          </div>
+          <div id="insp-tags" class="flex flex-wrap gap-1.5 shrink-0 md:max-w-xs justify-end">
+            <span class="px-2.5 py-1 rounded-md bg-[var(--card)] border border-[var(--border)] text-xs font-mono">100% WebSocket Mesh</span>
+            <span class="px-2.5 py-1 rounded-md bg-[var(--card)] border border-[var(--border)] text-xs font-mono">JWT Dynamic Auth</span>
+            <span class="px-2.5 py-1 rounded-md bg-[var(--card)] border border-[var(--border)] text-xs font-mono">VoIP Clean-Slate</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 Architectural Eras Cards (Slide Bottom Half) -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        <!-- Era 0 Card -->
+        <div onclick="selectMilestone('v0')" class="era-card cursor-pointer bg-[var(--card)] border border-amber-500/30 hover:border-amber-500 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-500 border border-amber-500/30">ERA 0 • GENESIS</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">Dec 8, 2025</span>
+            </div>
+            <h3 class="text-base font-bold text-[var(--foreground)]">sdwan-traffic-generator-web</h3>
+            <p id="c0-desc" class="text-xs text-[var(--muted-foreground)] mt-1 leading-relaxed">
+              Initial repository created on <strong>December 8, 2025</strong> to wrap SD-WAN traffic generation scripts inside a lightweight React/Express web controller.
+            </p>
+            <ul id="c0-list" class="mt-3 space-y-1.5 text-xs text-[var(--foreground)]">
+              <li class="flex items-start gap-1.5"><span class="text-amber-500">▸</span><span>HTTP/SaaS `traffic-generator.sh` & Python app workers</span></li>
+              <li class="flex items-start gap-1.5"><span class="text-amber-500">▸</span><span>First React + Express Web UI (`v1.0` ➔ `v1.1.2`)</span></li>
+              <li class="flex items-start gap-1.5"><span class="text-amber-500">▸</span><span>Standalone single-node Docker Compose deployment</span></li>
+            </ul>
+          </div>
+          <div class="mt-4 pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs">
+            <span class="text-[var(--muted-foreground)]">Versions</span>
+            <span class="font-mono font-semibold text-amber-500">v1.0.0 ➔ v1.1.2</span>
+          </div>
+        </div>
+
+        <!-- Era 1 Card -->
+        <div onclick="selectMilestone('v1_3')" class="era-card cursor-pointer bg-[var(--card)] border border-emerald-500/30 hover:border-emerald-500 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">ERA 1 • STIGIX V1</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">Feb – Aug 2026</span>
+            </div>
+            <h3 id="c1-title" class="text-base font-bold text-[var(--foreground)]">Birth of Stigix & All-in-One</h3>
+            <p id="c1-desc" class="text-xs text-[var(--muted-foreground)] mt-1 leading-relaxed">
+              Rebranded as <strong>Stigix</strong> with the unified `stigix-all-in-one` container and multi-engine expansion (<strong>580 releases</strong>).
+            </p>
+            <ul id="c1-list" class="mt-3 space-y-1.5 text-xs text-[var(--foreground)]">
+              <li class="flex items-start gap-1.5"><span class="text-emerald-500">▸</span><span>Bidirectional VoIP RTP/MOS (G.711/G.729) & IoT DHCP/MAB</span></li>
+              <li class="flex items-start gap-1.5"><span class="text-emerald-500">▸</span><span>VyOS Underlay Lab (QoS/Blackhole) & 50Hz Failover Convergence</span></li>
+              <li class="flex items-start gap-1.5"><span class="text-emerald-500">▸</span><span>Prisma SASE integration, Cloudflare Registry & FastMCP Server</span></li>
+            </ul>
+          </div>
+          <div class="mt-4 pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs">
+            <span class="text-[var(--muted-foreground)]">580 releases</span>
+            <span class="font-mono font-semibold text-emerald-500">v1.2.0 ➔ v1.4.1</span>
+          </div>
+        </div>
+
+        <!-- Era 2 Card -->
+        <div onclick="selectMilestone('v2_0')" class="era-card cursor-pointer bg-[var(--card)] border border-cyan-500/30 hover:border-cyan-500 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">ERA 2 • STIGIX V2</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">Sep – Oct 2026</span>
+            </div>
+            <h3 id="c2-title" class="text-base font-bold text-[var(--foreground)]">Distributed Fabric & AI Copilot</h3>
+            <p id="c2-desc" class="text-xs text-[var(--muted-foreground)] mt-1 leading-relaxed">
+              Transitioned from isolated nodes to a <strong>Leader/Peer distributed fleet</strong> with global bundle sync and East-West TCP apps.
+            </p>
+            <ul id="c2-list" class="mt-3 space-y-1.5 text-xs text-[var(--foreground)]">
+              <li class="flex items-start gap-1.5"><span class="text-cyan-400">▸</span><span>Custom TCP Inter-Site Apps (8 server chaos modes, 5 client workloads)</span></li>
+              <li class="flex items-start gap-1.5"><span class="text-cyan-400">▸</span><span>Global Provisioning Manager (8 config bundles synced Leader ➔ Peers)</span></li>
+              <li class="flex items-start gap-1.5"><span class="text-cyan-400">▸</span><span>4-Mode Topology (Physical, Overlay, SASE, VyOS Chassis) & AI Copilot</span></li>
+            </ul>
+          </div>
+          <div class="mt-4 pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs">
+            <span class="text-[var(--muted-foreground)]">80 releases</span>
+            <span class="font-mono font-semibold text-cyan-400">v2.0.0 ➔ v2.2.12</span>
+          </div>
+        </div>
+
+        <!-- Era 3 Card -->
+        <div onclick="selectMilestone('v3_1')" class="era-card cursor-pointer bg-[var(--card)] border border-purple-500/40 hover:border-purple-500 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">ERA 3 • STIGIX V3</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">Oct – Nov 2026</span>
+            </div>
+            <h3 id="c3-title" class="text-base font-bold text-[var(--foreground)]">Command Center, Go & WS Mesh</h3>
+            <p id="c3-desc" class="text-xs text-[var(--muted-foreground)] mt-1 leading-relaxed">
+              SCM-inspired Command Center UI, unified static <strong>Native Go Engine (`stigix-go`)</strong>, and 100% WebSocket Control Plane.
+            </p>
+            <ul id="c3-list" class="mt-3 space-y-1.5 text-xs text-[var(--foreground)]">
+              <li class="flex items-start gap-1.5"><span class="text-purple-400">▸</span><span>Native `stigix-go` binary (VoIP, 50Hz Convergence, IoT, Echo)</span></li>
+              <li class="flex items-start gap-1.5"><span class="text-purple-400">▸</span><span>100% Reverse WebSocket Tunnel Control Plane + Auto-Heal Watchdog</span></li>
+              <li class="flex items-start gap-1.5"><span class="text-purple-400">▸</span><span>SCM Vertical Navigation Rail, Home Command Center & Target Lite</span></li>
+            </ul>
+          </div>
+          <div class="mt-4 pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs">
+            <span class="text-[var(--muted-foreground)]">107 releases</span>
+            <span class="font-mono font-semibold text-purple-400">v3.0.0 ➔ v3.1.44</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- TAB 2: ARCHITECTURE EVOLUTION MATRIX -->
+    <div id="view-matrix" class="hidden space-y-6">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-lg overflow-x-auto">
+        <h2 class="text-base font-bold text-[var(--foreground)] mb-1">
+          🧬 Architectural Transformation Matrix (December 2025 ➔ November 2026)
+        </h2>
+        <p class="text-xs text-[var(--muted-foreground)] mb-4">
+          Layer-by-layer evolution from the original <code class="font-mono">sdwan-traffic-generator-web</code> prototype to <code class="font-mono">Stigix v3.1.44</code>.
+        </p>
+
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+              <th class="py-3 px-3 font-semibold">Layer</th>
+              <th class="py-3 px-3 font-semibold text-amber-500">Era 0: Genesis (Dec 2025)</th>
+              <th class="py-3 px-3 font-semibold text-emerald-500">Era 1: Stigix V1 (Feb–Aug 2026)</th>
+              <th class="py-3 px-3 font-semibold text-cyan-400">Era 2: Stigix V2 (Sep–Oct 2026)</th>
+              <th class="py-3 px-3 font-semibold text-purple-400">Era 3: Stigix V3 (Oct–Nov 2026)</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[var(--border)]">
+            <tr>
+              <td class="py-3.5 px-3 font-bold text-[var(--foreground)]">Data-Plane Engines</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Bash (`curl`) loops + isolated Python scripts</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Python orchestrators (`voice_orchestrator.py`, `iot_emulator.py`, `convergence.py`)</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Python + Node.js Custom TCP Apps Engine (binary East-West + UDP Multicast)</td>
+              <td class="py-3.5 px-3 font-medium text-[var(--foreground)]">Single static Go binary (<code class="font-mono text-purple-400">stigix-go</code>): high-precision goroutines, -90% CPU/RAM</td>
+            </tr>
+            <tr>
+              <td class="py-3.5 px-3 font-bold text-[var(--foreground)]">Fleet & Control Plane</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Standalone single node</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Cloudflare Worker Registry discovery + direct HTTP proxy</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Leader / Peer Provisioning (8 global bundles) + `--controller` onboarding</td>
+              <td class="py-3.5 px-3 font-medium text-[var(--foreground)]">100% WebSocket Reverse Tunnel Mesh, 24h dynamic JWT renewal & Heartbeat Watchdog Auto-Heal</td>
+            </tr>
+            <tr>
+              <td class="py-3.5 px-3 font-bold text-[var(--foreground)]">UI / UX Experience</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Single-page HTTP traffic controller</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Horizontal multi-tab bar (Voice, IoT, VyOS, Convergence)</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Interactive 4-Mode Topology (Physical, Overlay, SASE, VyOS Chassis)</td>
+              <td class="py-3.5 px-3 font-medium text-[var(--foreground)]">SCM-style Vertical Navigation Rail, live flyouts & Home Command Center</td>
+            </tr>
+            <tr>
+              <td class="py-3.5 px-3 font-bold text-[var(--foreground)]">AI, Automation & CLI</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Manual `.txt` / `.json` config files</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">First FastMCP server (Claude Desktop) + `stigix-cli.py` v1</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Built-in AI Copilot (Gemini, Claude, OpenAI, Ollama) + YAML Scenario Studio</td>
+              <td class="py-3.5 px-3 font-medium text-[var(--foreground)]">35+ synchronized Copilot/MCP tools, autonomous test suite & PoV Runbooks</td>
+            </tr>
+            <tr>
+              <td class="py-3.5 px-3 font-bold text-[var(--foreground)]">Packaging & CI/CD</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Local multi-container build</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Unified `stigix-all-in-one` Supervisord image</td>
+              <td class="py-3.5 px-3 text-[var(--muted-foreground)]">Controlled Docker stable/latest promotion + `stigix.io` portal</td>
+              <td class="py-3.5 px-3 font-medium text-[var(--foreground)]">Multi-stage Go + Node 24 build (~3 min CI) + lightweight `stigix-target` profile</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let currentLang = 'en';
+    let currentMilestone = 'v3_1';
+
+    const I18N = {
+      en: {
+        pill: "🚀 Genesis & Engineering Trajectory • Dec 8, 2025 ➔ Nov 2026",
+        from: "From",
+        to: "to",
+        sub: "11 months of continuous R&D: from a single-node Python/Bash web traffic script to a distributed Zero-Trust Native Go SD-WAN & SASE validation platform powered by AI (MCP/Copilot) across <strong>877 releases</strong>.",
+        tabSlide: "📊 Executive Slide",
+        tabMatrix: "🧬 Architecture Matrix (V0 ➔ V3)",
+        kpi1L: "Genesis Date", kpi1V: "Dec 8, 2025",
+        kpi2L: "Total Releases & Tags", kpi2V: "877 Releases", kpi2S: "~2.6 releases / day avg.",
+        kpi3L: "Major Cycles", kpi3V: "4 Eras (V0 ➔ V3)", kpi3S: "9 minor release streams",
+        kpi4L: "Core Runtime Engine", kpi4S: "-90% CPU / RAM footprint",
+        kpi5L: "Current Release", kpi5S: "November 2026 • Active",
+        chartTitle: "📈 Version Evolution S-Curve & Monthly Release Velocity",
+        chartSub: "Click any milestone node on the curve or an Era card below to inspect architectural breakthroughs.",
+        legCurve: "Architectural progression & cumulative releases",
+        legBars: "Releases / month (CHANGELOG)"
+      },
+      fr: {
+        pill: "🚀 Génèse & Trajectoire R&D • 08 Déc 2025 ➔ Nov 2026",
+        from: "De",
+        to: "à",
+        sub: "11 mois d'ingénierie continue : d'un générateur de trafic web mononœud en scripts Python/Bash jusqu'à une plateforme distribuée Zero-Trust en Go natif, pilotée par IA (MCP/Copilot) avec plus de <strong>877 releases</strong>.",
+        tabSlide: "📊 Vue Slide Exécutive",
+        tabMatrix: "🧬 Matrice d'Évolution (V0 ➔ V3)",
+        kpi1L: "Origine (Genesis)", kpi1V: "08 Déc 2025",
+        kpi2L: "Total Releases & Tags", kpi2V: "877 Releases", kpi2S: "~2,6 releases / jour en moy.",
+        kpi3L: "Cycles Majeurs", kpi3V: "4 Ères (V0 ➔ V3)", kpi3S: "9 branches mineures majeures",
+        kpi4L: "Moteur de Simulation", kpi4S: "-90% empreinte CPU / RAM",
+        kpi5L: "Version Actuelle", kpi5S: "Novembre 2026 • Active",
+        chartTitle: "📈 Courbe d'Accélération des Versions & Vélocité Mensuelle des Releases",
+        chartSub: "Cliquez sur un jalon (point sur la courbe) ou une ère ci-dessous pour inspecter les ruptures technologiques.",
+        legCurve: "Progression architecturale & cumul",
+        legBars: "Releases / mois (CHANGELOG)"
+      }
+    };
+
+    const MILESTONES = {
+      v0: {
+        badge: "v1.0.0 ➔ v1.1.2 (Genesis)",
+        badgeClass: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+        en: {
+          date: "Dec 8, 2025 – Early Feb 2026 (~110 initial commits/tags)",
+          title: "Era 0 — Birth of sdwan-traffic-generator-web",
+          desc: "Started on December 8, 2025 on GitHub (jsuzanne/sdwan-traffic-generator-web). Initial goal: replace disparate CLI scripts with a Web UI orchestrating HTTP/SaaS traffic workers to demonstrate SD-WAN application-aware routing."
+        },
+        fr: {
+          date: "08 Décembre 2025 – Début Février 2026 (~110 commits/tags initiaux)",
+          title: "Ère 0 — Naissance de sdwan-traffic-generator-web",
+          desc: "Démarrage le 8 décembre 2025 sur GitHub (jsuzanne/sdwan-traffic-generator-web). Objectif initial : remplacer les scripts CLI disparates par une interface Web capable d'orchestrer des travailleurs de trafic SaaS/HTTP pour démontrer le routage applicatif SD-WAN."
+        },
+        tags: ["sdwan-traffic-generator-web", "Bash + Python Workers", "React Web UI v1"]
+      },
+      v1_1: {
+        badge: "v1.1.2-patch.33.x",
+        badgeClass: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+        en: {
+          date: "January – Feb 8, 2026",
+          title: "Web UI Consolidation & Real-Time Telemetry",
+          desc: "Stabilized the multi-application HTTP generator, added real-time throughput charts, automatic network interface detection, and prepared the All-in-One container architecture."
+        },
+        fr: {
+          date: "Janvier – 08 Février 2026",
+          title: "Consolidation Web UI & Télémétrie Temps Réel",
+          desc: "Stabilisation du générateur HTTP multi-applications, ajout des premiers graphiques de débit, détection automatique d'interface réseau et préparation de l'architecture conteneurisée Tout-en-Un."
+        },
+        tags: ["App Traffic Workers", "Auto-Interface", "Docker Compose"]
+      },
+      v1_2: {
+        badge: "v1.2.0 ➔ v1.2.2-patch.172",
+        badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+        en: {
+          date: "Feb 8 – May 4, 2026 (243 releases)",
+          title: "Era 1.2 — Stigix Rebranding, VoIP RTP, IoT & VyOS Lab",
+          desc: "Project rebranded to Stigix (stigix-all-in-one). Introduced bidirectional VoIP RTP with MOS scoring (G.711/G.729), IoT emulation (DHCP/ARP/MAB), VyOS router orchestration for latency/loss/blackhole injection, and the Failover Convergence Lab."
+        },
+        fr: {
+          date: "08 Février – 04 Mai 2026 (243 releases)",
+          title: "Ère 1.2 — Rebranding Stigix, VoIP RTP, IoT & Lab VyOS",
+          desc: "Le projet devient Stigix (stigix-all-in-one). Introduction du moteur VoIP RTP bidirectionnel avec calcul MOS (G.711/G.729), de l'émulateur IoT (DHCP/ARP/MAB), du pilotage de routeurs VyOS pour injecter latence/perte/blackhole, et du laboratoire de Convergence Failover."
+        },
+        tags: ["Stigix Rebrand", "VoIP RTP & MOS", "VyOS Impairment Lab", "50Hz Convergence"]
+      },
+      v1_3: {
+        badge: "v1.3.0 ➔ v1.4.0",
+        badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+        en: {
+          date: "May 4 – May 17, 2026 (248 releases in May!)",
+          title: "Era 1.3 — Record Velocity (248 Releases/Month): Raw UDP, BGP/FRR & SASE",
+          desc: "Massive engineering sprint: replaced Scapy with high-speed raw UDP sockets for VoIP, integrated BGP/FRR, added Cloudflare Registry fleet autodiscovery, and native Palo Alto Prisma SASE / SD-WAN API integration."
+        },
+        fr: {
+          date: "04 Mai – 17 Mai 2026 (248 releases en mai !)",
+          title: "Ère 1.3 — Mois Record (248 Releases) : Raw UDP Sockets, BGP/FRR & SASE",
+          desc: "Accélération massive : remplacement de Scapy par des sockets UDP bruts haute performance pour la VoIP, intégration BGP/FRR, autodécouverte de flotte via Cloudflare Registry, et intégration native avec l'API Palo Alto Prisma SASE / SD-WAN."
+        },
+        tags: ["248 Releases / Month", "Raw UDP RTP", "Prisma SASE API", "Cloudflare Registry"]
+      },
+      v1_4: {
+        badge: "v1.4.0 ➔ v1.4.1-patch.43",
+        badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+        en: {
+          date: "May – Sep 2, 2026 (201 releases)",
+          title: "Era 1.4 — FastMCP Server, AI Copilot & Security Threat Testing",
+          desc: "Unlocked agentic AI orchestration with the FastMCP server enabling Claude and the built-in Copilot to drive the lab in natural language. Added Security Evasion/URL Threat testing and the lightweight Stigix Target container profile."
+        },
+        fr: {
+          date: "Mai – 02 Septembre 2026 (201 releases)",
+          title: "Ère 1.4 — Serveur FastMCP, AI Copilot & Security Threat Testing",
+          desc: "Ouverture à l'IA agentique avec le serveur FastMCP permettant à Claude et au Copilot intégré de piloter l'ensemble du lab en langage naturel. Ajout des tests de sécurité Evasion/URL Filtering et du profil conteneur léger Stigix Target."
+        },
+        tags: ["FastMCP Server", "AI Copilot", "Security Evasion", "stigix-cli"]
+      },
+      v2_0: {
+        badge: "v2.0.0 ➔ v2.0.150",
+        badgeClass: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+        en: {
+          date: "Sep 2 – Oct 4, 2026 (73 releases)",
+          title: "Era 2.0 — Stigix V2: Custom Inter-Site TCP Apps & Global Provisioning",
+          desc: "Major architectural leap: Custom East-West TCP application engine (binary UInt32BE framing, 8 server chaos modes, 5 client workloads), Global Provisioning Manager syncing 8 config bundles from Leader to Peers, and VyOS physical chassis."
+        },
+        fr: {
+          date: "02 Septembre – 04 Octobre 2026 (73 releases)",
+          title: "Ère 2.0 — Stigix V2 : Applications TCP Inter-Sites & Global Provisioning",
+          desc: "Rupture architecturale majeure : moteur d'applications TCP Custom East-West (protocole binaire UInt32BE, 8 modes de chaos serveur, 5 profils client), Global Provisioning Manager synchronisant 8 bundles de configuration du Leader vers les Peers, et châssis physique VyOS."
+        },
+        tags: ["Custom TCP Apps", "8 Chaos Modes", "Global Provisioning", "VyOS Physical Chassis"]
+      },
+      v2_2: {
+        badge: "v2.1.0 ➔ v2.2.12",
+        badgeClass: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+        en: {
+          date: "Oct 6 – Oct 11, 2026",
+          title: "Era 2.2 — Interactive 4-Mode Topology & UDP Multicast",
+          desc: "Delivered 4 dedicated topology views (WAN Transport Physical, SD-WAN Mesh Overlay, SASE Fabric, VyOS Ports Underlay) with carrier and tunnel telemetry drawers, plus UDP Multicast emulation."
+        },
+        fr: {
+          date: "06 Octobre – 11 Octobre 2026",
+          title: "Ère 2.2 — Topologie Interactive 4-Modes & Demand Matrix",
+          desc: "Introduction des 4 vues topologiques dédiées (WAN Transport Physical, SD-WAN Mesh Overlay, SASE Fabric, VyOS Ports Underlay) avec inspecteurs de tunnels et de transporteurs, plus l'émulation Multicast UDP."
+        },
+        tags: ["4-Mode Topology", "Carrier & Tunnel Drawers", "UDP Multicast"]
+      },
+      v3_0: {
+        badge: "v3.0.0 ➔ v3.0.100",
+        badgeClass: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+        en: {
+          date: "Oct 11 – Oct 24, 2026 (80 releases)",
+          title: "Era 3.0 — SCM Command Center & Native Go Engine (stigix-go)",
+          desc: "Complete UX redesign with a Strata Cloud Manager-inspired vertical navigation rail and Executive Home Command Center. Replaced legacy Python loops with the statically compiled Native Go binary (stigix-go), cutting CPU/RAM usage by 90%."
+        },
+        fr: {
+          date: "11 Octobre – 24 Octobre 2026 (80 releases)",
+          title: "Ère 3.0 — Command Center SCM & Moteur Natif Go (stigix-go)",
+          desc: "Refonte complète de l'interface avec rail de navigation vertical inspiré de Strata Cloud Manager et vue exécutive Home Command Center. Remplacement des moteurs Python par le binaire unique Go (stigix-go) compilé statiquement, divisant par 10 la consommation CPU/RAM."
+        },
+        tags: ["SCM Navigation Rail", "Home Command Center", "Native Go Engine (stigix-go)"]
+      },
+      v3_1: {
+        badge: "v3.1.0 ➔ v3.1.44",
+        badgeClass: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+        en: {
+          date: "Oct 24 – Nov 2, 2026 (27 releases)",
+          title: "Era 3.1 — 100% WebSocket Reverse Tunnel Control Plane & Auto-Heal Watchdog",
+          desc: "Eliminated all legacy direct HTTP fallbacks in favor of a Zero-Trust Socket.IO v4 mesh with perpetual 24h dynamic JWT renewal, Out-of-Band Heartbeat Watchdog auto-reconnect, auto-calibrated SLA thresholds, and dual-counter VoIP telemetry with clean-slate startup reset."
+        },
+        fr: {
+          date: "24 Octobre – 02 Novembre 2026 (27 releases)",
+          title: "Ère 3.1 — Control Plane 100% WebSocket Reverse Tunnel & Auto-Heal Watchdog",
+          desc: "Suppression complète des fallbacks HTTP directs au profit d'un mesh Socket.IO v4 Zero-Trust avec renouvellement JWT dynamique perpétuel (24h), reconnexion automatique Out-of-Band via Heartbeat Watchdog, seuils SLA auto-calibrés et télémétrie VoIP dual-counter avec reset clean-slate au démarrage."
+        },
+        tags: ["100% WebSocket Mesh", "JWT Dynamic Renewal", "Watchdog Auto-Heal", "VoIP Dual-Counter"]
+      }
+    };
+
+    function selectMilestone(key) {
+      currentMilestone = key;
+      const m = MILESTONES[key];
+      if (!m) return;
+      const loc = m[currentLang];
+      const badge = document.getElementById('insp-badge');
+      badge.textContent = m.badge;
+      badge.className = 'px-2.5 py-0.5 rounded text-xs font-mono font-bold border ' + m.badgeClass;
+      document.getElementById('insp-date').textContent = loc.date;
+      document.getElementById('insp-title').textContent = loc.title;
+      document.getElementById('insp-desc').textContent = loc.desc;
+      const tagsContainer = document.getElementById('insp-tags');
+      tagsContainer.innerHTML = m.tags
+        .map(t => `<span class="px-2.5 py-1 rounded-md bg-[var(--card)] border border-[var(--border)] text-xs font-mono">${t}</span>`)
+        .join('');
+    }
+
+    function toggleLang() {
+      currentLang = currentLang === 'en' ? 'fr' : 'en';
+      const t = I18N[currentLang];
+      document.getElementById('hdr-pill').textContent = t.pill;
+      document.getElementById('hdr-from').textContent = t.from;
+      document.getElementById('hdr-to').textContent = t.to;
+      document.getElementById('hdr-sub').innerHTML = t.sub;
+      document.getElementById('btn-tab-slide').textContent = t.tabSlide;
+      document.getElementById('btn-tab-matrix').textContent = t.tabMatrix;
+      document.getElementById('kpi1-label').textContent = t.kpi1L;
+      document.getElementById('kpi1-val').textContent = t.kpi1V;
+      document.getElementById('kpi2-label').textContent = t.kpi2L;
+      document.getElementById('kpi2-val').textContent = t.kpi2V;
+      document.getElementById('kpi2-sub').textContent = t.kpi2S;
+      document.getElementById('kpi3-label').textContent = t.kpi3L;
+      document.getElementById('kpi3-val').textContent = t.kpi3V;
+      document.getElementById('kpi3-sub').textContent = t.kpi3S;
+      document.getElementById('kpi4-label').textContent = t.kpi4L;
+      document.getElementById('kpi4-sub').textContent = t.kpi4S;
+      document.getElementById('kpi5-label').textContent = t.kpi5L;
+      document.getElementById('kpi5-sub').textContent = t.kpi5S;
+      document.getElementById('chart-title').textContent = t.chartTitle;
+      document.getElementById('chart-sub').textContent = t.chartSub;
+      document.getElementById('leg-curve').textContent = t.legCurve;
+      document.getElementById('leg-bars').textContent = t.legBars;
+      selectMilestone(currentMilestone);
+    }
+
+    function setTab(tab) {
+      const slideView = document.getElementById('view-slide');
+      const matrixView = document.getElementById('view-matrix');
+      const btnSlide = document.getElementById('btn-tab-slide');
+      const btnMatrix = document.getElementById('btn-tab-matrix');
+
+      if (tab === 'slide') {
+        slideView.classList.remove('hidden');
+        matrixView.classList.add('hidden');
+        btnSlide.className = 'px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all bg-indigo-600 text-white border-indigo-500 shadow-sm';
+        btnMatrix.className = 'px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all bg-[var(--content)] text-[var(--foreground)] border-[var(--border)] hover:border-indigo-500/40';
+      } else {
+        slideView.classList.add('hidden');
+        matrixView.classList.remove('hidden');
+        btnMatrix.className = 'px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all bg-indigo-600 text-white border-indigo-500 shadow-sm';
+        btnSlide.className = 'px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all bg-[var(--content)] text-[var(--foreground)] border-[var(--border)] hover:border-indigo-500/40';
+      }
+    }
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+  </script>
+</body>
+</html>

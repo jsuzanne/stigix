@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.47] - 2026-11-09
+
+### Added
+- **Failover Test History Pinning & Retention Protection (`web-dashboard/server.ts`, `web-dashboard/src/Failover.tsx`)**:
+  - Added a `pinned: boolean` attribute to failover test execution records with a new endpoint `POST /api/failover/history/:testId/pin` to toggle pinning.
+  - Pinned failover test records are permanently immune from automated retention purging (`cleanupFailoverHistory`), which retains up to 50 unpinned runs and 30 days of data.
+  - Added interactive pin toggle buttons on failover history cards and table rows, visual pinned status badges, and a "Pinned Only" filter toggle in the Failover UI.
+
+### Fixed
+- **Zero-Truncation Layout for Underlay Dataplane Traffic IP & PoC Group ID (`web-dashboard/src/components/navigation/HomeOverview.tsx`)**:
+  - Re-architected Card 3 ("SD-WAN Dataplane & WAN") row structure: Row 1 now strictly hosts Traffic Interface & Local Dataplane IP and SD-WAN Gateway IP with `shrink-0` and zero truncation. Re-located the Speedtest trigger button to Row 2 alongside UI Access / Management info.
+  - Set `PoC Group: #{poc_id}` in Card 1 ("Cloudflare Registry") to `shrink-0` to guarantee the tenant TSG ID is never truncated, applying graceful truncation to the Edge PoP city label if horizontal space is constrained.
+
 ## [3.1.46] - 2026-11-03
 
 ### Fixed

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePeerContext } from './PeerContext';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
-import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff, Copy, Check, Pin } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
 import { FailoverSkeleton } from './components/skeletons/FailoverSkeleton';
@@ -23,7 +23,7 @@ export default function Failover(props: FailoverProps) {
     const [reachability, setReachability] = useState<Record<string, boolean | 'loading'>>({});
     const [searchQuery, setSearchQuery] = useState('');
     const [historySearch, setHistorySearch] = useState('');
-    const [historyVerdictFilter, setHistoryVerdictFilter] = useState<'all' | 'healthy' | 'issues'>('all');
+    const [historyVerdictFilter, setHistoryVerdictFilter] = useState<'all' | 'healthy' | 'issues' | 'pinned'>('all');
     const [nowTs, setNowTs] = useState(Date.now());
     const [exportingPocId, setExportingPocId] = useState<string | null>(null);
     const [copiedPocId, setCopiedPocId] = useState<string | null>(null);
@@ -166,9 +166,12 @@ export default function Failover(props: FailoverProps) {
                     return data;
                 });
                 try {
-                    // Persist compact history (top 30 items without bulky metrics_series) for 0ms instant paint
-                    const compact = data.slice(-30).map((item: any, idx: number, arr: any[]) =>
-                        idx >= arr.length - 3 ? item : { ...item, metrics_series: undefined, has_metrics_series: Boolean(item.has_metrics_series || (item.metrics_series && item.metrics_series.length > 0)) }
+                    // Persist compact history (pinned items + recent unpinned items) for 0ms instant paint
+                    const pinnedItems = data.filter((item: any) => item.pinned);
+                    const unpinnedRecent = data.filter((item: any) => !item.pinned).slice(-30);
+                    const merged = [...pinnedItems, ...unpinnedRecent];
+                    const compact = merged.map((item: any) =>
+                        ({ ...item, metrics_series: undefined, has_metrics_series: Boolean(item.has_metrics_series || (item.metrics_series && item.metrics_series.length > 0)) })
                     );
                     localStorage.setItem(`stigix_failover_history_${peerCacheKey}`, JSON.stringify(compact));
                 } catch {}
@@ -576,17 +579,65 @@ export default function Failover(props: FailoverProps) {
     };
 
     const purgeHistory = async () => {
-        if (!confirm('Are you sure you want to purge all failover test history? This action cannot be undone.')) return;
+        const pinnedCount = history.filter(t => t.pinned).length;
+        const promptMsg = pinnedCount > 0
+            ? `Purge unpinned failover test history? Your ${pinnedCount} pinned test${pinnedCount > 1 ? 's' : ''} will be kept safe.`
+            : 'Are you sure you want to purge all failover test history? This action cannot be undone.';
+        if (!confirm(promptMsg)) return;
         try {
             const res = await gFetch('/api/convergence/history', {
                 method: 'DELETE',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' }
             });
             if (res.ok) {
-                setHistory([]);
+                setHistory(prev => prev.filter(t => t.pinned));
                 setExpandedHistory(null);
             }
         } catch (e) { }
+    };
+
+    const handleTogglePin = async (testItem: any, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        const rawId = testItem.test_id || testItem.testId || '';
+        const testId = rawId.match(/(CONV-\d+)/)?.[1] || rawId;
+        const newPinned = !testItem.pinned;
+        // Optimistic update
+        setHistory(prev => prev.map(t => {
+            const matchId = (t.test_id || t.testId) === rawId;
+            const matchTs = testItem.timestamp && (t.timestamp || t.start_time) === (testItem.timestamp || testItem.start_time);
+            if (matchId && (!testItem.timestamp || matchTs)) {
+                return { ...t, pinned: newPinned };
+            }
+            return t;
+        }));
+        try {
+            const res = await gFetch(`/api/convergence/history/${encodeURIComponent(testId)}/pin?timestamp=${encodeURIComponent(testItem.timestamp || testItem.start_time || '')}`, {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pinned: newPinned })
+            });
+            if (!res.ok) {
+                // Revert on error
+                setHistory(prev => prev.map(t => {
+                    const matchId = (t.test_id || t.testId) === rawId;
+                    const matchTs = testItem.timestamp && (t.timestamp || t.start_time) === (testItem.timestamp || testItem.start_time);
+                    if (matchId && (!testItem.timestamp || matchTs)) {
+                        return { ...t, pinned: !newPinned };
+                    }
+                    return t;
+                }));
+            }
+        } catch (err) {
+            // Revert on network failure
+            setHistory(prev => prev.map(t => {
+                const matchId = (t.test_id || t.testId) === rawId;
+                const matchTs = testItem.timestamp && (t.timestamp || t.start_time) === (testItem.timestamp || testItem.start_time);
+                if (matchId && (!testItem.timestamp || matchTs)) {
+                    return { ...t, pinned: !newPinned };
+                }
+                return t;
+            }));
+        }
     };
 
     const handleDeleteTest = async (testItem: any) => {
@@ -688,20 +739,24 @@ export default function Failover(props: FailoverProps) {
     };
 
     const historyFilterCounts = React.useMemo(() => {
-        if (!Array.isArray(history)) return { all: 0, healthy: 0, issues: 0 };
+        if (!Array.isArray(history)) return { all: 0, healthy: 0, issues: 0, pinned: 0 };
         let healthy = 0;
         let issues = 0;
+        let pinned = 0;
         history.forEach(t => {
             if (isHistoryItemHealthy(t)) healthy++;
             else issues++;
+            if (t.pinned) pinned++;
         });
-        return { all: history.length, healthy, issues };
+        return { all: history.length, healthy, issues, pinned };
     }, [history, thresholds]);
 
     const filteredHistory = React.useMemo(() => {
         if (!Array.isArray(history)) return [];
         const byVerdict = historyVerdictFilter === 'all'
             ? history
+            : historyVerdictFilter === 'pinned'
+            ? history.filter(t => Boolean(t.pinned))
             : history.filter(t => historyVerdictFilter === 'healthy' ? isHistoryItemHealthy(t) : !isHistoryItemHealthy(t));
 
         if (!historySearch || !historySearch.trim()) return byVerdict;
@@ -1771,10 +1826,11 @@ export default function Failover(props: FailoverProps) {
                         {history.length > 0 && (
                             <div className="inline-flex items-center bg-card border border-border rounded-lg p-0.5 gap-0.5">
                                 {([
-                                    { id: 'all', label: 'All', count: historyFilterCounts.all, activeCls: 'bg-blue-600 text-white shadow-sm' },
-                                    { id: 'healthy', label: 'Good / Perfect', count: historyFilterCounts.healthy, activeCls: 'bg-emerald-600 text-white shadow-sm' },
-                                    { id: 'issues', label: 'Outages', count: historyFilterCounts.issues, activeCls: 'bg-amber-600 text-white shadow-sm' }
-                                ] as const).map(f => {
+                                    { id: 'all' as const, label: 'All', count: historyFilterCounts.all, activeCls: 'bg-blue-600 text-white shadow-sm' },
+                                    { id: 'healthy' as const, label: 'Good / Perfect', count: historyFilterCounts.healthy, activeCls: 'bg-emerald-600 text-white shadow-sm' },
+                                    { id: 'issues' as const, label: 'Outages', count: historyFilterCounts.issues, activeCls: 'bg-amber-600 text-white shadow-sm' },
+                                    ...(historyFilterCounts.pinned > 0 ? [{ id: 'pinned' as const, label: 'Pinned', count: historyFilterCounts.pinned, activeCls: 'bg-amber-500 text-white shadow-sm' }] : [])
+                                ]).map(f => {
                                     const active = historyVerdictFilter === f.id;
                                     return (
                                         <button
@@ -1952,6 +2008,15 @@ export default function Failover(props: FailoverProps) {
                                                             </span>
                                                             <span>{test.label || test.test_id?.split(' (')[0]}</span>
                                                             <ChevronRight size={14} className={`text-text-muted/50 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                            {test.pinned && (
+                                                                <span
+                                                                    className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[9px] px-1.5 py-0.5 rounded font-bold"
+                                                                    title="Pinned test: exempt from automatic history purge and bulk clear"
+                                                                >
+                                                                    <Pin size={9} className="fill-amber-400 shrink-0" />
+                                                                    PINNED
+                                                                </span>
+                                                            )}
                                                             {(test.path_evolution || test.egress_path) && (() => {
                                                                 const rawPath = String(test.path_evolution || test.egress_path);
                                                                 const hops = Array.isArray(test.path_history) && test.path_history.length > 0
@@ -2043,13 +2108,26 @@ export default function Failover(props: FailoverProps) {
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                                        <button
-                                                            onClick={() => handleDeleteTest(test)}
-                                                            className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
-                                                            title="Delete this test record"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <button
+                                                                onClick={(e) => handleTogglePin(test, e)}
+                                                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                                                    test.pinned
+                                                                        ? 'text-amber-400 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 shadow-sm'
+                                                                        : 'text-text-muted hover:text-amber-400 hover:bg-amber-500/10'
+                                                                }`}
+                                                                title={test.pinned ? 'Pinned (protected from auto-purge). Click to unpin.' : 'Pin this test (protects from auto-purge)'}
+                                                            >
+                                                                <Pin size={14} className={test.pinned ? 'fill-amber-400 text-amber-400' : ''} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteTest(test)}
+                                                                className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                                                title="Delete this test record"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                                 {isExpanded && (
@@ -2156,6 +2234,19 @@ export default function Failover(props: FailoverProps) {
                                                                                 )}
                                                                             </div>
                                                                         <div className="flex items-center gap-2" data-no-export="true">
+                                                                            <button
+                                                                                data-no-export="true"
+                                                                                onClick={(e) => handleTogglePin(test, e)}
+                                                                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                                                                                    test.pinned
+                                                                                        ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border-amber-500/40 shadow-sm'
+                                                                                        : 'bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-amber-400 border-border'
+                                                                                }`}
+                                                                                title={test.pinned ? 'Pinned (protected from auto-purge). Click to unpin.' : 'Pin this test (protects from auto-purge)'}
+                                                                            >
+                                                                                <Pin size={11} className={test.pinned ? 'fill-amber-400 text-amber-400' : ''} />
+                                                                                <span>{test.pinned ? 'Pinned' : 'Pin Test'}</span>
+                                                                            </button>
                                                                             <button
                                                                                 data-no-export="true"
                                                                                 onClick={(e) => handleCopyPocReport(test, verdict.label, effectiveBlackoutMs, dateInfo ? dateInfo.fullStr : String(test.timestamp || ''), series, cardDomId, e)}

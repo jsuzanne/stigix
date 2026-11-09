@@ -8035,7 +8035,7 @@ async function pruneConvergenceHistoryFile(): Promise<{ kept: number; removed: n
             try {
                 const obj = JSON.parse(line);
                 const tsMs = getConvergenceRecordTimestampMs(obj);
-                if (tsMs > 0 && tsMs < cutoffMs) {
+                if (!obj.pinned && tsMs > 0 && tsMs < cutoffMs) {
                     removed++;
                     continue;
                 }
@@ -8085,19 +8085,46 @@ function getConvergenceHistoryCached(includeFullSeries = false): any[] {
         retention_days !== convergenceHistoryCache.retentionDays
     ) {
         const cutoffMs = Date.now() - retention_days * 24 * 60 * 60 * 1000;
-        // Read only the tail (~4MB max) to extract up to 250 JSONL records within the retention window
-        const tailLines = readLastLinesSync(CONVERGENCE_HISTORY_FILE, 250, 4 * 1024 * 1024);
+        // Read only the tail (~4MB max) to extract up to 300 JSONL records within the retention window or pinned
+        const tailLines = readLastLinesSync(CONVERGENCE_HISTORY_FILE, 300, 4 * 1024 * 1024);
         const fullItems = tailLines
             .map(l => {
                 try { return JSON.parse(l); } catch { return null; }
             })
             .filter((obj: any) => {
                 if (!obj) return false;
+                if (obj.pinned) return true;
                 const tsMs = getConvergenceRecordTimestampMs(obj);
                 return tsMs === 0 || tsMs >= cutoffMs;
             })
             .reverse()
             .slice(0, 200);
+
+        // Ensure any older pinned records outside tailLines are preserved in memory cache
+        if (tailLines.length >= 300) {
+            try {
+                const raw = fs.readFileSync(CONVERGENCE_HISTORY_FILE, 'utf-8');
+                const allLines = raw.split('\n').filter(Boolean);
+                if (allLines.length > tailLines.length) {
+                    const existingKeys = new Set(fullItems.map((it: any) => (it.test_id || it.testId || '') + (it.timestamp || it.start_time || '')));
+                    for (let i = 0; i < allLines.length - tailLines.length; i++) {
+                        const line = allLines[i];
+                        if (line.includes('"pinned":true')) {
+                            try {
+                                const obj = JSON.parse(line);
+                                if (obj.pinned) {
+                                    const key = (obj.test_id || obj.testId || '') + (obj.timestamp || obj.start_time || '');
+                                    if (!existingKeys.has(key)) {
+                                        fullItems.push(obj);
+                                        existingKeys.add(key);
+                                    }
+                                }
+                            } catch {}
+                        }
+                    }
+                }
+            } catch {}
+        }
 
         const liteItems = fullItems.map((item: any, idx: number) => {
             if (!Array.isArray(item.metrics_series)) return item;
@@ -8326,11 +8353,34 @@ app.get('/api/convergence/history/:id/series', authenticateToken, (req, res) => 
 
 app.delete('/api/convergence/history', authenticateToken, async (req, res) => {
     try {
-        if (fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
-            await fs.promises.writeFile(CONVERGENCE_HISTORY_FILE, '', 'utf8');
+        const includePinned = req.query.includePinned === 'true';
+        if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+            invalidateConvergenceHistoryCache();
+            return res.json({ success: true, keptPinned: 0 });
         }
+        if (includePinned) {
+            await fs.promises.writeFile(CONVERGENCE_HISTORY_FILE, '', 'utf8');
+            invalidateConvergenceHistoryCache();
+            return res.json({ success: true, keptPinned: 0 });
+        }
+        const raw = await fs.promises.readFile(CONVERGENCE_HISTORY_FILE, 'utf-8');
+        const lines = raw.split('\n').filter(Boolean);
+        const keptLines: string[] = [];
+        let keptPinned = 0;
+        for (const line of lines) {
+            try {
+                const obj = JSON.parse(line);
+                if (obj.pinned) {
+                    keptLines.push(line);
+                    keptPinned++;
+                }
+            } catch {}
+        }
+        const tmp = CONVERGENCE_HISTORY_FILE + '.tmp';
+        await fs.promises.writeFile(tmp, keptLines.length > 0 ? keptLines.join('\n') + '\n' : '', 'utf-8');
+        await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
         invalidateConvergenceHistoryCache();
-        res.json({ success: true });
+        res.json({ success: true, keptPinned });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -8375,6 +8425,60 @@ app.delete('/api/convergence/history/:id', authenticateToken, async (req, res) =
         await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
         invalidateConvergenceHistoryCache();
         res.json({ success: true, deleted: lines.length - filtered.length });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/convergence/history/:id/pin', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const reqTimestamp = req.query.timestamp || req.body?.timestamp;
+        const explicitPinned = req.body?.pinned;
+        if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+            return res.status(404).json({ success: false, error: 'History file not found' });
+        }
+        const raw = await fs.promises.readFile(CONVERGENCE_HISTORY_FILE, 'utf-8');
+        const lines = raw.split('\n').filter(Boolean);
+        const cleanTargetId = String(id).split(' (')[0].trim().toUpperCase();
+
+        let found = false;
+        let finalPinned = false;
+
+        const updated = lines.map(line => {
+            try {
+                const obj = JSON.parse(line);
+                const recordId: string = obj.test_id || obj.testId || '';
+                const cleanRecordId = String(recordId).split(' (')[0].trim().toUpperCase();
+                const idMatches = (cleanRecordId === cleanTargetId || recordId === id || recordId.startsWith(id + ' ') || recordId.startsWith(id + '('));
+
+                if (idMatches) {
+                    if (reqTimestamp) {
+                        const objTs = obj.timestamp || obj.start_time;
+                        if (String(objTs) !== String(reqTimestamp)) {
+                            return line;
+                        }
+                    }
+                    found = true;
+                    finalPinned = typeof explicitPinned === 'boolean' ? explicitPinned : !obj.pinned;
+                    obj.pinned = finalPinned;
+                    return JSON.stringify(obj);
+                }
+                return line;
+            } catch {
+                return line;
+            }
+        });
+
+        if (!found) {
+            return res.status(404).json({ success: false, error: 'Record not found' });
+        }
+
+        const tmp = CONVERGENCE_HISTORY_FILE + '.tmp';
+        await fs.promises.writeFile(tmp, updated.join('\n') + '\n', 'utf-8');
+        await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
+        invalidateConvergenceHistoryCache();
+        res.json({ success: true, test_id: id, pinned: finalPinned });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
