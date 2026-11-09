@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.48] - 2026-11-09
+
+### Fixed
+- **SD-WAN Dataplane & Speedtest Multi-Row Layout & Label Bloat Elimination (`web-dashboard/src/components/navigation/HomeOverview.tsx`)**:
+  - Re-balanced Card 3 ("SD-WAN Dataplane & WAN") into clean, dedicated dual-item rows (`justify-between`) with zero horizontal crowding:
+    - **Header**: Title on the left, Gateway health status badge on the right.
+    - **Row 1 (Underlay)**: Traffic Interface & IP on the left, SD-WAN Gateway IP on the right.
+    - **Row 2 (WAN)**: Egress WAN Public IP on the left, Internet Speedtest action button on the right.
+    - **Row 3 (Management & Access)**: Mgmt Interface & IP on the left, UI Access mode badge on the right.
+  - Trimmed Cloudflare Tunnel badge text to `CF Tunnel` (preventing hostname bloat like `CF Tunnel (sdwanbr8.carenaje.fr)` from pushing the Speedtest button past the right card boundary), while retaining the full access hostname in the hover tooltip.
+
 ## [3.1.47] - 2026-11-09
 
 ### Added

@@ -937,51 +937,41 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                         ? "bg-rose-500/5 dark:bg-rose-500/10 border-rose-500/40 dark:border-rose-500/40"
                                         : "bg-slate-50 dark:bg-card-secondary/40 border-slate-200 dark:border-[#1e293b]/70"
                                 )}>
-                                    {/* Header: Title + GW Reachability Badge + Public IP */}
+                                    {/* Header: Title + GW Reachability Badge */}
                                     <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 shrink-0">
-                                                <Globe size={14} className={hasDataplaneFault ? "text-rose-500 dark:text-rose-400" : "text-cyan-500 dark:text-cyan-400"} />
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <Globe size={14} className={hasDataplaneFault ? "text-rose-500 dark:text-rose-400 shrink-0" : "text-cyan-500 dark:text-cyan-400 shrink-0"} />
+                                            <span className="text-xs font-bold text-slate-900 dark:text-white shrink-0">
                                                 SD-WAN Dataplane & WAN
                                             </span>
-                                            {gatewayInfo && (
-                                                <span
-                                                    title={
-                                                        !trafficIfaceUp
-                                                            ? `Traffic interface ${trafficIface || ''} is DOWN`
-                                                            : !gwReachable
-                                                            ? `SD-WAN Gateway (${gwAddr}) is UNREACHABLE via ICMP ping`
-                                                            : `SD-WAN Gateway (${gwAddr}) is reachable${gwLatencyMs !== null && gwLatencyMs !== undefined ? ` (${gwLatencyMs}ms)` : ''}`
-                                                    }
-                                                    className={cn(
-                                                        "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider font-mono flex items-center gap-1 shrink-0",
-                                                        !trafficIfaceUp || !gwReachable
-                                                            ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 animate-pulse"
-                                                            : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                                                    )}
-                                                >
-                                                    <span className={cn("w-1.5 h-1.5 rounded-full", (!trafficIfaceUp || !gwReachable) ? "bg-rose-500" : "bg-emerald-500")} />
-                                                    {!trafficIfaceUp
-                                                        ? 'IFACE DOWN'
-                                                        : !gwReachable
-                                                        ? 'GW UNREACHABLE'
-                                                        : `GW OK${gwLatencyMs !== null && gwLatencyMs !== undefined ? ` · ${gwLatencyMs}ms` : ''}`}
-                                                </span>
-                                            )}
                                         </div>
-                                        {publicIp && (
-                                            <span className="text-xs font-mono flex items-center gap-1.5 shrink-0" title={publicIpCountry ? `Egress Public IP (${publicIpCountry})` : 'Egress Public IP'}>
-                                                {publicIpCountry && (
-                                                    <span className="text-sm leading-none">
-                                                        {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
-                                                    </span>
+                                        {gatewayInfo && (
+                                            <span
+                                                title={
+                                                    !trafficIfaceUp
+                                                        ? `Traffic interface ${trafficIface || ''} is DOWN`
+                                                        : !gwReachable
+                                                        ? `SD-WAN Gateway (${gwAddr}) is UNREACHABLE via ICMP ping`
+                                                        : `SD-WAN Gateway (${gwAddr}) is reachable${gwLatencyMs !== null && gwLatencyMs !== undefined ? ` (${gwLatencyMs}ms)` : ''}`
+                                                }
+                                                className={cn(
+                                                    "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider font-mono flex items-center gap-1 shrink-0",
+                                                    !trafficIfaceUp || !gwReachable
+                                                        ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 animate-pulse"
+                                                        : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                                                 )}
-                                                <strong className="text-slate-900 dark:text-text-primary text-[10px]">{publicIp}</strong>
+                                            >
+                                                <span className={cn("w-1.5 h-1.5 rounded-full", (!trafficIfaceUp || !gwReachable) ? "bg-rose-500" : "bg-emerald-500")} />
+                                                {!trafficIfaceUp
+                                                    ? 'IFACE DOWN'
+                                                    : !gwReachable
+                                                    ? 'GW UNREACHABLE'
+                                                    : `GW OK${gwLatencyMs !== null && gwLatencyMs !== undefined ? ` · ${gwLatencyMs}ms` : ''}`}
                                             </span>
                                         )}
                                     </div>
 
-                                    {/* Row 1: Traffic / Default Route Interface & SD-WAN Gateway */}
+                                    {/* Row 1: Dataplane Traffic & Gateway (Underlay) */}
                                     <div className="text-[11px] text-slate-600 dark:text-text-muted flex justify-between items-center font-mono gap-2">
                                         <span className="flex items-center gap-1 shrink-0" title={`Default route interface used for traffic generation (${trafficIface || 'default'})`}>
                                             <span>Traffic{trafficIface ? ` (${trafficIface})` : ''}:</span>
@@ -995,7 +985,21 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                         </span>
                                     </div>
 
-                                    {/* Row 2: Management Interface & Current UI Access Path + Speedtest */}
+                                    {/* Row 2: WAN Public Egress & Speedtest */}
+                                    <div className="pt-1.5 border-t border-slate-200/70 dark:border-[#1e293b]/80 text-[10px] text-slate-500 dark:text-text-muted flex justify-between items-center font-mono gap-2">
+                                        <span className="flex items-center gap-1.5 shrink-0" title={publicIpCountry ? `Egress Public IP (${publicIpCountry})` : 'Egress Public IP'}>
+                                            <span>Egress WAN:</span>
+                                            {publicIpCountry && (
+                                                <span className="text-sm leading-none">
+                                                    {String.fromCodePoint(...[...publicIpCountry.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)))}
+                                                </span>
+                                            )}
+                                            <strong className="text-slate-900 dark:text-text-primary text-[10px]">{publicIp || '—'}</strong>
+                                        </span>
+                                        {speedtestButton}
+                                    </div>
+
+                                    {/* Row 3: Management Interface & Current UI Access Path */}
                                     <div className="pt-1.5 border-t border-slate-200/70 dark:border-[#1e293b]/80 text-[10px] text-slate-500 dark:text-text-muted flex justify-between items-center font-mono gap-2">
                                         {mgmtIp ? (
                                             <>
@@ -1004,47 +1008,43 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                                                     <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", mgmtIfaceUp ? "bg-emerald-500" : "bg-amber-500")} />
                                                     <strong className="text-slate-800 dark:text-slate-200">{mgmtIp}</strong>
                                                 </span>
-                                                <div className="flex items-center gap-2 shrink-0">
-                                                    <span className="flex items-center gap-1 shrink-0" title={accessHost ? `Connected via ${accessLabel} (${accessHost})` : `Connected via ${accessLabel}`}>
-                                                        <span>UI:</span>
-                                                        <strong className={cn(
-                                                            "px-1.5 py-0.2 rounded text-[9px] font-bold",
-                                                            accessMode === 'cloudflare'
-                                                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                                                                : accessMode === 'out_of_band'
-                                                                ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400"
-                                                                : accessMode === 'leader_proxy'
-                                                                ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
-                                                                : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
-                                                        )}>
-                                                            {accessLabel}
-                                                        </strong>
-                                                    </span>
-                                                    {speedtestButton}
-                                                </div>
+                                                <span className="flex items-center gap-1 shrink-0" title={accessHost ? `Connected via ${accessMode === 'cloudflare' ? 'CF Tunnel' : accessLabel} (${accessHost})` : `Connected via ${accessLabel}`}>
+                                                    <span>UI:</span>
+                                                    <strong className={cn(
+                                                        "px-1.5 py-0.2 rounded text-[9px] font-bold",
+                                                        accessMode === 'cloudflare'
+                                                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                                            : accessMode === 'out_of_band'
+                                                            ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400"
+                                                            : accessMode === 'leader_proxy'
+                                                            ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                                                            : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
+                                                    )}>
+                                                        {accessMode === 'cloudflare' ? 'CF Tunnel' : accessLabel}
+                                                    </strong>
+                                                </span>
                                             </>
                                         ) : (
                                             <>
-                                                <span className="flex items-center gap-1.5 truncate" title={accessHost ? `UI session via ${accessLabel} (${accessHost})` : `UI session via ${accessLabel}`}>
+                                                <span className="flex items-center gap-1.5 min-w-0 truncate" title={accessHost ? `UI session via ${accessMode === 'cloudflare' ? 'CF Tunnel' : accessLabel} (${accessHost})` : `UI session via ${accessLabel}`}>
                                                     <span>UI Access:</span>
                                                     <strong className={cn(
-                                                        "px-1.5 py-0.2 rounded text-[9px] font-bold",
+                                                        "px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0",
                                                         accessMode === 'cloudflare'
                                                             ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                                                             : accessMode === 'leader_proxy'
                                                             ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
                                                             : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
                                                     )}>
-                                                        {accessLabel}
+                                                        {accessMode === 'cloudflare' ? 'CF Tunnel' : accessLabel}
                                                     </strong>
-                                                    <span className="text-slate-400 dark:text-slate-500 truncate">
-                                                        ({accessMode === 'cloudflare' && accessHost ? accessHost : trafficIp})
-                                                    </span>
+                                                    {accessHost && (
+                                                        <span className="text-slate-400 dark:text-slate-500 truncate">
+                                                            ({accessHost})
+                                                        </span>
+                                                    )}
                                                 </span>
-                                                <div className="flex items-center gap-2 shrink-0">
-                                                    <span className="text-[9px] text-slate-400 dark:text-slate-500">Single-NIC</span>
-                                                    {speedtestButton}
-                                                </div>
+                                                <span className="text-[9px] text-slate-400 dark:text-slate-500 shrink-0">Single-NIC</span>
                                             </>
                                         )}
                                     </div>
