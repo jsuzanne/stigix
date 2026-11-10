@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.2] - 2026-11-11
+
+### Added
+- **Real-Time On-Demand Failover Path Resolution via vION WebSocket CLI (`engines/sdwan_ion_cli.py`, `web-dashboard/server.ts`)**:
+  - Added `--resolve-flow` (`resolve_live_flow_cli`, `parse_inspect_flow_brief`, `resolve_wanpath_id`) to query the vION dataplane flow table (`inspect flow brief`) over the Device Toolkit WebSocket in ~2 seconds and translate `WANPATH-ID` into human-readable egress paths (e.g. `BR8-INET1 → DC1-INET` / `BR8-INET2 → DC1-INET`).
+  - Integrated on-demand live path lookup into `POST /api/convergence/live-path` with automatic fallback to `getflow.py` (`monitor_flows` API), accumulating observed path changes per `CONV-*` test (`activeConvergenceLivePaths`) and persisting the sequence immediately into `convergence-history.jsonl` when the test stops.
+  - Added inter-process serialization (`fcntl.flock` on `/tmp/stigix_ion_cli.lock`), pager early-stop (`'q'`) as soon as the target `src_port` row is received, and 10-minute `/tmp` caching for element lookup, toolkit user verification, and site topology links.
+- **Cross-Version vION CLI Resilience (`6.5`, `6.8`, `7.x`) (`engines/sdwan_ion_cli.py`, `mcp-server/tests/test_sdwan_phase3.py`)**:
+  - Added `software_version` detection on target elements, intra-WebSocket command fallback ladders (`build_command_fallbacks`), and per-version capability caching (`/tmp/stigix_ion_capabilities.json`).
+  - Replaced positional column slicing in `parse_inspect_flow_brief` with regex head/tail anchors (`_FLOW_HEAD_RX` and `_FLOW_TAIL_RX`) and continuation-line reassembly so 200-column wrapped multi-word policy names (`Allow Lan to Over\nlay`) and future ION OS column additions never break `WANPATH-ID` extraction.
+
 ## [3.2.1] - 2026-11-10
 
 ### Fixed

@@ -14,8 +14,10 @@ for p in (ENGINES_DIR, MCP_DIR):
 from sdwan_ion_cli import (
     IonCliError,
     RULES,
+    build_command_fallbacks,
     ensure_toolkit_user,
     execute_ion_cli,
+    parse_inspect_flow_brief,
     validate_command,
 )
 
@@ -260,3 +262,34 @@ def test_phase4_diagnostic_playbook_and_mcp_manifest_sync():
     ):
         assert required_tool in tool_fns
         assert required_tool in manifest
+
+
+def test_cross_version_fallbacks_and_regex_flow_parser():
+    """Verify cross-version command fallback ladder and regex-anchored flow brief parsing."""
+    fbs = build_command_fallbacks("inspect flow brief dstv4=192.168.203.100 sport=30454", "6.8.1-b4")
+    assert "inspect flow brief dstv4=192.168.203.100" in fbs
+    assert "inspect flow brief" in fbs
+
+    np_fbs = build_command_fallbacks(
+        "inspect network-policy lookup srcv4=192.168.201.2 dstv4=10.99.99.2 protocol=6 dport=443 app=ssl",
+        "6.5.2-b9",
+    )
+    assert "inspect network-policy lookup srcv4=192.168.201.2 dstv4=10.99.99.2 protocol=tcp dport=443 app=ssl" in np_fbs
+    assert "inspect network-policy lookup srcv4=192.168.201.2 dstv4=10.99.99.2 app=ssl" in np_fbs
+    assert "inspect network-policy lookup srcv4=192.168.201.2 dstv4=10.99.99.2 application=ssl" in np_fbs
+
+    sample_output = (
+        "VRF   SRC   DST   SPORT   DPORT   PROTOCOL   START-TIME   APP-ID   NET-POLICY   PRI-POLICY   SEC-POLICY   SEC-ACTION   WANPATH-ID   PATH-TYPE\n"
+        "Global  192.168.208.100 192.168.203.100 30454 6200 17 2026-11-10 22:12:41 FailoverTest-131093 All-Traffic-Enterprise-D All-Traffic-Enterprise-D Allow Lan to Over\n"
+        "lay ALLOW 1762789921682021645 lan_to_public_vpn\n"
+        "Global  192.168.208.100 192.168.203.100 30455 6200 17 2026-11-10 22:13:00 FailoverTest-131093 All-Traffic-Enterprise-D All-Traffic-Enterprise-D FUTURE_COL_A FUTURE_COL_B ALLOW 1762789923250022645 lan_to_public_vpn\n"
+    )
+    rows = parse_inspect_flow_brief(sample_output)
+    assert len(rows) == 2
+    assert rows[0]["source_port"] == 30454
+    assert rows[0]["sec_policy"] == "Allow Lan to Overlay"
+    assert rows[0]["wanpath_id"] == "1762789921682021645"
+    assert rows[0]["raw_path_type"] == "lan_to_public_vpn"
+    assert rows[1]["source_port"] == 30455
+    assert rows[1]["wanpath_id"] == "1762789923250022645"
+

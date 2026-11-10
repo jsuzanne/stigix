@@ -95,7 +95,8 @@ RULES = (
     ("dump reachability-probe status all", "L3 reachability probes"),
     ("inspect lqm stats all", "link quality (latency, loss, jitter, MOS) per path"),
     ("dump flow ifaces", "flow interfaces"),
-    ("inspect flow brief", "active flows (observed to work on vION 6.5.3; trailing arguments are rejected)"),
+    ("inspect flow brief", "active flows (all)"),
+    ("inspect flow brief <kv>", "active flows filtered by key=value (srcv4, dstv4, sport, dport, protocol, app)"),
     ("inspect system arp all", "ARP table"),
     ("inspect network-policy lookup <kv>", "which path-policy rule a flow matches"),
     ("inspect priority-policy lookup <kv>", "which QoS rule a flow matches"),
@@ -203,7 +204,7 @@ def validate_command(command: Any) -> str:
         )
     # Normalize protocol=tcp/udp/icmp to numeric IP protocol numbers expected by vION 6.8+
     _proto_map = {"tcp": "6", "udp": "17", "icmp": "1"}
-    if len(tokens) >= 3 and tokens[0] == "inspect" and tokens[2] == "lookup":
+    if len(tokens) >= 3 and tokens[0] == "inspect" and (tokens[2] == "lookup" or tokens[1:3] == ["flow", "brief"]):
         tokens = [
             f"protocol={_proto_map[t.split('=', 1)[1].lower()]}"
             if t.lower().startswith("protocol=") and t.split("=", 1)[1].lower() in _proto_map
@@ -327,7 +328,14 @@ def command_done(buf: str, command: str, host: str) -> bool:
     return any(l.strip() and not _is_echo(l, cmd) for l in before)
 
 
-async def _read_output(ws: Any, command: str, host: str, timeout: float, max_chars: int) -> Tuple[str, bool, bool, bool]:
+async def _read_output(
+    ws: Any,
+    command: str,
+    host: str,
+    timeout: float,
+    max_chars: int,
+    early_stop_check: Optional[Callable[[str], bool]] = None,
+) -> Tuple[str, bool, bool, bool]:
     loop = asyncio.get_running_loop()
     end, buf, closed, answered, truncated = loop.time() + timeout, "", False, 0, False
     while True:
@@ -354,6 +362,17 @@ async def _read_output(ws: Any, command: str, host: str, timeout: float, max_cha
                 return buf, True, True, truncated
         marks = list(MORE_RX.finditer(text))
         if len(marks) > answered and not text[marks[-1].end():].strip():
+            if early_stop_check is not None:
+                try:
+                    if early_stop_check(MORE_RX.sub("", text)):
+                        await ws.send("q")
+                        try:
+                            await asyncio.wait_for(ws.recv(), 0.25)
+                        except Exception:
+                            pass
+                        return buf, True, False, False
+                except Exception:
+                    pass
             if answered >= MAX_PAGES or len(text) >= max_chars:
                 truncated = True
                 break
@@ -371,6 +390,7 @@ async def _read_output(ws: Any, command: str, host: str, timeout: float, max_cha
 
 class CliOutput(str):
     truncated: bool = False
+    executed_command: str = ""
 
 
 def shape_output(raw: str, command: str) -> str:
@@ -398,6 +418,8 @@ async def run_command(
     login_timeout: float = 8.0,
     command_timeout: float = 15.0,
     idle: float = 1.5,
+    early_stop_check: Optional[Callable[[str], bool]] = None,
+    fallback_commands: Optional[List[str]] = None,
 ) -> CliOutput:
     try:
         cm = connect()
@@ -406,6 +428,13 @@ async def run_command(
         raise ToolkitError("connect_failed") from None
     try:
         text, hit, closed = await _read(ws, LOGIN_RX, login_timeout, idle)
+        if not hit and not closed and not PROMPT_RX.search(clean(text)):
+            try:
+                await ws.send("\r")
+                extra, hit, closed = await _read(ws, LOGIN_RX, min(4.0, login_timeout), idle)
+                text += extra
+            except Exception:
+                pass
         if not hit:
             if PROMPT_RX.search(clean(text)):
                 pass
@@ -424,16 +453,37 @@ async def run_command(
                 raise ToolkitError("closed" if closed else "no_prompt")
         m = PROMPT_LINE_RX.match(clean(text).rstrip(" ").split("\n")[-1])
         host = m.group(1) if m else ""
-        await ws.send(command + "\r")
-        out, done, closed, truncated = await _read_output(ws, command, host, command_timeout, POLICY_MAX_CHARS)
-        if not done and not truncated and not clean(out).strip():
-            raise ToolkitError("closed" if closed else "timeout")
+
+        candidates: List[str] = [command]
+        for fb in fallback_commands or []:
+            if fb and fb not in candidates:
+                candidates.append(fb)
+
+        shaped_text = ""
+        used_cmd = command
+        was_truncated = False
+        for idx, cand in enumerate(candidates):
+            used_cmd = cand
+            await ws.send(cand + "\r")
+            out, done, closed, truncated = await _read_output(
+                ws, cand, host, command_timeout, POLICY_MAX_CHARS, early_stop_check=early_stop_check
+            )
+            if not done and not truncated and not clean(out).strip():
+                raise ToolkitError("closed" if closed else "timeout")
+            shaped_text = shape_output(out, cand)
+            was_truncated = bool(truncated or (not done and not closed))
+            # If the device rejected this syntax and we have a fallback candidate, try it immediately in the same session
+            if device_rejection(shaped_text) and idx + 1 < len(candidates) and not closed:
+                continue
+            break
+
         try:
             await ws.send("exit\r")
         except Exception:
             pass
-        shaped = CliOutput(shape_output(out, command))
-        shaped.truncated = bool(truncated or (not done and not closed))
+        shaped = CliOutput(shaped_text)
+        shaped.truncated = was_truncated
+        shaped.executed_command = used_cmd
         return shaped
     finally:
         try:
@@ -612,6 +662,23 @@ def ensure_toolkit_user(
     if stored and stored.get("source") == "env" and not rotate:
         return stored
 
+    is_real_sdk = getattr(sdk, "_session", None) is not None
+    now_epoch = datetime.now(timezone.utc).timestamp()
+    if (
+        is_real_sdk
+        and not rotate
+        and isinstance(stored, dict)
+        and stored.get("username") == uname
+        and stored.get("password")
+        and (now_epoch - float(stored.get("verified_epoch") or 0)) < 900
+    ):
+        return {
+            "state": "cached",
+            "username": uname,
+            "password": stored["password"],
+            "role": stored.get("role") or role,
+        }
+
     try:
         profile = _resp_body(sdk.get.profile())
         tenant_id = profile.get("tenant_id") if isinstance(profile, dict) else getattr(sdk, "tenant_id", None)
@@ -640,6 +707,8 @@ def ensure_toolkit_user(
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     if existing is not None and not fresh and existing.get("is_tenant_level") is True:
+        if is_real_sdk and isinstance(stored, dict):
+            write_secret({**stored, "verified_epoch": now_epoch})
         return {
             "state": "unchanged",
             "username": uname,
@@ -671,6 +740,7 @@ def ensure_toolkit_user(
             "password": password,
             "password_class": label,
             "updated_at": stamp,
+            "verified_epoch": now_epoch,
         }
         write_secret(doc)
         payload = {**desired_base, "password": password}
@@ -730,12 +800,78 @@ def _normalize_site_token(name: str) -> str:
     return re.sub(r"[-_\s]+", "", s)
 
 
+from contextlib import contextmanager
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore
+
+TARGET_CACHE_FILE = "/tmp/stigix_ion_target_cache.json"
+ION_CLI_LOCK_FILE = "/tmp/stigix_ion_cli.lock"
+
+
+@contextmanager
+def _ion_cli_lock():
+    """Serialize Device Toolkit WebSocket sessions across processes on the same node."""
+    if fcntl is None:
+        yield
+        return
+    fd = None
+    try:
+        fd = open(ION_CLI_LOCK_FILE, "w", encoding="utf-8")
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+    except Exception:
+        pass
+    try:
+        yield
+    finally:
+        if fd is not None:
+            try:
+                fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+            try:
+                fd.close()
+            except Exception:
+                pass
+
+
 def resolve_target_element(sdk: Any, device_or_site: str) -> Tuple[Dict[str, Any], Optional[str]]:
     """Resolve `device_or_site` (e.g. 'br1-vion1', 'Branch-01-01', 'BR1', 'Branch-01', 'DC1')
     to an element dict and its site name."""
     query = str(device_or_site or "").strip()
     if not query:
         raise IonCliError("bad_request", "device_or_site is required (e.g. 'BR1', 'br1-vion1', 'Branch-01-01')")
+
+    is_real_sdk = getattr(sdk, "_session", None) is not None
+    q_key = _normalize_site_token(query) or query.lower()
+    now_epoch = datetime.now(timezone.utc).timestamp()
+
+    if is_real_sdk and os.path.exists(TARGET_CACHE_FILE):
+        try:
+            with open(TARGET_CACHE_FILE, "r", encoding="utf-8") as f:
+                cache_doc = json.load(f)
+            entry = (cache_doc or {}).get(q_key)
+            if isinstance(entry, dict) and (now_epoch - float(entry.get("ts") or 0)) < 600:
+                if isinstance(entry.get("element"), dict) and entry["element"].get("id"):
+                    return entry["element"], entry.get("site_name")
+        except Exception:
+            pass
+
+    def _save_target_cache(el_obj: Dict[str, Any], sname: Optional[str]) -> Tuple[Dict[str, Any], Optional[str]]:
+        if is_real_sdk:
+            try:
+                cache_doc = {}
+                if os.path.exists(TARGET_CACHE_FILE):
+                    with open(TARGET_CACHE_FILE, "r", encoding="utf-8") as f:
+                        cache_doc = json.load(f) or {}
+                cache_doc[q_key] = {"element": el_obj, "site_name": sname, "ts": now_epoch}
+                with open(TARGET_CACHE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(cache_doc, f)
+            except Exception:
+                pass
+        return el_obj, sname
 
     sites_body = _resp_body(sdk.get.sites()) or {}
     sites = sites_body.get("items") or []
@@ -752,7 +888,7 @@ def resolve_target_element(sdk: Any, device_or_site: str) -> Tuple[Dict[str, Any
         ename = str(el.get("name") or "")
         eid = str(el.get("id") or "")
         if ename.lower() == q_low or eid.lower() == q_low or (mapped_el_name and ename.lower() == mapped_el_name.lower()):
-            return el, site_names.get(str(el.get("site_id")))
+            return _save_target_cache(el, site_names.get(str(el.get("site_id"))))
 
     # 2. Match by site name / canonical site token (e.g. 'BR1' -> 'Branch-01' -> element at Branch-01)
     q_norm = _normalize_site_token(query)
@@ -768,13 +904,13 @@ def resolve_target_element(sdk: Any, device_or_site: str) -> Tuple[Dict[str, Any
             # Prefer connected element first
             site_els.sort(key=lambda e: (not bool(e.get("connected")), str(e.get("name") or "")))
             chosen = site_els[0]
-            return chosen, site_names.get(str(chosen.get("site_id")))
+            return _save_target_cache(chosen, site_names.get(str(chosen.get("site_id"))))
 
     # 3. Substring match on element name
     for el in elements:
         ename = str(el.get("name") or "").lower()
         if q_low in ename or (q_norm and q_norm in _normalize_site_token(ename)):
-            return el, site_names.get(str(el.get("site_id")))
+            return _save_target_cache(el, site_names.get(str(el.get("site_id"))))
 
     available = sorted(
         f"{e.get('name')} ({site_names.get(str(e.get('site_id')), 'unbound')})"
@@ -789,6 +925,92 @@ def resolve_target_element(sdk: Any, device_or_site: str) -> Tuple[Dict[str, Any
     )
 
 
+CAPABILITIES_CACHE_FILE = "/tmp/stigix_ion_capabilities.json"
+
+
+def _load_capabilities_cache() -> Dict[str, Any]:
+    if os.path.exists(CAPABILITIES_CACHE_FILE):
+        try:
+            with open(CAPABILITIES_CACHE_FILE, "r", encoding="utf-8") as f:
+                doc = json.load(f)
+            return doc if isinstance(doc, dict) else {}
+        except Exception:
+            pass
+    return {}
+
+
+def _save_capability(sw_version: str, family: str, mode: str) -> None:
+    if not sw_version:
+        return
+    try:
+        doc = _load_capabilities_cache()
+        ver_map = doc.get(sw_version) if isinstance(doc.get(sw_version), dict) else {}
+        if ver_map.get(family) != mode:
+            ver_map[family] = mode
+            doc[sw_version] = ver_map
+            with open(CAPABILITIES_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+    except Exception:
+        pass
+
+
+def build_command_fallbacks(norm_cmd: str, sw_version: str = "") -> List[str]:
+    """Build an ordered list of fallback CLI syntaxes for cross-version compatibility (e.g. vION 6.5 vs 6.8 vs 7.x)."""
+    tokens = norm_cmd.split()
+    fallbacks: List[str] = []
+    caps = (_load_capabilities_cache().get(sw_version) or {}) if sw_version else {}
+
+    # 1. inspect flow brief [<kv>]
+    if len(tokens) >= 3 and tokens[:3] == ["inspect", "flow", "brief"]:
+        kv_tokens = tokens[3:]
+        ip_only = [t for t in kv_tokens if t.startswith(("srcv4=", "dstv4="))]
+        dst_only = [t for t in kv_tokens if t.startswith("dstv4=")]
+        cmd_ip = ("inspect flow brief " + " ".join(ip_only)).strip()
+        cmd_dst = ("inspect flow brief " + " ".join(dst_only)).strip()
+        cmd_bare = "inspect flow brief"
+
+        cached_mode = caps.get("inspect_flow_brief")
+        if cached_mode == "bare":
+            ordered = [cmd_bare, cmd_ip, cmd_dst, norm_cmd]
+        elif cached_mode == "ip_only":
+            ordered = [cmd_ip, cmd_dst, cmd_bare, norm_cmd]
+        else:
+            ordered = [norm_cmd, cmd_ip, cmd_dst, cmd_bare]
+        for c in ordered:
+            if c and c not in fallbacks:
+                fallbacks.append(c)
+        return fallbacks
+
+    # 2. inspect network-policy / priority-policy lookup <kv>
+    if len(tokens) >= 4 and tokens[0] == "inspect" and tokens[2] == "lookup":
+        prefix = " ".join(tokens[:3])
+        kv_tokens = tokens[3:]
+        # Candidate A: only srcv4, dstv4, app/application (universal across 6.5 and 6.8)
+        core_kv = [t for t in kv_tokens if t.startswith(("srcv4=", "dstv4=", "app=", "application="))]
+        # Candidate B: symbolic protocol name (6.5 style) instead of numeric
+        rev_proto = {"17": "udp", "6": "tcp", "1": "icmp"}
+        sym_kv = [
+            f"protocol={rev_proto[t.split('=', 1)[1]]}"
+            if t.startswith("protocol=") and t.split("=", 1)[1] in rev_proto
+            else t
+            for t in kv_tokens
+        ]
+        # Candidate C: swap app= <-> application= across ION versions
+        alt_app_kv = [
+            f"application={t.split('=', 1)[1]}" if t.startswith("app=")
+            else (f"app={t.split('=', 1)[1]}" if t.startswith("application=") else t)
+            for t in core_kv
+        ]
+        for cand_kv in (kv_tokens, sym_kv, core_kv, alt_app_kv):
+            if cand_kv:
+                c = f"{prefix} {' '.join(cand_kv)}"
+                if c not in fallbacks:
+                    fallbacks.append(c)
+        return fallbacks
+
+    return [norm_cmd]
+
+
 def execute_ion_cli(
     sdk: Any,
     device_or_site: str,
@@ -796,51 +1018,69 @@ def execute_ion_cli(
     *,
     connect_fn: Optional[Callable[[Any, str], Any]] = None,
     ensure_user_fn: Optional[Callable[..., Dict[str, Any]]] = None,
+    early_stop_check: Optional[Callable[[str], bool]] = None,
 ) -> Dict[str, Any]:
     """Validate `command`, resolve `device_or_site`, ensure toolkit user credentials, and execute over WebSocket."""
     norm_cmd = validate_command(command)
-    el, site_name = resolve_target_element(sdk, device_or_site)
+    with _ion_cli_lock():
+        el, site_name = resolve_target_element(sdk, device_or_site)
 
-    if el.get("connected") is False:
-        raise IonCliError(
-            "device_offline",
-            f"Element {el.get('name')} (site {site_name}) is offline/disconnected from the controller.",
-            hint="A Device Toolkit WebSocket session requires the vION to be online.",
-            status=409,
-        )
+        if el.get("connected") is False:
+            raise IonCliError(
+                "device_offline",
+                f"Element {el.get('name')} (site {site_name}) is offline/disconnected from the controller.",
+                hint="A Device Toolkit WebSocket session requires the vION to be online.",
+                status=409,
+            )
 
-    ensure_fn = ensure_user_fn or ensure_toolkit_user
-    ws_factory = connect_fn or (lambda s, eid: toolkit_connect(s, eid))
-    element_id = str(el["id"])
+        ensure_fn = ensure_user_fn or ensure_toolkit_user
+        ws_factory = connect_fn or (lambda s, eid: toolkit_connect(s, eid))
+        element_id = str(el["id"])
+        sw_version = str(el.get("software_version") or "")
+        candidates = build_command_fallbacks(norm_cmd, sw_version)
+        primary_cmd = candidates[0] if candidates else norm_cmd
+        fallback_cmds = candidates[1:] if len(candidates) > 1 else None
 
-    creds = ensure_fn(sdk, rotate=False)
+        creds = ensure_fn(sdk, rotate=False)
 
-    async def _run_once(u: str, p: str) -> CliOutput:
-        return await asyncio.wait_for(
-            run_command(lambda: ws_factory(sdk, element_id), u, p, norm_cmd),
-            TOTAL_TIMEOUT_S,
-        )
+        async def _run_once(u: str, p: str) -> CliOutput:
+            return await asyncio.wait_for(
+                run_command(
+                    lambda: ws_factory(sdk, element_id),
+                    u,
+                    p,
+                    primary_cmd,
+                    early_stop_check=early_stop_check,
+                    fallback_commands=fallback_cmds,
+                ),
+                TOTAL_TIMEOUT_S,
+            )
 
-    try:
         try:
-            raw = asyncio.run(_run_once(creds["username"], creds["password"]))
-        except ToolkitError as te:
-            if te.code == "login_failed" and creds.get("source") != "env":
-                # Auto-rotate once if cached credentials were rejected by the vION
-                creds = ensure_fn(sdk, rotate=True)
+            try:
                 raw = asyncio.run(_run_once(creds["username"], creds["password"]))
-            else:
-                raise
-    except ToolkitError as e:
-        raise IonCliError(e.code, e.message, status=502) from None
-    except asyncio.TimeoutError:
-        raise IonCliError("timeout", ToolkitError.MESSAGES["timeout"], status=504) from None
-    except IonCliError:
-        raise
-    except Exception as e:
-        raise IonCliError("unavailable", ToolkitError.MESSAGES["connect_failed"], hint=type(e).__name__, status=502) from None
+            except ToolkitError as te:
+                if te.code == "login_failed" and creds.get("source") != "env":
+                    # Auto-rotate once if cached credentials were rejected by the vION
+                    creds = ensure_fn(sdk, rotate=True)
+                    raw = asyncio.run(_run_once(creds["username"], creds["password"]))
+                elif te.code in ("no_prompt", "connect_failed", "closed"):
+                    # Brief backoff if the vION VTY is still tearing down a previous WebSocket session
+                    time.sleep(1.0)
+                    raw = asyncio.run(_run_once(creds["username"], creds["password"]))
+                else:
+                    raise
+        except ToolkitError as e:
+            raise IonCliError(e.code, e.message, status=502) from None
+        except asyncio.TimeoutError:
+            raise IonCliError("timeout", ToolkitError.MESSAGES["timeout"], status=504) from None
+        except IonCliError:
+            raise
+        except Exception as e:
+            raise IonCliError("unavailable", ToolkitError.MESSAGES["connect_failed"], hint=type(e).__name__, status=502) from None
 
     text = str(raw or "")
+    executed_cmd = getattr(raw, "executed_command", "") or primary_cmd
     rejected = device_rejection(text)
     if rejected:
         raise IonCliError(
@@ -849,6 +1089,14 @@ def execute_ion_cli(
             hint=REJECT_HINT,
             status=422,
         )
+
+    # Record successful syntax mode for this software_version
+    if sw_version and executed_cmd.startswith("inspect flow brief"):
+        ex_toks = executed_cmd.split()
+        if len(ex_toks) == 3:
+            _save_capability(sw_version, "inspect_flow_brief", "bare")
+        elif all(t.startswith(("srcv4=", "dstv4=")) for t in ex_toks[3:]):
+            _save_capability(sw_version, "inspect_flow_brief", "ip_only")
 
     data_bytes = text.encode("utf-8", "replace")
     truncated = len(data_bytes) > MAX_OUTPUT_BYTES or bool(getattr(raw, "truncated", False))
@@ -860,13 +1108,290 @@ def execute_ion_cli(
     return {
         "success": True,
         "site": site_name,
+        "site_id": str(el.get("site_id") or ""),
         "element": el.get("name"),
         "element_id": element_id,
-        "command": norm_cmd,
+        "software_version": sw_version,
+        "command": executed_cmd,
         "output": text,
         "truncated": truncated,
         "bytes": len(data_bytes),
         "read_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+_FLOW_HEAD_RX = re.compile(
+    r"^(?P<vrf>\S+)\s+"
+    r"(?P<src>(?:\d{1,3}\.){3}\d{1,3})\s+"
+    r"(?P<dst>(?:\d{1,3}\.){3}\d{1,3})\s+"
+    r"(?P<sport>\d+)\s+"
+    r"(?P<dport>\d+)\s+"
+    r"(?P<proto>\d+)\s+"
+    r"(?P<start>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+"
+    r"(?P<app>\S+)\s+"
+    r"(?P<rest>.+)$"
+)
+_FLOW_TAIL_RX = re.compile(r"^(?P<mid>.*?)\s+(?P<sec_action>\S+)\s+(?P<wanpath>\d{15,20}|--)\s+(?P<path>[A-Za-z0-9_.-]+)\s*$")
+
+
+def parse_inspect_flow_brief(output: str) -> List[Dict[str, Any]]:
+    """Parse `inspect flow brief` tabular CLI output using regex anchors (`_FLOW_HEAD_RX` and `_FLOW_TAIL_RX`)
+    so column additions or multi-word policy names across ION OS versions (6.5, 6.8, 7.x) never break extraction."""
+    raw_lines = str(output or "").splitlines()
+    merged_lines: List[str] = []
+    for line in raw_lines:
+        if not line.strip():
+            continue
+        stripped = line.strip()
+        if stripped.startswith("VRF ") and "SRC" in stripped and "DST" in stripped:
+            continue
+        if stripped.startswith("SEC-ACTION") and "WANPATH-ID" in stripped:
+            continue
+        toks = stripped.split()
+        is_new_record = len(toks) >= 6 and bool(_IPV4.fullmatch(toks[1])) and bool(_IPV4.fullmatch(toks[2]))
+        if is_new_record:
+            merged_lines.append(stripped)
+        elif merged_lines:
+            sep = " " if line[0].isspace() else ""
+            merged_lines[-1] = f"{merged_lines[-1]}{sep}{stripped}"
+
+    flows: List[Dict[str, Any]] = []
+    for row in merged_lines:
+        m_head = _FLOW_HEAD_RX.match(row)
+        if not m_head:
+            continue
+        rest = m_head.group("rest")
+        m_tail = _FLOW_TAIL_RX.match(rest)
+        if m_tail:
+            mid_tokens = m_tail.group("mid").split()
+            sec_action = m_tail.group("sec_action")
+            wanpath_id = m_tail.group("wanpath")
+            raw_path_type = m_tail.group("path")
+        else:
+            r_toks = rest.split()
+            if len(r_toks) < 3:
+                continue
+            mid_tokens = r_toks[:-3]
+            sec_action = r_toks[-3]
+            wanpath_id = r_toks[-2]
+            raw_path_type = r_toks[-1]
+
+        flows.append({
+            "vrf": m_head.group("vrf"),
+            "source_ip": m_head.group("src"),
+            "destination_ip": m_head.group("dst"),
+            "source_port": int(m_head.group("sport")),
+            "destination_port": int(m_head.group("dport")),
+            "protocol": int(m_head.group("proto")),
+            "start_time": m_head.group("start"),
+            "app_id": m_head.group("app"),
+            "net_policy": mid_tokens[0] if len(mid_tokens) >= 1 else None,
+            "pri_policy": mid_tokens[1] if len(mid_tokens) >= 2 else None,
+            "sec_policy": " ".join(mid_tokens[2:]) if len(mid_tokens) >= 3 else None,
+            "sec_action": sec_action,
+            "wanpath_id": wanpath_id,
+            "raw_path_type": raw_path_type,
+        })
+    return flows
+
+
+def resolve_wanpath_id(
+    sdk: Any,
+    site_id: str,
+    site_name: str,
+    wanpath_id: str,
+    raw_path_type: str = "",
+) -> Tuple[str, str]:
+    """Translate a vION `WANPATH-ID` (e.g. '1772715676674020345') into `(egress_path, path_type)`
+    matching Stigix `getflow.py` conventions (e.g. `('BR8-INET2 → DC2-INET', 'VPN')`)."""
+    wid = str(wanpath_id or "").strip()
+    if not wid or wid in ("--", "0", "N/A"):
+        return (raw_path_type or "Direct / Local", "DirectInternet")
+
+    topo_cache_file = f"/tmp/stigix_site_topo_{site_id}.json"
+    now_epoch = datetime.now(timezone.utc).timestamp()
+    topo: Dict[str, Any] = {}
+
+    if site_id and os.path.exists(topo_cache_file):
+        try:
+            with open(topo_cache_file, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+            if isinstance(cached, dict) and (now_epoch - float(cached.get("ts") or 0)) < 600:
+                topo = cached.get("links") or {}
+        except Exception:
+            topo = {}
+
+    if (not topo or wid not in topo) and sdk is not None and site_id:
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            if script_dir not in sys.path:
+                sys.path.insert(0, script_dir)
+            from getflow import get_topology
+            fresh_topo = get_topology(sdk, site_id, debug=False)
+            if isinstance(fresh_topo, dict) and fresh_topo:
+                topo = fresh_topo
+                try:
+                    with open(topo_cache_file, "w", encoding="utf-8") as f:
+                        json.dump({"ts": now_epoch, "links": topo}, f)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    link = topo.get(wid) if isinstance(topo, dict) else None
+    raw_low = str(raw_path_type or "").lower()
+
+    if isinstance(link, dict):
+        ltype = str(link.get("type") or "").lower()
+        if ltype.endswith("-stub") or raw_low == "lan_to_wan":
+            ckt = link.get("target_circuit_name") or link.get("source_circuit_name") or wid
+            return (str(ckt), "DirectInternet")
+        if "servicelink" in ltype or raw_low == "lan_to_servicelink":
+            ckt = link.get("source_circuit_name") or link.get("target_circuit_name") or wid
+            return (f"{ckt} → Standard VPN", "ServiceLink")
+
+        src_ckt = str(link.get("source_circuit_name") or "Unknown")
+        tgt_ckt = str(link.get("target_circuit_name") or "Unknown")
+        tgt_site = str(link.get("target_site_name") or "")
+        # In basenet topology, mesh links may be oriented Remote -> Local
+        if site_name and (
+            tgt_site.upper() == site_name.upper()
+            or (
+                tgt_ckt.upper().startswith(f"{site_name.upper()}-")
+                and not src_ckt.upper().startswith(f"{site_name.upper()}-")
+            )
+        ):
+            local_ckt, remote_ckt = tgt_ckt, src_ckt
+        else:
+            if site_name and src_ckt != "Unknown" and not src_ckt.upper().startswith(f"{site_name.upper()}-"):
+                src_ckt = f"{site_name}-{src_ckt}"
+            if tgt_site and tgt_ckt != "Unknown" and not tgt_ckt.upper().startswith(f"{tgt_site.upper()}-"):
+                tgt_ckt = f"{tgt_site}-{tgt_ckt}"
+            local_ckt, remote_ckt = src_ckt, tgt_ckt
+        return (f"{local_ckt} → {remote_ckt}", "VPN")
+
+    # Fallback: check site waninterfaces if direct WAN interface ID
+    if sdk is not None and site_id:
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            if script_dir not in sys.path:
+                sys.path.insert(0, script_dir)
+            from sdwan_flow_analysis import FlowResolver
+            resolved = FlowResolver(sdk, site_id).path(wid)
+            if resolved and resolved != wid:
+                p_type = "DirectInternet" if resolved.startswith("Direct:") else "VPN"
+                clean_lbl = resolved.replace("Direct: ", "").replace("VPN: ", "").replace(" -> ", " → ")
+                return (clean_lbl, p_type)
+        except Exception:
+            pass
+
+    p_type = "VPN" if "vpn" in raw_low else ("ServiceLink" if "servicelink" in raw_low else "DirectInternet")
+    return (f"{p_type} ({wid})", p_type)
+
+
+def resolve_live_flow_cli(
+    sdk: Any,
+    device_or_site: str,
+    *,
+    dst_ip: Optional[str] = None,
+    src_ip: Optional[str] = None,
+    src_port: Optional[int] = None,
+    dst_port: Optional[int] = None,
+    protocol: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Query real-time active dataplane flow(s) on a vION via `inspect flow brief <kv>`
+    and resolve the active `WANPATH-ID` to a human-readable `egress_path`.
+
+    Note: vION `inspect flow brief` accepts `srcv4=<ip>` and `dstv4=<ip>` in CLI,
+    and rejects `sport=` / `protocol=` keywords. Port and protocol filtering is
+    therefore performed locally on the parsed flow table.
+    """
+    kv_parts: List[str] = []
+    if src_ip:
+        kv_parts.append(f"srcv4={src_ip}")
+    if dst_ip:
+        kv_parts.append(f"dstv4={dst_ip}")
+
+    cmd = "inspect flow brief" + (" " + " ".join(kv_parts) if kv_parts else "")
+
+    def _stop_when_found(partial_text: str) -> bool:
+        if not src_port or int(src_port) <= 0:
+            return False
+        rows = parse_inspect_flow_brief(partial_text)
+        for r in rows:
+            if (
+                str(r.get("source_port")) == str(int(src_port))
+                and str(r.get("wanpath_id") or "").isdigit()
+            ):
+                return True
+        return False
+
+    cli_res = execute_ion_cli(sdk, device_or_site, cmd, early_stop_check=_stop_when_found)
+    all_rows = parse_inspect_flow_brief(cli_res.get("output") or "")
+    # Sort newest flows first by start_time
+    all_rows.sort(key=lambda r: str(r.get("start_time") or ""), reverse=True)
+
+    # Filter locally by dst_ip, src_ip, protocol, src_port, dst_port (handles vION 6.5 bare fallback & NAT)
+    filtered = all_rows
+    if dst_ip:
+        dst_matches = [r for r in filtered if r.get("destination_ip") == dst_ip]
+        if dst_matches:
+            filtered = dst_matches
+    if src_ip:
+        src_matches = [r for r in filtered if r.get("source_ip") == src_ip]
+        if src_matches:
+            filtered = src_matches
+    if protocol and int(protocol) > 0:
+        proto_matches = [r for r in filtered if str(r.get("protocol")) == str(int(protocol))]
+        if proto_matches:
+            filtered = proto_matches
+
+    if src_port and int(src_port) > 0:
+        port_matches = [
+            r for r in filtered
+            if str(r.get("source_port")) == str(int(src_port)) or str(r.get("destination_port")) == str(int(src_port))
+        ]
+        if port_matches:
+            filtered = port_matches
+
+    if dst_port and int(dst_port) > 0:
+        dport_matches = [
+            r for r in filtered
+            if str(r.get("destination_port")) == str(int(dst_port)) or str(r.get("source_port")) == str(int(dst_port))
+        ]
+        if dport_matches:
+            filtered = dport_matches
+
+    parsed_rows = filtered
+
+    site_id = str(cli_res.get("site_id") or "")
+    site_name = str(cli_res.get("site") or device_or_site)
+
+    enriched_flows: List[Dict[str, Any]] = []
+    for row in parsed_rows:
+        egress_path, path_type = resolve_wanpath_id(
+            sdk,
+            site_id,
+            site_name,
+            str(row.get("wanpath_id") or ""),
+            str(row.get("raw_path_type") or ""),
+        )
+        enriched_flows.append({
+            **row,
+            "egress_path": egress_path,
+            "path_type": path_type,
+            "path_history": [{"path": egress_path, "path_type": path_type, "timestamp": cli_res.get("read_at")}],
+        })
+
+    return {
+        "success": True,
+        "source": "ion_cli_websocket",
+        "site_name": site_name,
+        "site_id": site_id,
+        "element": cli_res.get("element"),
+        "command": cli_res.get("command"),
+        "query_time": cli_res.get("read_at"),
+        "flows": enriched_flows,
     }
 
 
@@ -897,12 +1422,34 @@ def _authenticate_sdk(credentials_path: str = "credentials.json") -> Any:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Read-Only Prisma SD-WAN vION CLI via WebSocket Device Toolkit")
     parser.add_argument("--device", required=True, help="vION element name or site name (e.g. 'BR1', 'br1-vion1', 'Branch-01-01')")
-    parser.add_argument("--command", required=True, help="Read-only ION CLI command (e.g. 'dump vpn summary all')")
+    parser.add_argument("--command", default="", help="Read-only ION CLI command (e.g. 'dump vpn summary all')")
+    parser.add_argument("--resolve-flow", action="store_true", help="Resolve active dataplane flow via inspect flow brief + topology lookup")
+    parser.add_argument("--dst-ip", default=None, help="Destination IPv4 filter for --resolve-flow")
+    parser.add_argument("--src-ip", default=None, help="Source IPv4 filter for --resolve-flow")
+    parser.add_argument("--src-port", type=int, default=None, help="Source port filter for --resolve-flow")
+    parser.add_argument("--dst-port", type=int, default=None, help="Destination port filter for --resolve-flow")
+    parser.add_argument("--protocol", type=int, default=None, help="IP protocol number filter (e.g. 17 for UDP, 6 for TCP)")
     parser.add_argument("--credentials", default="credentials.json", help="Credentials file path")
     parser.add_argument("--json", action="store_true", help="Output JSON")
     parsed = parser.parse_args()
 
     try:
+        if parsed.resolve_flow:
+            sdk = _authenticate_sdk(parsed.credentials)
+            res = resolve_live_flow_cli(
+                sdk,
+                parsed.device,
+                dst_ip=parsed.dst_ip,
+                src_ip=parsed.src_ip,
+                src_port=parsed.src_port,
+                dst_port=parsed.dst_port,
+                protocol=parsed.protocol,
+            )
+            print(json.dumps(res, indent=2))
+            return
+
+        if not parsed.command:
+            raise IonCliError("bad_request", "Either --command or --resolve-flow is required.")
         # Validate command syntax first before authenticating to the controller
         validate_command(parsed.command)
         sdk = _authenticate_sdk(parsed.credentials)

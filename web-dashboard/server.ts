@@ -619,6 +619,69 @@ async function runGetflow(
     });
 }
 
+// Tracks on-demand live path samples observed during a running CONV-* test (Avant / Pendant)
+const activeConvergenceLivePaths = new Map<string, Array<{ path: string; path_type?: string | null; timestamp: string }>>();
+
+/**
+ * Query active dataplane flow in real time (~1.5-2s) via vION WebSocket CLI (`inspect flow brief`)
+ * and resolve WANPATH-ID via site topology cache. Never throws; returns null on error.
+ */
+async function runLiveFlowCli(
+    siteName: string,
+    sourcePort: number,
+    dstIp: string,
+    protocol: number = 17
+): Promise<any> {
+    return new Promise((resolve) => {
+        try {
+            const scriptPath = path.join(PROJECT_ROOT, 'engines', 'sdwan_ion_cli.py');
+            if (!fs.existsSync(scriptPath)) {
+                resolve(null);
+                return;
+            }
+            const args = [
+                scriptPath,
+                '--device', siteName,
+                '--resolve-flow',
+                '--dst-ip', String(dstIp),
+                '--src-port', String(sourcePort),
+                '--protocol', String(protocol),
+                '--json'
+            ];
+            const candidateCreds = [
+                path.join(APP_CONFIG.configDir, 'prisma-config.json'),
+                path.join(APP_CONFIG.configDir, 'credentials.json'),
+                '/data/stigix/config/prisma-config.json',
+                '/app/config/prisma-config.json'
+            ];
+            for (const cPath of candidateCreds) {
+                if (fs.existsSync(cPath)) {
+                    args.push('--credentials', cPath);
+                    break;
+                }
+            }
+            const proc = spawn(PYTHON_PATH, args, {
+                cwd: path.join(PROJECT_ROOT, 'engines'),
+                timeout: 25_000,
+                env: {
+                    ...process.env,
+                    PYTHONUNBUFFERED: '1',
+                    PRISMA_SDWAN_TSG_ID: process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID
+                }
+            });
+            let stdout = '';
+            proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+            proc.on('close', () => {
+                try { resolve(JSON.parse(stdout)); }
+                catch { resolve(null); }
+            });
+            proc.on('error', () => resolve(null));
+        } catch {
+            resolve(null);
+        }
+    });
+}
+
 /**
  * Find a convergence history entry by testId and merge extra fields.
  * Uses atomic .tmp + rename write to prevent file corruption.
@@ -7931,8 +7994,22 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
                     const effectiveSeries = (Array.isArray(finalStats.metrics_series) && finalStats.metrics_series.length > 0)
                         ? finalStats.metrics_series
                         : (pendingSeries || finalStats.metrics_series || []);
+                    const capturedLivePaths = activeConvergenceLivePaths.get(testId) || [];
+                    activeConvergenceLivePaths.delete(testId);
+                    const initialEgressPath = capturedLivePaths.length > 0
+                        ? capturedLivePaths[capturedLivePaths.length - 1].path
+                        : (finalStats.egress_path || undefined);
+                    const initialPathEvolution = capturedLivePaths.length > 1
+                        ? capturedLivePaths.map(p => p.path).join(' ➔ ')
+                        : initialEgressPath;
+
                     fs.appendFileSync(CONVERGENCE_HISTORY_FILE, JSON.stringify({
                         ...finalStats,
+                        ...(initialEgressPath ? {
+                            egress_path: initialEgressPath,
+                            path_history: capturedLivePaths,
+                            path_evolution: initialPathEvolution
+                        } : {}),
                         metrics_series: effectiveSeries,
                         global_id: savedGlobalId || finalStats.global_id || finalStats.global_test_id || null,
                         global_test_id: savedGlobalId || finalStats.global_test_id || finalStats.global_id || null,
@@ -7947,9 +8024,10 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
                     const testNum = parseInt(testId.replace('CONV-', ''));
                     const sourcePort = 30000 + testNum;
                     const enrichTarget = target; // capture target IP in closure
+                    const hadLiveMultiPath = capturedLivePaths.length > 1;
                     console.log(`[${testId}] [CONV] Scheduling 1st getflow enrichment in 60s (port ${sourcePort}, dst ${enrichTarget})`);
                     setTimeout(async () => {
-                        let hasMultiPath = false;
+                        let hasMultiPath = hadLiveMultiPath;
                         try {
                             const siteInfo = siteManager.getSiteInfo();
                             const siteName = siteInfo?.detected_site_name;
@@ -7963,16 +8041,20 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
                                         ...p,
                                         path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
                                     }));
-                                    const pathEvolution = pathHistory.length > 1
-                                        ? pathHistory.map((p: any) => p.path).join(' ➔ ')
+                                    // Preserve multi-path sequence captured live via CLI if Flow Browser only returned 1 path
+                                    const effectiveHistory = (hadLiveMultiPath && pathHistory.length < capturedLivePaths.length)
+                                        ? capturedLivePaths
+                                        : pathHistory;
+                                    const pathEvolution = effectiveHistory.length > 1
+                                        ? effectiveHistory.map((p: any) => p.path).join(' ➔ ')
                                         : egressPath;
 
                                     await enrichConvergenceHistory(testId, {
                                         egress_path: egressPath,
-                                        path_history: pathHistory,
+                                        path_history: effectiveHistory,
                                         path_evolution: pathEvolution
                                     });
-                                    if (pathHistory.length > 1) {
+                                    if (effectiveHistory.length > 1) {
                                         hasMultiPath = true;
                                     }
                                     console.log(`[${testId}] [CONV] Egress path enriched (1st check 60s): ${pathEvolution}`);
@@ -8395,17 +8477,77 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
             });
         }
 
-        log('CONV', `Querying live path for ${siteName} -> dst ${dstIp} (UDP port ${sourcePort})`);
+        log('CONV', `Querying live path for ${siteName} -> dst ${dstIp} (UDP port ${sourcePort}) via vION WebSocket CLI (with API fallback)`);
+        const normTestId = testId ? (String(testId).match(/(CONV-\d+)/)?.[1] || String(testId)) : '';
+
+        // 1. Real-time dataplane lookup via vION WebSocket CLI (~1.5-2s, zero cloud indexing lag)
+        const cliResult = await runLiveFlowCli(siteName, Number(sourcePort), String(dstIp), 17);
+        if (cliResult?.flows && cliResult.flows.length > 0) {
+            const primaryFlow = cliResult.flows[0];
+            const rawPath = primaryFlow.egress_path || primaryFlow.path_type || '';
+            const egressPath = rawPath.replace(/ to /g, ' → ');
+            const nowIso = cliResult.query_time || new Date().toISOString();
+
+            let pathHistory = [{
+                path: egressPath,
+                path_type: primaryFlow.path_type || null,
+                timestamp: nowIso
+            }];
+
+            if (normTestId) {
+                const prev = activeConvergenceLivePaths.get(normTestId) || [];
+                if (prev.length === 0 || prev[prev.length - 1].path !== egressPath) {
+                    prev.push({
+                        path: egressPath,
+                        path_type: primaryFlow.path_type || null,
+                        timestamp: nowIso
+                    });
+                    activeConvergenceLivePaths.set(normTestId, prev);
+                }
+                pathHistory = [...prev];
+            }
+
+            const pathEvolution = pathHistory.length > 1
+                ? pathHistory.map((p: any) => p.path).join(' ➔ ')
+                : egressPath;
+
+            log('CONV', `Live path resolved via vION CLI for ${normTestId || siteName}: ${pathEvolution}`);
+            return res.json({
+                success: true,
+                found: true,
+                source: 'ion_cli_websocket',
+                site_name: siteName,
+                source_port: sourcePort,
+                destination_ip: dstIp,
+                egress_path: egressPath,
+                path_history: pathHistory,
+                path_evolution: pathEvolution,
+                path_type: primaryFlow.path_type || null,
+                flow: primaryFlow,
+                flows_count: cliResult.flows.length,
+                timestamp: nowIso
+            });
+        }
+
+        // 2. Fallback to Prisma SD-WAN Flow Browser API (getflow.py)
         const result = await runGetflow(siteName, Number(sourcePort), String(dstIp));
 
         if (result?.flows && result.flows.length > 0) {
             const primaryFlow = result.flows[0];
             const rawPath = primaryFlow.egress_path || primaryFlow.path_type || '';
             const egressPath = rawPath.replace(/ to /g, ' → ');
-            const pathHistory = (primaryFlow.path_history || []).map((p: any) => ({
+            let pathHistory = (primaryFlow.path_history || []).map((p: any) => ({
                 ...p,
                 path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
             }));
+            if (normTestId) {
+                const prev = activeConvergenceLivePaths.get(normTestId) || [];
+                if (prev.length > pathHistory.length) {
+                    pathHistory = [...prev];
+                } else if (pathHistory.length > 0) {
+                    activeConvergenceLivePaths.set(normTestId, pathHistory);
+                }
+            }
             const pathEvolution = pathHistory.length > 1
                 ? pathHistory.map((p: any) => p.path).join(' ➔ ')
                 : egressPath;
@@ -8413,6 +8555,7 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
             return res.json({
                 success: true,
                 found: true,
+                source: 'flow_browser_api',
                 site_name: siteName,
                 source_port: sourcePort,
                 destination_ip: dstIp,
