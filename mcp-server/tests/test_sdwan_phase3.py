@@ -29,7 +29,7 @@ def test_validate_command_policy():
     assert validate_command("inspect flow brief") == "inspect flow brief"
     assert (
         validate_command("inspect network-policy lookup srcv4=192.168.201.2 dstv4=10.99.99.2 protocol=tcp dport=443")
-        == "inspect network-policy lookup srcv4=192.168.201.2 dstv4=10.99.99.2 protocol=tcp dport=443"
+        == "inspect network-policy lookup srcv4=192.168.201.2 dstv4=10.99.99.2 protocol=6 dport=443"
     )
 
     # Forbidden tokens or injection characters must be rejected
@@ -73,8 +73,8 @@ class _FakeUserSdk:
                 "items": [
                     {
                         "id": "u-1",
-                        "username": "stigix-ai-toolkit",
-                        "login_id": "stigix-ai-toolkit",
+                        "username": "stigix-ai",
+                        "login_id": "stigix-ai",
                         "role": "super",
                         "is_tenant_level": True,
                     }
@@ -86,7 +86,7 @@ class _FakeUserSdk:
         if len(self.created_passwords) == 1:
             return _FakeResp({"_error": [{"code": "ELEMENTUSER_INVALID_PASSWORD"}]}, status_code=400)
         self.stored_pw = pw
-        return _FakeResp({"id": "u-1", "username": "stigix-ai-toolkit"}, status_code=201)
+        return _FakeResp({"id": "u-1", "username": "stigix-ai"}, status_code=201)
 
     def elementusers_password(self, user_id):
         return _FakeResp({"password": self.stored_pw})

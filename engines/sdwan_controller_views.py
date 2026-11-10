@@ -992,18 +992,16 @@ def view_events(sdk: Any, args: Dict[str, Any]) -> Dict[str, Any]:
     start, end = _window(hours)
     query: Dict[str, Any] = {}
     if site_id:
-        query["site_id"] = [site_id]
-    if severity != "all":
-        query["severity"] = [severity]
+        query["site"] = [site_id]
     if kind != "all":
         query["type"] = [kind]
-    if code:
-        query["code"] = [str(code)]
+    sev_list = [severity] if severity in ("critical", "major", "minor") else ["critical", "major", "minor"]
     body: Dict[str, Any] = {
         "limit": {"count": CAP_ROWS, "sort_on": "time", "sort_order": "descending"},
         "start_time": start,
         "end_time": end,
         "view": {"summary": False},
+        "severity": sev_list,
     }
     if query:
         body["query"] = query
@@ -1011,6 +1009,10 @@ def view_events(sdk: Any, args: Dict[str, Any]) -> Dict[str, Any]:
     rows, by_code = [], {}
     for e in (rows_of(resp) if resp is not None else []):
         c = pick(e, "code", "event_code")
+        if code and str(c or "").lower() != str(code).lower():
+            continue
+        if severity not in ("all", "critical", "major", "minor") and str(pick(e, "severity") or "").lower() != severity.lower():
+            continue
         by_code[str(c)] = by_code.get(str(c), 0) + 1
         rows.append({
             "time": pick(e, "time", "_created_on_utc", "event_time"),
@@ -1272,6 +1274,15 @@ def view_site_config(sdk: Any, args: Dict[str, Any]) -> Dict[str, Any]:
             }
             for i in ifs
         ]
+        if out.get("lan_prefixes") is not None and not lan:
+            for i in ifs:
+                used_for = str(i.get("used_for") or "").lower()
+                iscope = str(i.get("scope") or "").lower()
+                addr = pick(i, "ipv4_config.static_config.address")
+                if addr and (used_for in ("lan", "private") or iscope == "global") and not i.get("site_wan_interface_ids"):
+                    entry = f"{addr} (interface {i.get('name')}, scope {i.get('scope') or 'unknown'})"
+                    if entry not in out["lan_prefixes"]:
+                        out["lan_prefixes"].append(entry)
         routes = rd.rows("get", "staticroutes", sid, eid, label=f"staticroutes:{el.get('name')}")
         row["static_routes"] = [
             {
@@ -1379,6 +1390,26 @@ def view_object(sdk: Any, args: Dict[str, Any]) -> Dict[str, Any]:
         match = next((r for r in rows if str(r.get(name_key, "")).lower() == wanted.lower()), None)
         if match is None:
             match = next((r for r in rows if wanted.lower() in str(r.get(name_key, "")).lower()), None)
+        if match is None and spec.rules_method:
+            # Fallback: caller passed a policy rule name (e.g. from get_prisma_flows `path_rule: "Hetzner via DC1"`)
+            for candidate_set in rows:
+                cid = candidate_set.get("id")
+                if cid is None or rd.exhausted:
+                    continue
+                cand_rules = rd.rows("get", spec.rules_method, str(cid), label=spec.rules_method)
+                rule_hit = next(
+                    (
+                        rl for rl in cand_rules
+                        if str(rl.get("name", "")).lower() == wanted.lower()
+                        or wanted.lower() in str(rl.get("name", "")).lower()
+                    ),
+                    None,
+                )
+                if rule_hit is not None:
+                    match = candidate_set
+                    out["matched_by"] = "policy_rule_name"
+                    out["matched_rule_name"] = rule_hit.get("name")
+                    break
         if match is None:
             available = sorted(str(r.get(name_key)) for r in rows if r.get(name_key))[:NAME_LIST_MAX]
             raise SdwanViewError(404, "not_found", f"No {typ} object named {wanted[:60]!r}.", hint=", ".join(available))

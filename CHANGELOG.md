@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] - 2026-11-10
+
+### Fixed
+- **WebSocket vION CLI Handshake, Pager & Toolkit Username (`engines/sdwan_ion_cli.py`)**:
+  - Shortened the auto-provisioned Device Toolkit username from `stigix-ai-toolkit` to `stigix-ai` (9 chars) to satisfy the Prisma SD-WAN controller `LOGIN_ID_CONSTRAINT_LENGTH` constraint.
+  - Passed `user_agent_header` explicitly to `websockets.asyncio.client.connect` and removed duplicate `User-Agent` / `Authorization` headers so the SASE gateway accepts the WebSocket upgrade without `HTTP 401 DEF_401`.
+  - Extended `MORE_RX` to match vION percentage pagers (`(14%)[Press space to continue, 'q' to quit.]`) in addition to `--More--`, and added `app` / numeric `protocol` normalization for `inspect network-policy lookup`.
+- **Controller Views `events_query` Schema, L3 `lan_prefixes` & Policy Rule Name Lookup (`engines/sdwan_controller_views.py`)**:
+  - Fixed `events_query` payload to pass top-level `severity: ["critical", "major", "minor"]` and `query.site` so `get_prisma_ops_view(view="events")` returns HTTP 200 instead of HTTP 400.
+  - Included routed L3 LAN/Loopback interface prefixes with `scope: global` in `view_site_config` `lan_prefixes` (preventing false-positive empty `lan_prefixes` reports on ION 1200-S / vION branches).
+  - Added policy rule name fallback in `view_object` so querying `networkpolicysets` by a rule name (e.g. `Hetzner via DC1`) returns the parent policy set and matched rule.
+- **Executive Verdict & Concise Scorecard Formatting for SD-WAN Copilot Diagnostics (`web-dashboard/ai-copilot/ai-manager.ts`)**:
+  - Added mandatory `🎯 Verdict Global` banner + 5-row scorecard and a 25–35 line conciseness rule for SD-WAN diagnostics in `buildSystemPrompt()`.
+
 ## [3.2.0] - 2026-11-10
 
 ### Added

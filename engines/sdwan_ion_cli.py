@@ -67,6 +67,7 @@ HOST = "<ipv4>"
 KV = "<kv>"
 
 _KV_KEYS = {
+    "app": r"[A-Za-z0-9_.-]{1,64}",
     "application": r"[A-Za-z0-9_.-]{1,64}",
     "srcv4": r"(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?",
     "dstv4": r"(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?",
@@ -200,6 +201,15 @@ def validate_command(command: Any) -> str:
             f"{bad[0]!r} is not a read-only ION command word.",
             "Allowed forms: " + describe_rules(),
         )
+    # Normalize protocol=tcp/udp/icmp to numeric IP protocol numbers expected by vION 6.8+
+    _proto_map = {"tcp": "6", "udp": "17", "icmp": "1"}
+    if len(tokens) >= 3 and tokens[0] == "inspect" and tokens[2] == "lookup":
+        tokens = [
+            f"protocol={_proto_map[t.split('=', 1)[1].lower()]}"
+            if t.lower().startswith("protocol=") and t.split("=", 1)[1].lower() in _proto_map
+            else t
+            for t in tokens
+        ]
     for text, _ in RULES:
         if _match_args(text.split(), tokens):
             return " ".join(tokens)
@@ -230,7 +240,7 @@ LOGIN_FAILED_RX = re.compile(
 )
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
-MORE_RX = re.compile(r"--\s*more\s*--", re.I)
+MORE_RX = re.compile(r"(?:--\s*more\s*--|\(\d+%\)\s*\[press space to continue[^\]]*\])", re.I)
 PROMPT_LINE_RX = re.compile(r"^\s*([\w.@-]+)[>#$]\s?(.*)$")
 MAX_RAW_CHARS = 256 * 1024
 MAX_PAGES = 60
@@ -436,6 +446,7 @@ def toolkit_connect(sdk: Any, element_id: str, *, connect_fn: Optional[Callable[
     """Open the Device Toolkit WebSocket for `element_id` using the authenticated `prisma_sase` SDK session."""
     if not _ELEMENT_ID_RE.fullmatch(str(element_id)):
         raise ValueError("Invalid element ID")
+    is_default_connect = connect_fn is None
     if connect_fn is None:
         from websockets.asyncio.client import connect as connect_fn
     base = str(getattr(sdk, "controller", "https://api.sase.paloaltonetworks.com")).rstrip("/")
@@ -443,18 +454,25 @@ def toolkit_connect(sdk: Any, element_id: str, *, connect_fn: Optional[Callable[
     url = f"{wss}/sdwan/{TOOLKIT_API_VERSION}/api/elements/{element_id}/ws/toolkitsessions?cols=207&rows=53"
     headers = dict(getattr(sdk, "_websocket_headers", None) or {})
     headers.pop("Host", None)
+    # Remove any User-Agent from additional_headers so websockets 14+ does not send two User-Agent headers
+    ua = headers.pop("User-Agent", None) or headers.pop("user-agent", None)
     session = getattr(sdk, "_session", None)
     if session is not None:
         cookies = session.cookies.get_dict()
         if cookies:
             headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
-        ua = session.headers.get("User-Agent")
-        if ua:
-            headers["User-Agent"] = str(ua)
+        sess_ua = session.headers.get("User-Agent")
+        if sess_ua:
+            ua = str(sess_ua)
+        has_auth = any(k.lower() == "authorization" for k in headers)
         auth = session.headers.get("Authorization") or session.headers.get("X-Auth-Token")
-        if auth and "Authorization" not in headers:
-            headers["Authorization"] = str(auth)
+        if auth and not has_auth:
+            headers["authorization"] = str(auth)
     kwargs: Dict[str, Any] = {"additional_headers": headers, "open_timeout": TOOLKIT_OPEN_TIMEOUT_S}
+    if ua and is_default_connect:
+        kwargs["user_agent_header"] = str(ua)
+    elif ua:
+        headers["User-Agent"] = str(ua)
     ca_ctx = getattr(sdk, "_ca_ssl_context", None)
     if url.startswith("wss://") and ca_ctx:
         kwargs["ssl"] = ca_ctx
@@ -467,7 +485,7 @@ def toolkit_connect(sdk: Any, element_id: str, *, connect_fn: Optional[Callable[
 
 _UP, _LOW, _DIG = "ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789"
 INVALID_PASSWORD = "ELEMENTUSER_INVALID_PASSWORD"
-DEFAULT_TOOLKIT_USERNAME = "stigix-ai-toolkit"
+DEFAULT_TOOLKIT_USERNAME = "stigix-ai"
 READ_ONLY_USER_KEYS = frozenset({
     "id", "_etag", "_schema", "_created_on_utc", "_updated_on_utc",
     "_debug", "_info", "_warning", "_error", "_request_id", "_content_length",

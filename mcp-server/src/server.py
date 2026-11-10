@@ -1812,7 +1812,7 @@ async def run_prisma_ion_cli(
     - `inspect lqm stats all` (link quality latency/loss/jitter/MOS per path)
     - `dump flow ifaces` / `inspect flow brief` (active flows; do NOT add 'all' after 'inspect flow brief')
     - `inspect system arp all` (ARP table)
-    - `inspect network-policy lookup <kv>` / `inspect priority-policy lookup <kv>` (e.g. `srcv4=192.168.201.2 dstv4=10.99.99.2 protocol=tcp dport=443`)
+    - `inspect network-policy lookup <kv>` / `inspect priority-policy lookup <kv>` (e.g. `srcv4=192.168.201.2 dstv4=10.99.99.2 application=ssl`)
 
     Args:
         agent_id: ID of the Stigix node (e.g. 'DC1', 'BR1').

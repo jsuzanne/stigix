@@ -1793,7 +1793,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_prisma_ion_cli',
-        description: 'Execute a read-only ION CLI command on a Prisma SD-WAN vION appliance via the Controller Device Toolkit WebSocket (no SSH required). Validated commands: "dump controller status", "dump interface status all", "dump waninterface summary", "dump vpn summary all", "dump routing peer status all", "dump routing peer received-routes all", "dump routing peer advertised routes all", "dump reachability-probe status all", "inspect lqm stats all", "inspect flow brief", "inspect system arp all", "inspect network-policy lookup ...".',
+        description: 'Execute a read-only ION CLI command on a Prisma SD-WAN vION appliance via the Controller Device Toolkit WebSocket (no SSH required). Validated commands: "dump controller status", "dump interface status all", "dump waninterface summary", "dump vpn summary all", "dump routing peer status all", "dump routing peer received-routes all", "dump routing peer advertised routes all", "dump reachability-probe status all", "inspect lqm stats all", "inspect flow brief", "inspect system arp all", "inspect network-policy lookup srcv4=<ip> dstv4=<ip> app=<app>".',
         input_schema: {
             type: 'object',
             properties: {
