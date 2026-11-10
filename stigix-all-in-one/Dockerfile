@@ -113,8 +113,8 @@ COPY Scripts ./Scripts
 # Copy CLI script
 COPY Scripts/stigix-cli.py /usr/local/lib/stigix/stigix-cli.py
 
-# Install Python dependencies (requests, prompt_toolkit for stigix-cli)
-RUN pip3 install --no-cache-dir requests prompt_toolkit scapy flask prisma-sase \
+# Install Python dependencies (requests, prompt_toolkit for stigix-cli, websocket-client for Prisma ION CLI)
+RUN pip3 install --no-cache-dir requests prompt_toolkit scapy flask prisma-sase websocket-client \
     -r iot/requirements.txt -r mcp-server/requirements.txt \
     --break-system-packages || true
 

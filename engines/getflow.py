@@ -33,6 +33,14 @@ try:
 except Exception:
     pass
 
+try:
+    from sdwan_flow_analysis import FlowResolver, resolve_flow, summarize_resolved_flow
+except ImportError:
+    FlowResolver = None
+    resolve_flow = None
+    summarize_resolved_flow = None
+
+
 
 def parse_arguments():
     """Parse command line arguments"""
@@ -861,10 +869,14 @@ def get_topology(sdk, site_id, debug=False):
             path_id = link.get('path_id')
             if path_id:
                 path_lookup[path_id] = {
+                    'path_id': path_id,
                     'source_wan_if_id': link.get('source_wan_if_id'),
                     'target_wan_if_id': link.get('target_wan_if_id'),
                     'source_site_id': link.get('source_node_id'),
                     'target_site_id': link.get('target_node_id'),
+                    'source_circuit_name': link.get('source_circuit_name'),
+                    'target_circuit_name': link.get('target_circuit_name'),
+                    'target_site_name': link.get('target_site_name'),
                     'status': link.get('status'),
                     'type': link.get('type'),
                     'sub_type': link.get('sub_type')
@@ -923,11 +935,25 @@ def resolve_path_label(path_id, topology, wan_if_lookup, waninterface_id=None, p
         return f"{wan_if_lookup[str(waninterface_id)].get('circuit_name', 'WAN')} to Standard VPN"
     if path_id and topology and str(path_id) in topology:
         path_info = topology.get(str(path_id), {})
+        link_type = str(path_info.get('type') or '')
+        if link_type.endswith('-stub'):
+            target_ckt = (
+                path_info.get('target_circuit_name')
+                or wan_if_lookup.get(str(path_info.get('target_wan_if_id') or ''), {}).get('circuit_name')
+                or wan_if_lookup.get(str(path_id), {}).get('circuit_name')
+            )
+            if target_ckt:
+                return f"Direct: {target_ckt}"
         source_info = wan_if_lookup.get(path_info.get('source_wan_if_id'), {})
         target_info = wan_if_lookup.get(path_info.get('target_wan_if_id'), {})
-        src_name = source_info.get('full_name') or source_info.get('name') or 'Unknown'
-        tgt_name = target_info.get('full_name') or target_info.get('name') or 'Unknown'
-        return f"{src_name} to {tgt_name}"
+        src_name = source_info.get('full_name') or source_info.get('name') or path_info.get('source_circuit_name') or 'Unknown'
+        tgt_name = target_info.get('full_name') or target_info.get('name') or (
+            f"{path_info['target_site_name']}-{path_info['target_circuit_name']}"
+            if path_info.get('target_site_name') and path_info.get('target_circuit_name')
+            else path_info.get('target_circuit_name')
+        ) or 'Unknown'
+        if src_name != 'Unknown' or tgt_name != 'Unknown':
+            return f"{src_name} to {tgt_name}"
     if path_id and str(path_id) in wan_if_lookup:
         return wan_if_lookup[str(path_id)].get('circuit_name') or wan_if_lookup[str(path_id)].get('full_name') or str(path_id)
     if waninterface_id and str(waninterface_id) in wan_if_lookup:
@@ -2879,6 +2905,16 @@ def main():
                     log_output(f" Total flows found: {flow_count}", json_mode)
 
                 if flow_count > 0:
+                    flow_resolver = (
+                        FlowResolver(
+                            sdk if not args.fast else None,
+                            target_site_id,
+                            wan_if_lookup=wan_if_lookup if not args.fast else {},
+                            topology_links=list(topology.values()) if (not args.fast and topology) else [],
+                        )
+                        if FlowResolver is not None
+                        else None
+                    )
                     for flow in flows['items']:
                         if not args.fast:
                             egress_path = format_path_name(flow, topology, wan_if_lookup, debug=args.debug)
@@ -2900,14 +2936,32 @@ def main():
                             for d in sorted_decisions:
                                 chosen_path_id = d.get('chosen_wan_path') or d.get('chosen_path') or d.get('path_id') or d.get('wan_path') or d.get('waninterface_id') or d.get('chosen_path_id')
                                 pref_path_id = d.get('preferred_wan_path') or d.get('preferred_path') or d.get('preferred_path_id')
-                                allowed_policy_ids = d.get('allowed_wan_paths_by_policy') or d.get('allowed_paths_by_policy') or []
-                                allowed_reach_ids = d.get('allowed_wan_paths_by_reachability') or d.get('allowed_paths_by_reachability') or []
+                                allowed_policy_ids = (
+                                    d.get('policy_allowed_wan_paths')
+                                    or d.get('allowed_wan_paths_by_policy')
+                                    or d.get('allowed_paths_by_policy')
+                                    or []
+                                )
+                                allowed_reach_ids = (
+                                    d.get('state_up_policy_allowed_wan_paths')
+                                    or d.get('allowed_wan_paths_by_reachability')
+                                    or d.get('allowed_paths_by_reachability')
+                                    or []
+                                )
+                                sla_filtered_ids = d.get('sla_filtered_state_up_policy_allowed_wan_paths') or []
+                                raw_wan_nets = d.get('available_wan_networks') or []
                                 dec_time_ms = d.get('flow_decision_time')
 
                                 chosen_name = resolve_path_label(chosen_path_id, topology, wan_if_lookup)
                                 pref_name = resolve_path_label(pref_path_id, topology, wan_if_lookup)
                                 allowed_policy_names = [resolve_path_label(pid, topology, wan_if_lookup) for pid in allowed_policy_ids] if isinstance(allowed_policy_ids, list) else []
                                 allowed_reach_names = [resolve_path_label(pid, topology, wan_if_lookup) for pid in allowed_reach_ids] if isinstance(allowed_reach_ids, list) else []
+                                sla_filtered_names = [resolve_path_label(pid, topology, wan_if_lookup) for pid in sla_filtered_ids] if isinstance(sla_filtered_ids, list) else []
+                                available_wan_names = (
+                                    [flow_resolver.circuit(w) for w in raw_wan_nets]
+                                    if (flow_resolver is not None and not args.fast and isinstance(raw_wan_nets, list))
+                                    else raw_wan_nets
+                                )
 
                                 display_path = chosen_name or (f"Path ID: {chosen_path_id}" if chosen_path_id is not None else "Unknown")
 
@@ -2920,7 +2974,9 @@ def main():
                                     "preferred_path": pref_name or (f"Path ID: {pref_path_id}" if pref_path_id is not None else None),
                                     "allowed_paths_by_policy": allowed_policy_names,
                                     "allowed_paths_by_reachability": allowed_reach_names,
-                                    "available_wan_networks": d.get('available_wan_networks') or [],
+                                    "usable_paths": allowed_reach_names,
+                                    "sla_filtered_paths": sla_filtered_names,
+                                    "available_wan_networks": available_wan_names,
                                     "device_id": d.get('device_id'),
                                     "device_model_name": d.get('device_model_name'),
                                     "device_role": d.get('device_role')
@@ -2964,6 +3020,31 @@ def main():
                             "flow_start_time_ms": flow.get('flow_start_time_ms'),
                             "flow_end_time_ms": flow.get('flow_end_time_ms')
                         }
+
+                        if flow_resolver is not None and resolve_flow is not None and summarize_resolved_flow is not None:
+                            try:
+                                resolved_flow = resolve_flow(flow, flow_resolver)
+                                summary_fields = summarize_resolved_flow(resolved_flow, flow)
+                                flow_info.update({
+                                    "protocol_name": resolved_flow.get("protocol"),
+                                    "flow_action": resolved_flow.get("flow_action"),
+                                    "flow_direction": resolved_flow.get("flow_direction"),
+                                    "circuit": resolved_flow.get("circuit"),
+                                    "path": resolved_flow.get("path"),
+                                    "network_policy": resolved_flow.get("network_policy"),
+                                    "path_rule": summary_fields.get("path_rule"),
+                                    "nat": summary_fields.get("nat"),
+                                    "chosen_path": summary_fields.get("chosen_path"),
+                                    "preferred_path": summary_fields.get("preferred_path"),
+                                    "allowed_paths": summary_fields.get("allowed_paths"),
+                                    "usable_paths": summary_fields.get("usable_paths"),
+                                    "sla_filtered_paths": summary_fields.get("sla_filtered_paths"),
+                                    "available_circuits": summary_fields.get("available_circuits"),
+                                    "application": summary_fields.get("application"),
+                                    "decisions": resolved_flow.get("decisions"),
+                                })
+                            except Exception:
+                                pass
 
                         result["flows"].append(flow_info)
 

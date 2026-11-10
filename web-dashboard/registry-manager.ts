@@ -516,13 +516,15 @@ export class RegistryManager {
         this.detectedRole = identity.role;
         this.isBranchGateway = identity.isBg;
 
-        let sysMode = 'standalone';
+        let sysMode = process.env.STIGIX_REGISTRY_MODE || 'standalone';
         try {
             const sysSettingsFile = path.join(this.configDir, 'system-settings.json');
             if (fs.existsSync(sysSettingsFile)) {
                 const sysSettings = JSON.parse(fs.readFileSync(sysSettingsFile, 'utf8'));
                 if (sysSettings.registry_mode) {
-                    sysMode = sysSettings.registry_mode;
+                    if (sysSettings.registry_mode_explicit || !process.env.STIGIX_REGISTRY_MODE || sysSettings.registry_mode !== 'standalone') {
+                        sysMode = sysSettings.registry_mode;
+                    }
                 }
                 if (sysSettings.registry_url !== undefined) {
                     process.env.STIGIX_REGISTRY_URL = sysSettings.registry_url;
@@ -1055,7 +1057,12 @@ export class RegistryManager {
             if (fs.existsSync(sysSettingsFile)) {
                 const sysSettings = JSON.parse(fs.readFileSync(sysSettingsFile, 'utf8'));
                 if (sysSettings.registry_mode === 'leader') return true;
-                if (sysSettings.registry_mode === 'standalone' || sysSettings.registry_mode === 'peer') return false;
+                if (
+                    (sysSettings.registry_mode === 'standalone' || sysSettings.registry_mode === 'peer') &&
+                    (sysSettings.registry_mode_explicit || !process.env.STIGIX_REGISTRY_MODE)
+                ) {
+                    return false;
+                }
             }
         } catch {}
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'peer';

@@ -3411,23 +3411,41 @@ class TestOrchestrator:
                     }
 
                 # ── Resolve path ID placeholders using cache (fast=True fix) ──
-                def _resolve_name(val: str) -> str:
-                    if not val:
+                def _resolve_name(val: Any) -> Any:
+                    if not val or not isinstance(val, str):
                         return val
                     if val.startswith("Path ID:"):
                         pid = val.split("Path ID:")[-1].strip()
                         return cached_names.get(pid, val)
-                    return val
+                    return cached_names.get(val, val)
 
                 def _fix_flow(flow: dict) -> dict:
-                    for field in ("egress_path", "egressPath", "path_name", "pathName"):
-                        if field in flow:
+                    for field in ("egress_path", "egressPath", "path_name", "pathName",
+                                  "path", "chosen_path", "preferred_path"):
+                        if field in flow and isinstance(flow[field], str):
                             flow[field] = _resolve_name(flow[field])
+                    for list_field in ("allowed_paths", "usable_paths", "sla_filtered_paths"):
+                        if isinstance(flow.get(list_field), list):
+                            flow[list_field] = [_resolve_name(v) for v in flow[list_field]]
                     for ph in flow.get("path_history", flow.get("pathHistory", [])):
                         for pf in ("path", "chosen_path", "chosenPath", "preferred_path",
                                    "preferredPath", "egressPath"):
                             if pf in ph:
                                 ph[pf] = _resolve_name(ph[pf])
+                        for plf in ("allowed_paths_by_policy", "allowed_paths_by_reachability",
+                                    "usable_paths", "sla_filtered_paths"):
+                            if isinstance(ph.get(plf), list):
+                                ph[plf] = [_resolve_name(v) for v in ph[plf]]
+                    for dec in flow.get("decisions", []) or []:
+                        if isinstance(dec, dict):
+                            for df in ("chosen_wan_path", "preferred_wan_path"):
+                                if df in dec:
+                                    dec[df] = _resolve_name(dec[df])
+                            for dlf in ("policy_allowed_wan_paths",
+                                        "state_up_policy_allowed_wan_paths",
+                                        "sla_filtered_state_up_policy_allowed_wan_paths"):
+                                if isinstance(dec.get(dlf), list):
+                                    dec[dlf] = [_resolve_name(v) for v in dec[dlf]]
                     return flow
 
                 # Apply resolution to all flows in the result
@@ -3567,6 +3585,44 @@ class TestOrchestrator:
                 last_path = e["path"]
 
         return timeline
+
+    async def query_prisma_controller_view(self, agent_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a read-only Prisma SD-WAN controller view (ops, site_config, inventory, or object) on an agent."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            try:
+                r = await client.post(
+                    f"{agent.api_base_url}/api/prisma/controller-view",
+                    json=body,
+                    headers=headers,
+                )
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Prisma controller view on {agent_id}", e)
+
+    async def run_prisma_ion_cli(self, agent_id: str, device_or_site: str, command: str) -> Dict[str, Any]:
+        """Execute a read-only ION CLI command on a Prisma SD-WAN vION via the Controller Device Toolkit WebSocket."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            try:
+                r = await client.post(
+                    f"{agent.api_base_url}/api/prisma/ion-cli",
+                    json={"device_or_site": device_or_site, "command": command},
+                    headers=headers,
+                )
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Prisma vION CLI on {agent_id}", e)
 
 
     # -------------------------------------------------------------------------
@@ -4198,7 +4254,15 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.get(f"{agent.api_base_url}/api/registry/onboard-command", headers=headers)
+                for path in ("/api/registry/onboard-command", "/api/mesh/onboard-command", "/api/fleet/join-token"):
+                    r = await client.get(f"{agent.api_base_url}{path}", headers=headers)
+                    if r.status_code == 200 and self._is_json_response(r):
+                        data = r.json()
+                        if isinstance(data, dict) and "curl_command" in data and "command" not in data:
+                            data["command"] = data["curl_command"]
+                        return data
+                    if r.status_code != 404:
+                        r.raise_for_status()
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -4423,7 +4487,7 @@ class TestOrchestrator:
         Generate a single-use Magic Join cryptographic token on the Leader node
         to onboard a new remote Stigix node in seconds without manual IP entry.
         """
-        agent = registry.get_endpoint(agent_id)
+        agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"success": False, "error": f"Agent {agent_id} not found"}
 
@@ -4470,7 +4534,7 @@ class TestOrchestrator:
         """
         List active, redeemed, expired, and revoked Magic Join tokens on the Leader node.
         """
-        agent = registry.get_endpoint(agent_id)
+        agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"success": False, "error": f"Agent {agent_id} not found"}
 
@@ -4504,7 +4568,7 @@ class TestOrchestrator:
         """
         Revoke an active Magic Join token on the Leader node to prevent further node onboarding.
         """
-        agent = registry.get_endpoint(agent_id)
+        agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"success": False, "error": f"Agent {agent_id} not found"}
 
@@ -4534,7 +4598,7 @@ class TestOrchestrator:
         """
         Onboard a remote node (agent_id) into a Stigix cluster using a Magic Join token.
         """
-        agent = registry.get_endpoint(agent_id)
+        agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"success": False, "error": f"Agent {agent_id} not found"}
 

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-11-10
+
+### Added
+- **Prisma SD-WAN Flow Decision Resolution (`engines/sdwan_flow_analysis.py`, `engines/getflow.py`, `mcp-server/src/lib/orchestrator.py`)**:
+  - Added `FlowResolver` and `resolve_flow` to translate raw `monitor_flows` UUIDs into human-readable WAN circuits (`wan_interface`), overlay/direct paths (`chosen_path`, `allowed_paths`, `usable_paths`, `sla_filtered_paths`), and path policy rule names (`path_rule`) via `waninterfaces`, `topology(type="basenet")`, and `networkpolicyrules`.
+- **Read-Only Prisma SD-WAN Controller Views (`engines/sdwan_controller_views.py`, `web-dashboard/server.ts`, `mcp-server/src/server.py`, `web-dashboard/ai-copilot/ai-tools.ts`)**:
+  - Added `POST /api/prisma/controller-view` and three shared MCP & AI Copilot tools (`get_prisma_ops_view`, `get_prisma_site_config`, `get_prisma_object`) backed by a strict `ReadOnlySdk` guard, secret-key redaction, and canonical site-name matching (`BR1` <-> `Branch-01`).
+  - Operational views: `site_status`, `tunnels` (sorted with down tunnels first), `interfaces` (with automatic `admin up, oper down` flagging), `bgp` (with optional prefix lists), `events`, and `metrics` (`lqm`, `bw`, `sys`).
+  - Configuration & object views: site WAN circuits with `effective_probe_profile` and `probe_source`, declared `lan_prefixes` with `GLOBAL` vs. `LOCAL` scope, element `l3_forwarding` summary (`l3_lan_forwarding` & `l3_direct_private_wan_forwarding`), and UUID-resolved inspection of 22 tenant object types (`probeconfigs`, `probeprofiles`, `waninterfacelabels`, `networkpolicysets` with ordered rules, etc.).
+- **Read-Only vION CLI via Controller Device Toolkit WebSocket (`engines/sdwan_ion_cli.py`, `web-dashboard/server.ts`, `mcp-server/src/server.py`, `web-dashboard/ai-copilot/ai-tools.ts`)**:
+  - Added `POST /api/prisma/ion-cli` and the `run_prisma_ion_cli` tool for both MCP and internal AI Copilot to execute curated read-only `dump` and `inspect` commands on vION appliances over `wss://<controller>/sdwan/v2.0/api/elements/<id>/ws/toolkitsessions` without SSH.
+  - Includes automatic tenant-level `elementusers` provisioning and rotation (`ensure_toolkit_user`), `--More--` auto-pagination, ANSI stripping, and strict read-only command validation.
+- **Prisma SD-WAN & vION Diagnostic Playbook (`web-dashboard/ai-copilot/ai-manager.ts`, `mcp-server/src/server.py`)**:
+  - Embedded the SD-WAN diagnostic decision tree (`l3_forwarding` branch checks, `GLOBAL` LAN prefix scope verification, Direct WAN L3 reachability probe triage, controller vs. VyOS BGP correlation, and vION CLI escalation protocol) into the AI Copilot system prompt and MCP tool documentation.
+
+### Fixed
+- **MCP Registry & Orchestrator Hardening (`mcp-server/src/lib/registry.py`, `mcp-server/src/lib/orchestrator.py`, `web-dashboard/server.ts`, `web-dashboard/registry-manager.ts`)**:
+  - Guarded `RegistryClient.get_endpoint()` against empty strings or bare prefixes (`target-`, `reg-self-`, `reg-shared-`).
+  - Added missing `await` calls on `self.registry.get_endpoint(agent_id)` in `generate_magic_join_token`, `list_magic_join_tokens`, `revoke_magic_join_token`, and `join_cluster_via_token`.
+  - Added `GET /api/registry/onboard-command` and `GET /api/mesh/onboard-command` fallback handling, and preserved `.env` `STIGIX_REGISTRY_MODE` priority on fresh boot when `registry_mode_explicit` is not set in `system-settings.json`.
+
 ## [3.1.48] - 2026-11-09
 
 ### Fixed

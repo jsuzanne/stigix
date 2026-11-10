@@ -1707,7 +1707,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_prisma_flows',
-        description: 'Query the Prisma SD-WAN Flow Browser to retrieve paths, metrics, and chronological path transitions (path_history / failover switches) for network flows.',
+        description: 'Query the Prisma SD-WAN Flow Browser to retrieve resolved WAN circuits, paths, Path Policy rules, NAT actions, metrics, and chronological path transitions (path_history / failover switches) for network flows.',
         input_schema: {
             type: 'object',
             properties: {
@@ -1719,16 +1719,89 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                     type: 'string',
                     description: 'Site name (e.g. "BR8", "BR2").'
                 },
+                site_id: {
+                    type: 'string',
+                    description: 'Explicit Prisma SD-WAN site ID.'
+                },
                 protocol: {
                     type: 'number',
                     description: 'Protocol number (6=TCP, 17=UDP, 1=ICMP).'
                 },
                 src_ip: { type: 'string', description: 'Source IP.' },
                 dst_ip: { type: 'string', description: 'Destination IP.' },
+                udp_src_port: { type: 'number', description: 'UDP source port filter.' },
+                udp_dst_port: { type: 'number', description: 'UDP destination port filter.' },
+                tcp_src_port: { type: 'number', description: 'TCP source port filter.' },
+                tcp_dst_port: { type: 'number', description: 'TCP destination port filter.' },
                 minutes: { type: 'number', description: 'Lookback minutes (default: 15).' },
-                page_size: { type: 'number', description: 'Max flow records (default: 10).' }
+                hours: { type: 'number', description: 'Lookback hours (overrides minutes if specified).' },
+                page_size: { type: 'number', description: 'Max flow records (default: 10).' },
+                fast: { type: 'boolean', description: 'Skip topology/WAN interface resolution for faster raw lookups (default: false).' }
             },
             required: ['agent_id']
+        }
+    },
+    {
+        name: 'get_prisma_ops_view',
+        description: 'Read-only operational digest of the Prisma SD-WAN controller: site_status (vION connectivity/version/CPU/mem), tunnels (AnyNet VPN tunnels with down tunnels sorted first), interfaces (with "admin up, oper down" anomaly flagging), bgp (peers + prefix counts/lists), events (alarms/alerts), or metrics (lqm, bw, sys).',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of the Stigix node.' },
+                view: {
+                    type: 'string',
+                    enum: ['site_status', 'tunnels', 'interfaces', 'bgp', 'events', 'metrics'],
+                    description: 'Operational view to query.'
+                },
+                site: { type: 'string', description: 'Site name (e.g. "BR1", "Branch-01", "DC1"). Required for interfaces and metrics.' },
+                device: { type: 'string', description: 'Optional vION element name filter (for interfaces view).' },
+                prefixes: { type: 'boolean', description: 'When true on bgp view, include reachable/advertised prefix lists.' },
+                hours: { type: 'number', description: 'Lookback window in hours (default 24 for events, 1 for metrics).' },
+                kind: { type: 'string', enum: ['all', 'alarm', 'alert', 'event'], description: 'Event kind filter.' },
+                severity: { type: 'string', enum: ['all', 'critical', 'major', 'minor', 'warning', 'info'], description: 'Event severity filter.' },
+                code: { type: 'string', description: 'Event code filter (e.g. "NW_BGP_PEER_DOWN").' },
+                metric: { type: 'string', enum: ['lqm', 'bw', 'sys'], description: 'Metric category for metrics view.' },
+                circuit: { type: 'string', description: 'Optional circuit/path substring filter for metrics.' }
+            },
+            required: ['agent_id', 'view']
+        }
+    },
+    {
+        name: 'get_prisma_site_config',
+        description: 'Read-only Prisma SD-WAN configuration digest for a site (or tenant-wide inventory if site is omitted). Returns policy stacks, WAN circuits + effective probe profiles, LAN prefixes + scope (GLOBAL vs LOCAL), and vION elements with l3_forwarding status ("on"/"off"), interfaces, static routes, and BGP peers.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of the Stigix node.' },
+                site: { type: 'string', description: 'Optional site name (e.g. "BR1", "Branch-01", "DC1"). Omit for full tenant inventory.' }
+            },
+            required: ['agent_id']
+        }
+    },
+    {
+        name: 'get_prisma_object',
+        description: 'Read-only inspection of Prisma SD-WAN tenant configuration objects (probeconfigs, probeprofiles, waninterfacelabels, wannetworks, networkpolicysets + ordered rules, networkpolicysetstacks, prioritypolicysets, natpolicysets, ngfwsecuritypolicysets, securityzones, servicelabels, serviceendpoints, vrfcontexts, ipsecprofiles, appdefs, networkcontexts, networkpolicyglobalprefixes, networkpolicylocalprefixes, sitetemplates) with UUID-to-name resolution.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of the Stigix node.' },
+                object_type: { type: 'string', description: 'Type of Prisma SD-WAN object to list or inspect.' },
+                name: { type: 'string', description: 'Optional object name to inspect a specific object and its ordered rules.' }
+            },
+            required: ['agent_id', 'object_type']
+        }
+    },
+    {
+        name: 'run_prisma_ion_cli',
+        description: 'Execute a read-only ION CLI command on a Prisma SD-WAN vION appliance via the Controller Device Toolkit WebSocket (no SSH required). Validated commands: "dump controller status", "dump interface status all", "dump waninterface summary", "dump vpn summary all", "dump routing peer status all", "dump routing peer received-routes all", "dump routing peer advertised routes all", "dump reachability-probe status all", "inspect lqm stats all", "inspect flow brief", "inspect system arp all", "inspect network-policy lookup ...".',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of the Stigix node.' },
+                device_or_site: { type: 'string', description: 'Target vION element name or site name (e.g. "BR1", "br1-vion1", "Branch-01-01", "DC1").' },
+                command: { type: 'string', description: 'Read-only ION CLI command starting with dump or inspect.' }
+            },
+            required: ['agent_id', 'device_or_site', 'command']
         }
     },
     {
@@ -4662,6 +4735,48 @@ export async function executeCopilotTool(
                 }, 45000);
             }
 
+            case 'get_prisma_ops_view': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                return await fetchApi(nodeCtx, '/api/prisma/controller-view', {
+                    method: 'POST',
+                    body: JSON.stringify(args)
+                }, 45000);
+            }
+
+            case 'get_prisma_site_config': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                return await fetchApi(nodeCtx, '/api/prisma/controller-view', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        view: args.site ? 'site_config' : 'inventory',
+                        site: args.site
+                    })
+                }, 45000);
+            }
+
+            case 'get_prisma_object': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                return await fetchApi(nodeCtx, '/api/prisma/controller-view', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        view: 'object',
+                        object_type: args.object_type,
+                        name: args.name
+                    })
+                }, 45000);
+            }
+
+            case 'run_prisma_ion_cli': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                return await fetchApi(nodeCtx, '/api/prisma/ion-cli', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        device_or_site: args.device_or_site,
+                        command: args.command
+                    })
+                }, 45000);
+            }
+
             case 'get_health_matrix': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 return await fetchApi(nodeCtx, '/api/system/health-matrix').catch(async () => {
@@ -5066,7 +5181,9 @@ export async function executeCopilotTool(
 
             case 'generate_peer_onboard_command': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/mesh/onboard-command');
+                return await fetchApi(nodeCtx, '/api/mesh/onboard-command').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/registry/onboard-command');
+                });
             }
 
             case 'get_provisioning_status': {

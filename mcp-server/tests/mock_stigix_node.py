@@ -754,7 +754,25 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"", que
     if "tcp-apps" in path or "custom-tcp" in path:
         return JSONResponse({"success": True, "apps": []})
 
-    # -------- Prisma flows --------
+    # -------- Prisma controller views, vION CLI & flows --------
+    if "prisma/ion-cli" in path:
+        return JSONResponse({
+            "success": True,
+            "site": body_json.get("device_or_site", "BR1"),
+            "element": "br1-vion1",
+            "command": body_json.get("command", "dump vpn summary all"),
+            "output": "VPN Tunnels: 2 UP",
+            "truncated": False,
+            "bytes": 17,
+            "read_at": "2026-11-10T20:00:00Z",
+        })
+    if "prisma/controller-view" in path:
+        view = body_json.get("view", "site_status")
+        return JSONResponse({
+            "success": True,
+            "data": {"view": view, "sites": [], "tunnels": [], "interfaces": [], "peers": [], "events": [], "series": [], "objects": []},
+            "read_at": "2026-11-10T20:00:00Z",
+        })
     if "prisma" in path or "flows" in path:
         return JSONResponse({"success": True, "flows": []})
 

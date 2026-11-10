@@ -89,6 +89,18 @@ tools:
     category: read
     size_budget_kb: 20
     timeout_class: medium
+  get_prisma_object:
+    category: read
+    size_budget_kb: 64
+    timeout_class: medium
+  get_prisma_ops_view:
+    category: read
+    size_budget_kb: 64
+    timeout_class: medium
+  get_prisma_site_config:
+    category: read
+    size_budget_kb: 64
+    timeout_class: medium
   get_probe_details:
     category: read
     size_budget_kb: 20
@@ -255,6 +267,10 @@ tools:
   run_path_trace:
     category: read
     size_budget_kb: 20
+    timeout_class: medium
+  run_prisma_ion_cli:
+    category: read
+    size_budget_kb: 64
     timeout_class: medium
   run_security_dns_batch:
     category: write

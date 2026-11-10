@@ -1657,6 +1657,171 @@ async def get_prisma_flows(
     return await orchestrator.query_prisma_flows(agent_id, body)
 
 
+@mcp.tool()
+async def get_prisma_ops_view(
+    agent_id: str,
+    view: str,
+    site: Optional[str] = None,
+    device: Optional[str] = None,
+    prefixes: bool = False,
+    hours: Optional[int] = None,
+    kind: str = "all",
+    severity: str = "all",
+    code: Optional[str] = None,
+    metric: str = "lqm",
+    circuit: Optional[str] = None,
+) -> dict:
+    """
+    Read-only operational digest of the Prisma SD-WAN controller.
+
+    Supported `view` values:
+    - 'site_status': site mode/role and vION element connectivity, state, software version, uptime, CPU/memory.
+    - 'tunnels': AnyNet VPN tunnels ('public-anynet', 'private-anynet') sorted with down tunnels first, plus summary counts by site and pair.
+    - 'interfaces': site/element interfaces ('get.interfaces' + 'post.interfaces_status_query') with automatic 'admin up, oper down' anomaly flagging (`flagged`), IP, `used_for`, MTU. Requires `site`.
+    - 'bgp': BGP peers status, uptime, remote AS, and received/advertised prefix counts (set `prefixes=True` to include prefix lists).
+    - 'events': controller alarms/alerts/events filtered by `site`, `hours` (1..168, default 24), `kind` ('all', 'alarm', 'alert', 'event'), `severity`, and `code`.
+    - 'metrics': link-quality ('lqm': LqmLatency, LqmPacketLoss, LqmJitter, LqmMOS), bandwidth ('bw'), or system ('sys') metrics summarised as min/avg/max/last over `hours` (1..24, default 1). Requires `site`.
+
+    Args:
+        agent_id: ID of the Stigix node (e.g. 'DC1', 'BR1').
+        view: Operational view to query ('site_status', 'tunnels', 'interfaces', 'bgp', 'events', 'metrics').
+        site: Optional site name (required for 'interfaces' and 'metrics', e.g. 'BR1', 'Branch-01', 'DC1').
+        device: Optional vION element name filter (for 'interfaces' view).
+        prefixes: When True on 'bgp' view, include reachable and advertised prefix lists (capped at 50).
+        hours: Lookback window in hours (default 24 for 'events', 1 for 'metrics').
+        kind: Event kind filter for 'events' ('all', 'alarm', 'alert', 'event').
+        severity: Event severity filter for 'events' ('all', 'critical', 'major', 'minor', 'warning', 'info').
+        code: Optional event code filter for 'events' (e.g. 'NW_BGP_PEER_DOWN').
+        metric: Metric category for 'metrics' ('lqm', 'bw', 'sys').
+        circuit: Optional circuit/path substring filter for 'metrics'.
+    """
+    body = {
+        "view": view,
+        "site": site,
+        "device": device,
+        "prefixes": prefixes,
+        "hours": hours,
+        "kind": kind,
+        "severity": severity,
+        "code": code,
+        "metric": metric,
+        "circuit": circuit,
+    }
+    body = {k: v for k, v in body.items() if v is not None}
+    return await orchestrator.query_prisma_controller_view(agent_id, body)
+
+
+@mcp.tool()
+async def get_prisma_site_config(
+    agent_id: str,
+    site: Optional[str] = None,
+) -> dict:
+    """
+    Read-only Prisma SD-WAN configuration digest for a site (or tenant-wide inventory if `site` is omitted).
+
+    SD-WAN Diagnostic Playbook (First Checks):
+    1. Branch cannot route across the fabric: Check each element's `l3_forwarding` ('on' if both
+       `l3_lan_forwarding` and `l3_direct_private_wan_forwarding` are True, 'off' if either is False).
+       Branch vIONs require both True; DC hub vIONs keep them False by design.
+    2. Pings/flows to a site LAN fail while overlay tunnels are UP: Check the destination site's
+       `lan_prefixes` — verify the target subnet is declared and its `scope` is `GLOBAL` (not `LOCAL`),
+       and verify the branch LAN interface `scope` is `GLOBAL`.
+    3. Circuit / L3 Reachability Probe issues: Check each WAN interface's `effective_probe_profile`
+       and `probe_source` ('circuit-level' vs 'category-level'). On Direct Private WAN (MPLS) circuits,
+       an active L3 probe to an unreachable target (e.g. 8.8.8.8) marks the path unusable for new flows
+       even when physical links are UP. Correlate with `run_prisma_ion_cli(device, "dump reachability-probe status all")`.
+
+    - When `site` is omitted: returns the tenant `inventory` (all sites with assigned policy stacks, all vION elements with `l3_forwarding` summary).
+    - When `site` is provided (e.g. 'BR1', 'Branch-01', 'DC1'): returns the complete site configuration:
+      - Assigned policy stacks (`network`, `priority`, `nat`, `security`)
+      - `wan_interfaces` with circuit network, category label, BFD/LQM/BWC flags, and `effective_probe_profile` / `probe_source`
+      - `lan_networks` and `lan_prefixes` with scope (`GLOBAL` vs `LOCAL` — a LAN prefix missing or not GLOBAL is unreachable across the fabric)
+      - `elements` with `l3_forwarding` ('on' if both `l3_lan_forwarding` and `l3_direct_private_wan_forwarding` are True, 'off' if either is False), `interfaces`, `static_routes`, `bgp_config`, and `bgp_peers`.
+
+    Args:
+        agent_id: ID of the Stigix node (e.g. 'DC1', 'BR1').
+        site: Optional site name (e.g. 'BR1', 'Branch-01', 'DC1'). Omit for full tenant inventory.
+    """
+    body = {
+        "view": "site_config" if site else "inventory",
+        "site": site,
+    }
+    body = {k: v for k, v in body.items() if v is not None}
+    return await orchestrator.query_prisma_controller_view(agent_id, body)
+
+
+@mcp.tool()
+async def get_prisma_object(
+    agent_id: str,
+    object_type: str,
+    name: Optional[str] = None,
+) -> dict:
+    """
+    Read-only inspection of Prisma SD-WAN tenant configuration objects with automatic UUID-to-name resolution and secret redaction.
+
+    Supported `object_type` values:
+    - 'probeconfigs', 'probeprofiles', 'waninterfacelabels', 'wannetworks'
+    - 'networkpolicysets' (includes ordered `rules` when `name` is specified), 'networkpolicysetstacks'
+    - 'prioritypolicysets' (includes ordered `rules`), 'prioritypolicysetstacks'
+    - 'natpolicysets' (includes ordered `rules`), 'natpolicysetstacks'
+    - 'ngfwsecuritypolicysets' (includes ordered `rules`), 'ngfwsecuritypolicysetstacks'
+    - 'securityzones', 'servicelabels', 'serviceendpoints', 'vrfcontexts', 'ipsecprofiles'
+    - 'appdefs' (custom applications), 'networkcontexts', 'networkpolicyglobalprefixes', 'networkpolicylocalprefixes', 'sitetemplates'
+
+    Args:
+        agent_id: ID of the Stigix node (e.g. 'DC1', 'BR1').
+        object_type: Type of Prisma SD-WAN object to list or inspect.
+        name: Optional object name. Omit to list all objects of `object_type`; provide `name` to inspect a specific object (and its ordered policy rules for policy sets).
+    """
+    body = {
+        "view": "object",
+        "object_type": object_type,
+        "name": name,
+    }
+    body = {k: v for k, v in body.items() if v is not None}
+    return await orchestrator.query_prisma_controller_view(agent_id, body)
+
+
+@mcp.tool()
+async def run_prisma_ion_cli(
+    agent_id: str,
+    device_or_site: str,
+    command: str,
+) -> dict:
+    """
+    Execute a read-only ION CLI command on a Prisma SD-WAN vION appliance over the Controller's
+    Device Toolkit WebSocket (no direct SSH access required).
+
+    Automatically provisions/rotates a tenant-level Device Toolkit user (`stigix-ai-toolkit`) if needed,
+    auto-paginates `--More--`, strips ANSI sequences, and enforces a strict read-only command policy.
+
+    Curated known-good commands on vION 6.5.3:
+    - `dump controller status` (controller connection state)
+    - `dump interface status <all|1-8>` (interface status)
+    - `dump waninterface summary` (WAN circuits summary)
+    - `dump vpn summary all` (VPN overlay tunnels summary)
+    - `dump servicelink status all` (IKE / ESP / DPD service links)
+    - `dump service end points` (service endpoints)
+    - `dump routing peer status all` (BGP peer status)
+    - `dump routing peer received-routes all` (BGP routes received from peers)
+    - `dump routing peer advertised routes all` (BGP routes advertised to peers)
+    - `dump routing vpn-host-tracker status` (DC host tracking state)
+    - `dump intra-cluster-tunnel status` (DC intra-cluster tunnel state)
+    - `dump spoke-ha status` / `dump spoke-ha failover-timeline` (branch HA state & timeline)
+    - `dump reachability-probe status all` (L3 reachability probes on circuits)
+    - `inspect lqm stats all` (link quality latency/loss/jitter/MOS per path)
+    - `dump flow ifaces` / `inspect flow brief` (active flows; do NOT add 'all' after 'inspect flow brief')
+    - `inspect system arp all` (ARP table)
+    - `inspect network-policy lookup <kv>` / `inspect priority-policy lookup <kv>` (e.g. `srcv4=192.168.201.2 dstv4=10.99.99.2 protocol=tcp dport=443`)
+
+    Args:
+        agent_id: ID of the Stigix node (e.g. 'DC1', 'BR1').
+        device_or_site: Target vION element name or site name (e.g. 'BR1', 'br1-vion1', 'Branch-01-01', 'DC1').
+        command: Read-only ION CLI command (`dump ...` or `inspect ...`).
+    """
+    return await orchestrator.run_prisma_ion_cli(agent_id, device_or_site, command)
+
+
 # -----------------------------------------------------------------------------
 # System Health Matrix & Live Diagnostics (Phase 1)
 # -----------------------------------------------------------------------------

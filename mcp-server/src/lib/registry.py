@@ -176,6 +176,10 @@ class RegistryClient:
           5. Reverse partial: site_name/id is contained in identifier
              e.g. "ubuntubr5" matches if user typed "ubuntubr5-extra"
         """
+        if not identifier or not str(identifier).strip():
+            return None
+
+        identifier = str(identifier).strip()
         endpoints = await self.list_endpoints()
         needle = identifier.lower()
 
@@ -183,27 +187,33 @@ class RegistryClient:
         clean_id = identifier
         for prefix in ("reg-self-", "reg-shared-", "target-"):
             if clean_id.startswith(prefix):
-                clean_id = clean_id[len(prefix):]
+                stripped = clean_id[len(prefix):].strip()
+                clean_id = stripped if stripped else ""
                 break
         clean_needle = clean_id.lower()
+
+        # If identifier was ONLY a bare prefix (e.g. "target-"), do not allow fuzzy matching
+        if not clean_id and identifier.lower() in ("reg-self-", "reg-shared-", "target-"):
+            return None
 
         # Pass 1 — exact match (original behaviour, fastest)
         for e in endpoints:
             if (e.id == identifier or
-                    e.id == clean_id or
+                    (clean_id and e.id == clean_id) or
                     e.meta.get("site_name") == identifier or
-                    e.meta.get("site_name") == clean_id or
+                    (clean_id and e.meta.get("site_name") == clean_id) or
                     e.test_ip == identifier or
-                    e.test_ip == clean_id or
+                    (clean_id and e.test_ip == clean_id) or
                     e.public_ip == identifier or
-                    e.public_ip == clean_id):
+                    (clean_id and e.public_ip == clean_id)):
                 return e
 
         # Pass 2 — case-insensitive exact
         for e in endpoints:
             site = (e.meta.get("site_name") or "").lower()
             eid = e.id.lower()
-            if eid == needle or site == needle or eid == clean_needle or site == clean_needle:
+            if (eid == needle or (site and site == needle) or
+                    (clean_needle and (eid == clean_needle or (site and site == clean_needle)))):
                 logger.debug(f"get_endpoint({identifier!r}): case-insensitive match → {e.id}")
                 return e
 
@@ -211,7 +221,8 @@ class RegistryClient:
         for e in endpoints:
             site = (e.meta.get("site_name") or "").lower()
             eid = e.id.lower()
-            if needle in site or needle in eid or clean_needle in site or clean_needle in eid:
+            if (needle in site or needle in eid or
+                    (clean_needle and (clean_needle in site or clean_needle in eid))):
                 logger.info(f"get_endpoint({identifier!r}): partial match → {e.id} (site={e.meta.get('site_name')})")
                 return e
 
@@ -219,7 +230,8 @@ class RegistryClient:
         for e in endpoints:
             site = (e.meta.get("site_name") or "").lower()
             eid = e.id.lower()
-            if (site and site in needle) or eid in needle or (site and site in clean_needle) or eid in clean_needle:
+            if ((site and site in needle) or (eid and eid in needle) or
+                    (clean_needle and ((site and site in clean_needle) or (eid and eid in clean_needle)))):
                 logger.info(f"get_endpoint({identifier!r}): reverse-partial match → {e.id}")
                 return e
 

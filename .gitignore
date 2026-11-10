@@ -123,3 +123,9 @@ traces/
 
 # Compiled Go binaries
 engines/stigix-go/stigix-go
+
+# Customer Success Lab (CRITICAL - Never commit or sync)
+CSPrismaAccessLab-Back-emealabs/
+CSPrismaAccessLab-Back-emealabs
+/CSPrismaAccessLab*
+

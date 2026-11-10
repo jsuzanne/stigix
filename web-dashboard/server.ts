@@ -713,6 +713,7 @@ interface SystemSettings {
     auto_sync_probes_to_fleet?: boolean; // Auto-push configuration bundles (probes, apps) to peers with debounce
     pcap_max_auto_sync_mb?: number;
     registry_mode?: 'auto' | 'leader' | 'peer' | 'standalone';
+    registry_mode_explicit?: boolean; // Set to true when registry_mode is explicitly configured via Web UI / API
     registry_url?: string;
     engine_runtime?: 'legacy' | 'go'; // Data-plane engine runtime selector (defaults to 'go')
     engine_runtime_explicit?: boolean; // Set to true when explicitly toggled via Web UI
@@ -730,7 +731,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     security_engine_enabled: true, // Local security scheduler execution enabled by default
     auto_sync_probes_to_fleet: true, // Default enabled: auto-push changes to fleet with debounce
     pcap_max_auto_sync_mb: 10,     // Auto-sync threshold for PCAP profiles (<= 50MB, safety ratio of WS buffer)
-    registry_mode: 'standalone',
+    registry_mode: (process.env.STIGIX_REGISTRY_MODE as any) || 'standalone',
     registry_url: process.env.STIGIX_REGISTRY_URL || '',
     engine_runtime: isGoEngineFeatureEnabled() ? 'go' : 'legacy',
     mcp_server_enabled: process.env.ENABLE_MCP_SERVER === 'true',
@@ -751,6 +752,9 @@ function getSystemSettings(): SystemSettings {
         if (fs.existsSync(SYSTEM_SETTINGS_FILE)) {
             const raw = JSON.parse(fs.readFileSync(SYSTEM_SETTINGS_FILE, 'utf8'));
             const merged: SystemSettings = { ...DEFAULT_SYSTEM_SETTINGS, ...raw };
+            if (!raw.registry_mode_explicit && process.env.STIGIX_REGISTRY_MODE && raw.registry_mode === 'standalone') {
+                merged.registry_mode = process.env.STIGIX_REGISTRY_MODE as any;
+            }
             if (!isGoEngineFeatureEnabled()) {
                 merged.engine_runtime = 'legacy';
             } else if (!raw.engine_runtime_explicit && resolveGoEngineBinary()) {
@@ -4757,6 +4761,147 @@ app.post('/api/prisma/flows', authenticateToken, async (req, res) => {
             res.status(500).json({ success: false, error: `Failed to execute flow engine: ${err.message}` });
         });
 
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// --- Read-Only Prisma SD-WAN Controller Views API (Phase 2) ---
+app.post('/api/prisma/controller-view', authenticateToken, async (req, res) => {
+    const {
+        view,
+        site,
+        device,
+        prefixes,
+        hours,
+        kind,
+        severity,
+        code,
+        metric,
+        circuit,
+        object_type,
+        name
+    } = req.body || {};
+
+    try {
+        const scriptPath = path.join(PROJECT_ROOT, 'engines', 'sdwan_controller_views.py');
+        if (!fs.existsSync(scriptPath)) {
+            return res.status(404).json({ success: false, error: 'sdwan_controller_views.py script not found' });
+        }
+
+        if (!view || typeof view !== 'string') {
+            return res.status(400).json({ success: false, error: 'view is required' });
+        }
+
+        const args = [scriptPath, '--view', String(view), '--json'];
+
+        if (site) { args.push('--site', String(site)); }
+        if (device) { args.push('--device', String(device)); }
+        if (prefixes === true || prefixes === 'true' || prefixes === 1) { args.push('--prefixes'); }
+        if (hours !== undefined && hours !== null && hours !== '') { args.push('--hours', String(hours)); }
+        if (kind) { args.push('--kind', String(kind)); }
+        if (severity) { args.push('--severity', String(severity)); }
+        if (code) { args.push('--code', String(code)); }
+        if (metric) { args.push('--metric', String(metric)); }
+        if (circuit) { args.push('--circuit', String(circuit)); }
+        if (object_type) { args.push('--object-type', String(object_type)); }
+        if (name) { args.push('--name', String(name)); }
+
+        log('SYSTEM', `Spawning SD-WAN controller view: python3 ${args.join(' ')}`);
+
+        const proc = spawn(PYTHON_PATH, args, {
+            cwd: path.join(PROJECT_ROOT, 'engines'),
+            timeout: 45_000,
+            env: {
+                ...process.env,
+                PYTHONUNBUFFERED: '1',
+                PRISMA_SDWAN_TSG_ID: process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID
+            }
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (d) => { stdout += d.toString(); });
+        proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+        proc.on('close', (exitCode) => {
+            try {
+                const data = JSON.parse(stdout);
+                return res.json(data);
+            } catch (e) {
+                if (exitCode !== 0) {
+                    const combined = (stderr || '') + (stdout || '');
+                    const errorMsg = stderr ? stderr.substring(0, 200).trim() : combined.substring(0, 200).trim() || 'Controller view query failed';
+                    return res.status(500).json({ success: false, error: errorMsg });
+                }
+                return res.status(500).json({ success: false, error: 'Failed to parse controller view JSON response', raw: stdout.substring(0, 300) });
+            }
+        });
+
+        proc.on('error', (err) => {
+            res.status(500).json({ success: false, error: `Failed to execute controller view engine: ${err.message}` });
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// --- Read-Only Prisma SD-WAN vION CLI via WebSocket Device Toolkit (Phase 3) ---
+app.post('/api/prisma/ion-cli', authenticateToken, async (req, res) => {
+    const { device_or_site, device, site, command } = req.body || {};
+    const targetDevice = device_or_site || device || site;
+
+    try {
+        const scriptPath = path.join(PROJECT_ROOT, 'engines', 'sdwan_ion_cli.py');
+        if (!fs.existsSync(scriptPath)) {
+            return res.status(404).json({ success: false, error: 'sdwan_ion_cli.py script not found' });
+        }
+
+        if (!targetDevice || typeof targetDevice !== 'string') {
+            return res.status(400).json({ success: false, error: 'device_or_site is required' });
+        }
+        if (!command || typeof command !== 'string') {
+            return res.status(400).json({ success: false, error: 'command is required' });
+        }
+
+        const args = [scriptPath, '--device', String(targetDevice), '--command', String(command), '--json'];
+
+        log('SYSTEM', `Spawning SD-WAN vION CLI: python3 ${scriptPath} --device ${targetDevice} --command "${command}" --json`);
+
+        const proc = spawn(PYTHON_PATH, args, {
+            cwd: path.join(PROJECT_ROOT, 'engines'),
+            timeout: 45_000,
+            env: {
+                ...process.env,
+                PYTHONUNBUFFERED: '1',
+                PRISMA_SDWAN_TSG_ID: process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID
+            }
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (d) => { stdout += d.toString(); });
+        proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+        proc.on('close', (exitCode) => {
+            try {
+                const data = JSON.parse(stdout);
+                return res.json(data);
+            } catch (e) {
+                if (exitCode !== 0) {
+                    const combined = (stderr || '') + (stdout || '');
+                    const errorMsg = stderr ? stderr.substring(0, 200).trim() : combined.substring(0, 200).trim() || 'vION CLI execution failed';
+                    return res.status(500).json({ success: false, error: errorMsg });
+                }
+                return res.status(500).json({ success: false, error: 'Failed to parse vION CLI JSON response', raw: stdout.substring(0, 300) });
+            }
+        });
+
+        proc.on('error', (err) => {
+            res.status(500).json({ success: false, error: `Failed to execute vION CLI engine: ${err.message}` });
+        });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -18027,6 +18172,50 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
 });
 
 /**
+ * GET /api/registry/onboard-command & GET /api/mesh/onboard-command
+ * Returns a curl one-liner onboarding command for connecting a peer node to the mesh.
+ */
+const handleOnboardCommand = (req: any, res: any) => {
+    try {
+        const localIp = registryManager.getCurrentIp() || getLocalNodePrimaryIp(registryManager);
+        if (registryManager.isLeader()) {
+            const requestHost = req.headers.host || `${localIp}:${PORT}`;
+            const requestProto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+            const result = magicJoinManager.createToken({
+                ttlSeconds: 3600,
+                maxUses: 1,
+                requestHost,
+                requestProto,
+                localIp
+            });
+            return res.json({
+                status: 'ok',
+                success: true,
+                command: result.curlCommand,
+                curl_command: result.curlCommand,
+                token: result.token,
+                expires_at: result.entry.expires_at,
+                leader_ip: localIp
+            });
+        }
+        const status = registryManager.getStatus();
+        const leaderIp = status?.leader_info?.ip || localIp;
+        const cmd = `curl -sSL -X POST http://127.0.0.1:${PORT}/api/controller/onboard -H "Content-Type: application/json" -d '{"leader_ip":"${leaderIp}"}'`;
+        return res.json({
+            status: 'ok',
+            success: true,
+            command: cmd,
+            curl_command: cmd,
+            leader_ip: leaderIp
+        });
+    } catch (err: any) {
+        res.status(500).json({ error: 'onboard_command_failed', message: err.message });
+    }
+};
+app.get('/api/registry/onboard-command', authenticateToken, handleOnboardCommand);
+app.get('/api/mesh/onboard-command', authenticateToken, handleOnboardCommand);
+
+/**
  * GET /api/fleet/join-tokens
  * Lists all generated Magic Join tokens with their lifecycle status.
  * Leader only.
@@ -20654,6 +20843,7 @@ app.post('/api/config/system-settings', authenticateToken, async (req, res) => {
         if (typeof auto_sync_probes_to_fleet === 'boolean') patch.auto_sync_probes_to_fleet = auto_sync_probes_to_fleet;
         if (registry_mode === 'auto' || registry_mode === 'leader' || registry_mode === 'peer' || registry_mode === 'standalone') {
             patch.registry_mode = registry_mode;
+            patch.registry_mode_explicit = true;
         }
         if (typeof registry_url === 'string') {
             patch.registry_url = registry_url.trim();
