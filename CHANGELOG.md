@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.3] - 2026-11-11
+
+### Added
+- **Prisma SASE OAuth2 Session Cache for Sub-3s vION CLI Queries (`engines/sdwan_ion_cli.py`)**:
+  - Cached authenticated `prisma_sase` SDK session headers (`controller`, `tenant_id`, `_websocket_headers`, `_session.headers`) in `/tmp/stigix_sase_sdk_session.json` (`0600`, TTL 10 minutes) with automatic refresh on token expiration or `connect_failed`, eliminating ~2.5s of OAuth2 handshake overhead per CLI invocation.
+- **Structured vION WebSocket CLI Execution Logging & Audit Trail (`engines/sdwan_ion_cli.py`, `web-dashboard/server.ts`)**:
+  - Added `[ION-CLI]` start/completion logs in `server.ts` showing the target element, detected `software_version`, exact executed CLI command, byte count, and execution `duration_ms` (visible in the Stigix Real-Time Log Inspector and container logs).
+  - Added JSONL audit logging (`/var/log/sdwan-traffic-gen/ion-cli-audit.jsonl` with `/tmp/stigix_ion_cli_audit.jsonl` fallback) recording every vION CLI command executed via WebSocket.
+
 ## [3.2.2] - 2026-11-11
 
 ### Added

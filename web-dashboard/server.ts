@@ -660,6 +660,8 @@ async function runLiveFlowCli(
                     break;
                 }
             }
+            const t0 = Date.now();
+            log('ION-CLI', `⚡ [LIVE-FLOW] Executing on ${siteName}: "inspect flow brief dstv4=${dstIp}" (filter UDP src_port=${sourcePort})`);
             const proc = spawn(PYTHON_PATH, args, {
                 cwd: path.join(PROJECT_ROOT, 'engines'),
                 timeout: 25_000,
@@ -672,8 +674,21 @@ async function runLiveFlowCli(
             let stdout = '';
             proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
             proc.on('close', () => {
-                try { resolve(JSON.parse(stdout)); }
-                catch { resolve(null); }
+                try {
+                    const parsed = JSON.parse(stdout);
+                    const elapsedMs = Date.now() - t0;
+                    if (parsed?.success) {
+                        log(
+                            'ION-CLI',
+                            `✅ [LIVE-FLOW] ${parsed.element || siteName}${parsed.software_version ? ` (vION ${parsed.software_version})` : ''} command="${parsed.command || `inspect flow brief dstv4=${dstIp}`}" completed in ${parsed.duration_ms ?? elapsedMs}ms -> ${parsed.flows?.length || 0} matching flow(s)`
+                        );
+                    } else {
+                        log('ION-CLI', `⚠️ [LIVE-FLOW] ${siteName} failed after ${elapsedMs}ms: ${parsed?.error || 'unknown error'}`, 'warn');
+                    }
+                    resolve(parsed);
+                } catch {
+                    resolve(null);
+                }
             });
             proc.on('error', () => resolve(null));
         } catch {
@@ -4929,8 +4944,21 @@ app.post('/api/prisma/ion-cli', authenticateToken, async (req, res) => {
         }
 
         const args = [scriptPath, '--device', String(targetDevice), '--command', String(command), '--json'];
+        const candidateCreds = [
+            path.join(APP_CONFIG.configDir, 'prisma-config.json'),
+            path.join(APP_CONFIG.configDir, 'credentials.json'),
+            '/data/stigix/config/prisma-config.json',
+            '/app/config/prisma-config.json'
+        ];
+        for (const cPath of candidateCreds) {
+            if (fs.existsSync(cPath)) {
+                args.push('--credentials', cPath);
+                break;
+            }
+        }
 
-        log('SYSTEM', `Spawning SD-WAN vION CLI: python3 ${scriptPath} --device ${targetDevice} --command "${command}" --json`);
+        const t0 = Date.now();
+        log('ION-CLI', `⚡ Executing on ${targetDevice}: "${command}"`);
 
         const proc = spawn(PYTHON_PATH, args, {
             cwd: path.join(PROJECT_ROOT, 'engines'),
@@ -4949,8 +4977,17 @@ app.post('/api/prisma/ion-cli', authenticateToken, async (req, res) => {
         proc.stderr.on('data', (d) => { stderr += d.toString(); });
 
         proc.on('close', (exitCode) => {
+            const elapsedMs = Date.now() - t0;
             try {
                 const data = JSON.parse(stdout);
+                if (data?.success) {
+                    log(
+                        'ION-CLI',
+                        `✅ ${data.element || targetDevice}${data.software_version ? ` (vION ${data.software_version})` : ''} command="${data.command || command}" completed in ${data.duration_ms ?? elapsedMs}ms (${data.bytes ?? 0} bytes)`
+                    );
+                } else {
+                    log('ION-CLI', `❌ ${targetDevice} command="${command}" failed after ${elapsedMs}ms: ${data?.error || 'rejected'}`, 'warn');
+                }
                 return res.json(data);
             } catch (e) {
                 if (exitCode !== 0) {

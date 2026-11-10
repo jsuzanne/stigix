@@ -24,6 +24,7 @@ import os
 import re
 import secrets
 import sys
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -1011,6 +1012,23 @@ def build_command_fallbacks(norm_cmd: str, sw_version: str = "") -> List[str]:
     return [norm_cmd]
 
 
+def _append_cli_audit_log(entry: Dict[str, Any]) -> None:
+    """Append a structured JSONL audit record for every vION WebSocket CLI execution."""
+    candidates = [
+        "/var/log/sdwan-traffic-gen/ion-cli-audit.jsonl",
+        "/tmp/stigix_ion_cli_audit.jsonl",
+    ]
+    for path in candidates:
+        parent = os.path.dirname(path)
+        if os.path.isdir(parent):
+            try:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+                return
+            except Exception:
+                continue
+
+
 def execute_ion_cli(
     sdk: Any,
     device_or_site: str,
@@ -1021,6 +1039,7 @@ def execute_ion_cli(
     early_stop_check: Optional[Callable[[str], bool]] = None,
 ) -> Dict[str, Any]:
     """Validate `command`, resolve `device_or_site`, ensure toolkit user credentials, and execute over WebSocket."""
+    t0 = time.monotonic()
     norm_cmd = validate_command(command)
     with _ion_cli_lock():
         el, site_name = resolve_target_element(sdk, device_or_site)
@@ -1071,8 +1090,28 @@ def execute_ion_cli(
                 else:
                     raise
         except ToolkitError as e:
+            _append_cli_audit_log({
+                "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "site": site_name,
+                "element": el.get("name"),
+                "software_version": sw_version,
+                "requested_command": norm_cmd,
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+                "success": False,
+                "error_code": e.code,
+            })
             raise IonCliError(e.code, e.message, status=502) from None
         except asyncio.TimeoutError:
+            _append_cli_audit_log({
+                "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "site": site_name,
+                "element": el.get("name"),
+                "software_version": sw_version,
+                "requested_command": norm_cmd,
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+                "success": False,
+                "error_code": "timeout",
+            })
             raise IonCliError("timeout", ToolkitError.MESSAGES["timeout"], status=504) from None
         except IonCliError:
             raise
@@ -1081,8 +1120,20 @@ def execute_ion_cli(
 
     text = str(raw or "")
     executed_cmd = getattr(raw, "executed_command", "") or primary_cmd
+    duration_ms = int((time.monotonic() - t0) * 1000)
     rejected = device_rejection(text)
     if rejected:
+        _append_cli_audit_log({
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "site": site_name,
+            "element": el.get("name"),
+            "software_version": sw_version,
+            "requested_command": norm_cmd,
+            "executed_command": executed_cmd,
+            "duration_ms": duration_ms,
+            "success": False,
+            "error_code": "command_rejected",
+        })
         raise IonCliError(
             "command_rejected",
             f"The vION rejected the command: {rejected}",
@@ -1105,6 +1156,20 @@ def execute_ion_cli(
             "\n... (truncated: paging stopped at size cap, page limit, or time budget)"
         )
 
+    read_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    _append_cli_audit_log({
+        "timestamp": read_at,
+        "site": site_name,
+        "element": el.get("name"),
+        "software_version": sw_version,
+        "requested_command": norm_cmd,
+        "executed_command": executed_cmd,
+        "duration_ms": duration_ms,
+        "bytes": len(data_bytes),
+        "truncated": truncated,
+        "success": True,
+    })
+
     return {
         "success": True,
         "site": site_name,
@@ -1116,7 +1181,8 @@ def execute_ion_cli(
         "output": text,
         "truncated": truncated,
         "bytes": len(data_bytes),
-        "read_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "duration_ms": duration_ms,
+        "read_at": read_at,
     }
 
 
@@ -1389,13 +1455,19 @@ def resolve_live_flow_cli(
         "site_name": site_name,
         "site_id": site_id,
         "element": cli_res.get("element"),
+        "software_version": cli_res.get("software_version"),
         "command": cli_res.get("command"),
+        "duration_ms": cli_res.get("duration_ms"),
         "query_time": cli_res.get("read_at"),
         "flows": enriched_flows,
     }
 
 
-def _authenticate_sdk(credentials_path: str = "credentials.json") -> Any:
+_SASE_SESSION_CACHE_FILE = "/tmp/stigix_sase_sdk_session.json"
+_SASE_SESSION_TTL_S = 600  # 10 minutes (Prisma SASE OAuth tokens expire after 15 minutes)
+
+
+def _authenticate_sdk(credentials_path: str = "credentials.json", *, force_refresh: bool = False) -> Any:
     if API is None:
         raise IonCliError("sdk_missing", "prisma_sase Python SDK is not installed on this node.", status=503)
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1409,6 +1481,29 @@ def _authenticate_sdk(credentials_path: str = "credentials.json") -> Any:
     creds = load_credentials(_DummyArgs(), json_mode=True)
     sdk = API(update_check=False)
     sdk.rest_call_timeout = 10
+
+    now_epoch = datetime.now(timezone.utc).timestamp()
+    if not force_refresh and os.path.exists(_SASE_SESSION_CACHE_FILE):
+        try:
+            with open(_SASE_SESSION_CACHE_FILE, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+            if (
+                isinstance(cached, dict)
+                and cached.get("client_id") == creds.get("client_id")
+                and cached.get("tsg_id") == str(creds.get("tsg_id"))
+                and (now_epoch - float(cached.get("ts") or 0)) < _SASE_SESSION_TTL_S
+                and cached.get("ws_headers")
+            ):
+                sdk.controller = str(cached.get("controller") or sdk.controller)
+                sdk.tenant_id = cached.get("tenant_id")
+                sdk._websocket_headers = dict(cached.get("ws_headers") or {})
+                sess = getattr(sdk, "_session", None)
+                if sess is not None and isinstance(cached.get("session_headers"), dict):
+                    sess.headers.update(cached["session_headers"])
+                return sdk
+        except Exception:
+            pass
+
     ok = sdk.interactive.login_secret(
         client_id=creds["client_id"],
         client_secret=creds["client_secret"],
@@ -1416,6 +1511,27 @@ def _authenticate_sdk(credentials_path: str = "credentials.json") -> Any:
     )
     if not ok:
         raise IonCliError("auth_failed", "Prisma SD-WAN login_secret returned False.", status=502)
+
+    try:
+        sess = getattr(sdk, "_session", None)
+        cache_doc = {
+            "ts": now_epoch,
+            "client_id": creds.get("client_id"),
+            "tsg_id": str(creds.get("tsg_id")),
+            "controller": getattr(sdk, "controller", "https://api.sase.paloaltonetworks.com"),
+            "tenant_id": getattr(sdk, "tenant_id", None),
+            "ws_headers": dict(getattr(sdk, "_websocket_headers", None) or {}),
+            "session_headers": dict(sess.headers) if sess is not None and hasattr(sess, "headers") else {},
+        }
+        with open(_SASE_SESSION_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache_doc, f)
+        try:
+            os.chmod(_SASE_SESSION_CACHE_FILE, 0o600)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     return sdk
 
 
@@ -1436,15 +1552,30 @@ def main() -> None:
     try:
         if parsed.resolve_flow:
             sdk = _authenticate_sdk(parsed.credentials)
-            res = resolve_live_flow_cli(
-                sdk,
-                parsed.device,
-                dst_ip=parsed.dst_ip,
-                src_ip=parsed.src_ip,
-                src_port=parsed.src_port,
-                dst_port=parsed.dst_port,
-                protocol=parsed.protocol,
-            )
+            try:
+                res = resolve_live_flow_cli(
+                    sdk,
+                    parsed.device,
+                    dst_ip=parsed.dst_ip,
+                    src_ip=parsed.src_ip,
+                    src_port=parsed.src_port,
+                    dst_port=parsed.dst_port,
+                    protocol=parsed.protocol,
+                )
+            except IonCliError as e:
+                if e.code in ("connect_failed", "unavailable"):
+                    sdk = _authenticate_sdk(parsed.credentials, force_refresh=True)
+                    res = resolve_live_flow_cli(
+                        sdk,
+                        parsed.device,
+                        dst_ip=parsed.dst_ip,
+                        src_ip=parsed.src_ip,
+                        src_port=parsed.src_port,
+                        dst_port=parsed.dst_port,
+                        protocol=parsed.protocol,
+                    )
+                else:
+                    raise
             print(json.dumps(res, indent=2))
             return
 
@@ -1453,7 +1584,14 @@ def main() -> None:
         # Validate command syntax first before authenticating to the controller
         validate_command(parsed.command)
         sdk = _authenticate_sdk(parsed.credentials)
-        res = execute_ion_cli(sdk, parsed.device, parsed.command)
+        try:
+            res = execute_ion_cli(sdk, parsed.device, parsed.command)
+        except IonCliError as e:
+            if e.code in ("connect_failed", "unavailable"):
+                sdk = _authenticate_sdk(parsed.credentials, force_refresh=True)
+                res = execute_ion_cli(sdk, parsed.device, parsed.command)
+            else:
+                raise
         print(json.dumps(res, indent=2))
     except IonCliError as err:
         print(json.dumps(err.to_dict(), indent=2))
