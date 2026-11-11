@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePeerContext } from './PeerContext';
-import { Phone, PhoneIncoming, PhoneOutgoing, Play, Pause, BarChart2, Save, Plus, Trash2, Clock, Activity, Wifi, Search, CheckSquare, AlertCircle, Hash, Download, Upload, X, Settings } from 'lucide-react';
+import { Phone, PhoneIncoming, PhoneOutgoing, Play, Pause, BarChart2, Save, Plus, Trash2, Clock, Activity, Wifi, Search, CheckSquare, AlertCircle, Hash, Download, Upload, X, Settings, RotateCw, ArrowRightLeft } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -145,6 +145,76 @@ export default function Voice(props: VoiceProps) {
 
     // ── New manual row form ──
     const [newRow, setNewRow] = useState({ host: '', port: '6100' });
+
+    // ── On-demand Live SD-WAN Path per active CALL-* ──
+    const [callLivePaths, setCallLivePaths] = useState<Record<string, {
+        loading: boolean;
+        egress_path?: string;
+        path_type?: string | null;
+        app_id?: string | null;
+        error?: string;
+    }>>({});
+
+    const handleCheckCallLivePath = async (call: VoiceCall) => {
+        if (!call?.call_id || !call?.target) return;
+        const callId = call.call_id;
+        const [dstIp, portStr] = String(call.target).split(':');
+        const dstPort = parseInt(portStr || '6100', 10) || 6100;
+        const srcPortStr = deriveSourcePort(callId);
+        const sourcePort = (config?.source_port_mode || 'call_id') === 'call_id' && srcPortStr !== '?'
+            ? parseInt(srcPortStr, 10)
+            : undefined;
+
+        setCallLivePaths(prev => ({
+            ...prev,
+            [callId]: { ...prev[callId], loading: true, error: undefined }
+        }));
+
+        try {
+            const res = await gFetch('/api/convergence/live-path', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    testId: callId,
+                    sourcePort,
+                    dstIp,
+                    dstPort,
+                    protocol: 17
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success && data.found) {
+                setCallLivePaths(prev => ({
+                    ...prev,
+                    [callId]: {
+                        loading: false,
+                        egress_path: data.egress_path,
+                        path_type: data.path_type,
+                        app_id: data.flow?.app_id || null
+                    }
+                }));
+            } else {
+                setCallLivePaths(prev => ({
+                    ...prev,
+                    [callId]: {
+                        loading: false,
+                        error: data.message || data.error || 'Flow not found'
+                    }
+                }));
+            }
+        } catch (err: any) {
+            setCallLivePaths(prev => ({
+                ...prev,
+                [callId]: {
+                    loading: false,
+                    error: err.message || 'Path lookup failed'
+                }
+            }));
+        }
+    };
 
     // ════════════════════════════════════════════════
     // Reachability polling
@@ -954,43 +1024,85 @@ export default function Voice(props: VoiceProps) {
                         ) : (
                             activeCalls.map((call, idx) => {
                                 const siteName = targetNameMap.get(call.target);
+                                const lp = callLivePaths[call.call_id];
                                 return (
-                                    <div key={idx} className="bg-card-secondary/50 p-4 rounded-2xl border border-border flex items-center justify-between shadow-sm hover:border-blue-500/30 transition-all">
-                                        <div className="space-y-1.5 min-w-0 flex-1 mr-3">
-                                            <div className="flex items-center gap-2">
-                                                <span
-                                                    title={`Source Port: ${deriveSourcePort(call.call_id)}`}
-                                                    className="text-[9px] font-black text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded bg-blue-600/10 border border-blue-500/10 font-mono italic cursor-help shrink-0"
+                                    <div key={idx} className="bg-card-secondary/50 p-4 rounded-2xl border border-border flex flex-col gap-2 shadow-sm hover:border-blue-500/30 transition-all">
+                                        <div className="flex items-center justify-between">
+                                            <div className="space-y-1.5 min-w-0 flex-1 mr-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span
+                                                        title={`Source Port: ${deriveSourcePort(call.call_id)}`}
+                                                        className="text-[9px] font-black text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded bg-blue-600/10 border border-blue-500/10 font-mono italic cursor-help shrink-0"
+                                                    >
+                                                        #{call.call_id}
+                                                    </span>
+                                                    <div className="text-xs font-black text-text-primary tracking-tight truncate">
+                                                        {siteName || call.target}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 text-[10px] truncate">
+                                                    {siteName && (
+                                                        <>
+                                                            <span className="font-mono font-medium text-text-secondary">
+                                                                {call.target}
+                                                            </span>
+                                                            <span className="text-text-muted/60 text-[9px]">•</span>
+                                                        </>
+                                                    )}
+                                                    <span className="text-text-secondary/90 font-sans font-bold uppercase tracking-wider text-[9px]">
+                                                        {call.codec} • {call.duration}s
+                                                    </span>
+                                                </div>
+
+                                                <CallProgress
+                                                    duration={call.duration}
+                                                    seenAt={seenAtMap.current.get(call.call_id) ?? Date.now()}
+                                                />
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                                <div className="flex items-center gap-2 bg-green-600/10 px-2.5 py-1.5 rounded-xl border border-green-500/20">
+                                                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-blink-slow" />
+                                                    <span className="text-[9px] text-green-500 font-black tracking-tight">Live</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCheckCallLivePath(call)}
+                                                    disabled={lp?.loading}
+                                                    title="On-demand SD-WAN path lookup via vION WebSocket CLI (with Flow API fallback)"
+                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all cursor-pointer disabled:opacity-50"
                                                 >
-                                                    #{call.call_id}
-                                                </span>
-                                                <div className="text-xs font-black text-text-primary tracking-tight truncate">
-                                                    {siteName || call.target}
+                                                    {lp?.loading ? <RotateCw size={9} className="animate-spin" /> : <Search size={9} />}
+                                                    <span>{lp?.egress_path ? 'Refresh Path' : 'Inspect Path'}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {lp?.egress_path && (
+                                            <div className="flex items-center justify-between gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-[10px] font-mono">
+                                                <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                                    <ArrowRightLeft size={10} className="text-emerald-400 shrink-0" />
+                                                    <span className="font-bold text-emerald-300 truncate" title={lp.egress_path}>
+                                                        {lp.egress_path}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    {lp.app_id && (
+                                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                                                            {lp.app_id}
+                                                        </span>
+                                                    )}
+                                                    {lp.path_type && (
+                                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-card text-text-muted uppercase border border-border">
+                                                            {lp.path_type}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5 text-[10px] truncate">
-                                                {siteName && (
-                                                    <>
-                                                        <span className="font-mono font-medium text-text-secondary">
-                                                            {call.target}
-                                                        </span>
-                                                        <span className="text-text-muted/60 text-[9px]">•</span>
-                                                    </>
-                                                )}
-                                                <span className="text-text-secondary/90 font-sans font-bold uppercase tracking-wider text-[9px]">
-                                                    {call.codec} • {call.duration}s
-                                                </span>
+                                        )}
+                                        {lp?.error && !lp?.loading && (
+                                            <div className="text-[9px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1 truncate" title={lp.error}>
+                                                {lp.error}
                                             </div>
-
-                                            <CallProgress
-                                                duration={call.duration}
-                                                seenAt={seenAtMap.current.get(call.call_id) ?? Date.now()}
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2 bg-green-600/10 px-2.5 py-1.5 rounded-xl border border-green-500/20 shrink-0">
-                                            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-blink-slow" />
-                                            <span className="text-[9px] text-green-500 font-black tracking-tight">Live</span>
-                                        </div>
+                                        )}
                                     </div>
                                 );
                             })

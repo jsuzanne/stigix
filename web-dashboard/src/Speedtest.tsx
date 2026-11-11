@@ -6,7 +6,7 @@ import {
     Shield, Cpu, ChevronRight, ChevronLeft, BarChart3, Info, CheckCircle2, XCircle,
     Search, Filter, Download, Trash2, ChevronDown, ChevronUp, Share2,
     ShieldAlert, ExternalLink, ArrowUpRight, ShieldOff, Copy, RefreshCw,
-    History as HistoryIcon, X, Layers, Calendar, Bookmark, Plus, TrendingUp, RotateCcw
+    History as HistoryIcon, X, Layers, Calendar, Bookmark, Plus, TrendingUp, RotateCcw, ArrowRightLeft
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
@@ -217,6 +217,69 @@ export default function Speedtest({ token }: Props) {
     const [sharedTargets, setSharedTargets] = useState<any[]>([]);
     const [allKnownTargets, setAllKnownTargets] = useState<any[]>([]);
     const [selectedTargetLabel, setSelectedTargetLabel] = useState<string>('');
+
+    // ── On-demand Live SD-WAN Path per XFR-* job ──
+    const [xfrLivePaths, setXfrLivePaths] = useState<Record<string, {
+        loading: boolean;
+        egress_path?: string;
+        path_type?: string | null;
+        app_id?: string | null;
+        error?: string;
+    }>>({});
+
+    const handleCheckXfrLivePath = async (job: XfrJob | null) => {
+        if (!job?.params?.host) return;
+        const jobKey = job.sequence_id || job.id || 'current';
+        const dstIp = String(job.params.host).split(':')[0];
+        const dstPort = Number(job.params.port || 9000);
+        const protoNum = job.params.protocol === 'tcp' ? 6 : 17;
+
+        setXfrLivePaths(prev => ({
+            ...prev,
+            [jobKey]: { ...prev[jobKey], loading: true, error: undefined }
+        }));
+
+        try {
+            const res = await gFetch('/api/convergence/live-path', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    testId: jobKey,
+                    dstIp,
+                    dstPort,
+                    protocol: protoNum
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success && data.found) {
+                setXfrLivePaths(prev => ({
+                    ...prev,
+                    [jobKey]: {
+                        loading: false,
+                        egress_path: data.egress_path,
+                        path_type: data.path_type,
+                        app_id: data.flow?.app_id || null
+                    }
+                }));
+            } else {
+                setXfrLivePaths(prev => ({
+                    ...prev,
+                    [jobKey]: {
+                        loading: false,
+                        error: data.message || data.error || 'Flow not found'
+                    }
+                }));
+            }
+        } catch (err: any) {
+            setXfrLivePaths(prev => ({
+                ...prev,
+                [jobKey]: {
+                    loading: false,
+                    error: err.message || 'Path lookup failed'
+                }
+            }));
+        }
+    };
 
     const getTargetDisplayName = (host?: string, port?: number, fallbackTargetName?: string): { name: string; isFriendly: boolean } => {
         if (fallbackTargetName && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(fallbackTargetName.trim())) {
@@ -1303,11 +1366,52 @@ export default function Speedtest({ token }: Props) {
                                             : 'Select target and launch test')}
                                 </p>
                             </div>
-                            {isRunning && (
-                                <div className="px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full animate-pulse text-[10px] font-black text-blue-500">
-                                    Live Stream
-                                </div>
-                            )}
+                            <div className="flex items-center gap-2 flex-wrap justify-end">
+                                {activeJob?.params?.host && (() => {
+                                    const jobKey = activeJob.sequence_id || activeJob.id || 'current';
+                                    const lp = xfrLivePaths[jobKey];
+                                    return (
+                                        <>
+                                            {lp?.egress_path && (
+                                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-[10px] font-mono">
+                                                    <ArrowRightLeft size={11} className="text-emerald-400 shrink-0" />
+                                                    <span className="font-bold text-emerald-300">{lp.egress_path}</span>
+                                                    {lp.app_id && (
+                                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                                                            {lp.app_id}
+                                                        </span>
+                                                    )}
+                                                    {lp.path_type && (
+                                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-card-secondary text-text-muted uppercase border border-border">
+                                                            {lp.path_type}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {lp?.error && !lp?.loading && (
+                                                <span className="text-[9px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2 py-1">
+                                                    {lp.error}
+                                                </span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCheckXfrLivePath(activeJob)}
+                                                disabled={lp?.loading}
+                                                title="On-demand SD-WAN path lookup via vION WebSocket CLI (with Flow API fallback)"
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all cursor-pointer disabled:opacity-50"
+                                            >
+                                                {lp?.loading ? <RefreshCw size={11} className="animate-spin" /> : <Search size={11} />}
+                                                <span>{lp?.egress_path ? 'Refresh Path' : 'Inspect Live Path'}</span>
+                                            </button>
+                                        </>
+                                    );
+                                })()}
+                                {isRunning && (
+                                    <div className="px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full animate-pulse text-[10px] font-black text-blue-500">
+                                        Live Stream
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Summary Cards */}

@@ -1381,14 +1381,19 @@ def resolve_live_flow_cli(
     cmd = "inspect flow brief" + (" " + " ".join(kv_parts) if kv_parts else "")
 
     def _stop_when_found(partial_text: str) -> bool:
-        if not src_port or int(src_port) <= 0:
+        has_sport = bool(src_port and int(src_port) > 0)
+        has_dport = bool(dst_port and int(dst_port) > 0)
+        if not has_sport and not has_dport:
             return False
         rows = parse_inspect_flow_brief(partial_text)
         for r in rows:
-            if (
-                str(r.get("source_port")) == str(int(src_port))
-                and str(r.get("wanpath_id") or "").isdigit()
-            ):
+            if not str(r.get("wanpath_id") or "").isdigit():
+                continue
+            if protocol and int(protocol) > 0 and str(r.get("protocol")) != str(int(protocol)):
+                continue
+            if has_sport and str(r.get("source_port")) == str(int(src_port)):
+                return True
+            if not has_sport and has_dport and str(r.get("destination_port")) == str(int(dst_port)):
                 return True
         return False
 

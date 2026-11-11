@@ -630,7 +630,8 @@ async function runLiveFlowCli(
     siteName: string,
     sourcePort: number,
     dstIp: string,
-    protocol: number = 17
+    protocol: number = 17,
+    dstPort?: number
 ): Promise<any> {
     return new Promise((resolve) => {
         try {
@@ -644,10 +645,15 @@ async function runLiveFlowCli(
                 '--device', siteName,
                 '--resolve-flow',
                 '--dst-ip', String(dstIp),
-                '--src-port', String(sourcePort),
                 '--protocol', String(protocol),
                 '--json'
             ];
+            if (sourcePort && Number(sourcePort) > 0) {
+                args.push('--src-port', String(sourcePort));
+            }
+            if (dstPort && Number(dstPort) > 0) {
+                args.push('--dst-port', String(dstPort));
+            }
             const candidateCreds = [
                 path.join(APP_CONFIG.configDir, 'prisma-config.json'),
                 path.join(APP_CONFIG.configDir, 'credentials.json'),
@@ -661,7 +667,7 @@ async function runLiveFlowCli(
                 }
             }
             const t0 = Date.now();
-            log('ION-CLI', `⚡ [LIVE-FLOW] Executing on ${siteName}: "inspect flow brief dstv4=${dstIp}" (filter UDP src_port=${sourcePort})`);
+            log('ION-CLI', `⚡ [LIVE-FLOW] Executing on ${siteName}: "inspect flow brief dstv4=${dstIp}" (proto=${protocol}${sourcePort ? `, src_port=${sourcePort}` : ''}${dstPort ? `, dst_port=${dstPort}` : ''})`);
             const proc = spawn(PYTHON_PATH, args, {
                 cwd: path.join(PROJECT_ROOT, 'engines'),
                 timeout: 25_000,
@@ -8489,19 +8495,39 @@ app.get('/api/convergence/status', authenticateToken, (req, res) => {
  */
 app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
     try {
-        const { testId, sourcePort: reqSourcePort, dstIp, siteName: reqSiteName } = req.body;
+        const {
+            testId,
+            sourcePort: reqSourcePort,
+            dstIp: rawDstIp,
+            dstPort: reqDstPort,
+            protocol: reqProtocol,
+            siteName: reqSiteName
+        } = req.body;
 
-        let sourcePort = reqSourcePort;
+        const dstIp = rawDstIp ? String(rawDstIp).split(':')[0].trim() : '';
+        const protoNum = (reqProtocol === 6 || String(reqProtocol).toLowerCase() === 'tcp') ? 6 : 17;
+        let sourcePort = reqSourcePort ? Number(reqSourcePort) : 0;
+        let dstPort = reqDstPort ? Number(reqDstPort) : 0;
+
         if (!sourcePort && testId) {
-            const match = String(testId).match(/CONV-(\d+)/);
-            if (match && match[1]) {
-                const testNum = parseInt(match[1], 10);
+            const convMatch = String(testId).match(/(?:CONV|CALL)-(\d+)/);
+            const xfrMatch = String(testId).match(/XFR-(\d+)/);
+            if (convMatch && convMatch[1]) {
+                const testNum = parseInt(convMatch[1], 10);
                 sourcePort = 30000 + (testNum % 10000);
+            } else if (xfrMatch && xfrMatch[1] && protoNum === 17) {
+                const testNum = parseInt(xfrMatch[1], 10);
+                sourcePort = 40000 + (testNum % 10000);
             }
         }
+        if (!dstPort && testId) {
+            if (String(testId).includes('CONV-')) dstPort = 6200;
+            else if (String(testId).includes('CALL-')) dstPort = 6100;
+            else if (String(testId).includes('XFR-')) dstPort = 9000;
+        }
 
-        if (!sourcePort || !dstIp) {
-            return res.status(400).json({ success: false, error: 'Missing sourcePort or dstIp' });
+        if (!dstIp || (!sourcePort && !dstPort)) {
+            return res.status(400).json({ success: false, error: 'Missing dstIp or port filter (sourcePort / dstPort)' });
         }
 
         const siteInfo = siteManager.getSiteInfo();
@@ -8514,11 +8540,11 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
             });
         }
 
-        log('CONV', `Querying live path for ${siteName} -> dst ${dstIp} (UDP port ${sourcePort}) via vION WebSocket CLI (with API fallback)`);
-        const normTestId = testId ? (String(testId).match(/(CONV-\d+)/)?.[1] || String(testId)) : '';
+        log('CONV', `Querying live path for ${siteName} -> dst ${dstIp} (proto=${protoNum}, srcPort=${sourcePort || 'any'}, dstPort=${dstPort || 'any'}) via vION WebSocket CLI (with API fallback)`);
+        const normTestId = testId ? (String(testId).match(/((?:CONV|CALL|XFR)-\d+)/)?.[1] || String(testId)) : '';
 
         // 1. Real-time dataplane lookup via vION WebSocket CLI (~1.5-2s, zero cloud indexing lag)
-        const cliResult = await runLiveFlowCli(siteName, Number(sourcePort), String(dstIp), 17);
+        const cliResult = await runLiveFlowCli(siteName, Number(sourcePort || 0), String(dstIp), protoNum, dstPort || undefined);
         if (cliResult?.flows && cliResult.flows.length > 0) {
             const primaryFlow = cliResult.flows[0];
             const rawPath = primaryFlow.egress_path || primaryFlow.path_type || '';

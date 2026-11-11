@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.4] - 2026-11-11
+
+### Added
+- **On-Demand Live SD-WAN Path Inspection for Voice (`CALL-*`) & Speedtest (`XFR-*`) (`web-dashboard/src/Voice.tsx`, `web-dashboard/src/Speedtest.tsx`, `web-dashboard/server.ts`, `engines/sdwan_ion_cli.py`)**:
+  - Added an **on-demand** `Inspect Path` / `Refresh Path` button on each active call card in the Voice **Live Streams** panel (`CALL-*`, UDP `30000+N` $\rightarrow$ `:6100`), displaying the resolved SD-WAN egress path (`BR8-INET2 → DC2-INET`), `app_id` (`rtp-base`), and `path_type` (`VPN`) without any background polling.
+  - Added an **on-demand** `Inspect Live Path` / `Refresh Path` button in the Speedtest **Live Performance / Test Completed** header (`XFR-*`, TCP `:9000` or UDP/QUIC `40000+N` $\rightarrow$ `:9000`).
+  - Extended `POST /api/convergence/live-path`, `runLiveFlowCli`, and `resolve_live_flow_cli` early-stop pagination to support `CALL-*` and `XFR-*` flows with `dstPort` and `protocol` (`6` TCP / `17` UDP) filtering.
+
 ## [3.2.3] - 2026-11-11
 
 ### Added
