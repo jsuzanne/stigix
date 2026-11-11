@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.10] - 2026-11-11
+
+### Changed & Enhanced
+- **UX Polish Pass on Packet Capture → E2E Flow & Path Trace (NWPI) (`web-dashboard/src/PacketCapture.tsx`, `web-dashboard/packet-capture-routes.ts`)**:
+  - Reorganized the top bar into a sober module header (`Packet Capture` + `Local PCAP | E2E Flow & Path Trace (NWPI)` + discrete `Captures` access) and a streamlined diagnostic composer (`From · Source Site` → `To · Destination` → `Test · Protocol / Port` → `Run trace`).
+  - Added protocol-aware Port input handling: when `ICMP` is selected, displays `Not applicable` instead of `0` while preserving the previous TCP/UDP port in state when switching back to `TCP` or `UDP`.
+  - Moved `Collection Mode` (`Probe + PCAP`, `Passive + PCAP`, `ION CLI only`) and `Source IP (Optional LAN Host)` into a collapsible **`Advanced options ▸`** drawer paired with a persistent summary pill (`Probe + PCAP · Source IP: Auto`).
+  - Compacted **Favorites** (`DC1 App`, `OnPrem App`, `O365 via DC2`, `Microsoft 365`, `BR5 DIA`) with full details on hover (`title`) and active highlight state only while form inputs match that favorite.
+  - Attached the PCAP context summary (`Capture · X packets · Y KB`) and contextual actions (`Captures`, `Download PCAP`, `Replay`) directly to the right side of the **Tabbed Evidence Workspace** bar in E2E Trace mode.
+  - Made the horizontal progression timeline axis (`●──────────────●──────────────●──────────────●`) geometrically continuous across grid columns (`-mx-1.5`) and required both endpoints of any segment to be confirmed before rendering a solid emerald connector.
+  - Replaced generic `OBSERVED` node badges with role-specific status labels (`CAPTURED`, `FLOW MATCHED`, `LOCAL BREAKOUT`, `TUNNEL UP`, `REPLY RECEIVED`, `NO MATCH`, `NO RESPONSE`) and made the correlation badge protocol-aware (`EXACT FLOW MATCH (5-TUPLE)` vs `EXACT FLOW MATCH (ICMP)` with detailed criteria tooltip).
+  - Updated `NO_RESPONSE` / unidirectional flow synthesis to strictly separate observed facts (`Last confirmed flow observation: ... Failure location not determined`) from troubleshooting hypotheses (`Suggested checks: ...`), and conditioned known destination service labels (`DC1 Private App`, `OnPrem App 8085`, `Microsoft 365 (O365)`) on matching both IP/domain and protocol/port.
+
+### Fixed & Hardened
+- **Delegated Remote Stigix Probe + PCAP Synchronization & Hardware ION 1200-S Compatibility (`engines/stigix-go/pcap_capture.go`, `web-dashboard/packet-capture-routes.ts`, `engines/sdwan_ion_cli.py`)**:
+  - Added `--immediate-mode` to `tcpdump` in `engines/stigix-go/pcap_capture.go` and routed `runEngine` in `web-dashboard/packet-capture-routes.ts` through `pcap_capture_engine.py` (`tcpdump --immediate-mode`), preventing Linux `TPACKET_V3` ring-buffer starvation on sub-second delegated probes (`0 packets captured / 14 packets received by filter`).
+  - Added remote `.pcap` file download synchronization in `packet-capture-routes.ts` when delegating an E2E trace to a remote Stigix spoke (e.g., running a trace from `BR8` with `Source Site = BR1`), allowing full packet inspection, download, and replay directly from the delegating UI.
+  - Added hardware model compatibility in `engines/sdwan_ion_cli.py` for physical `ION 1200-S` (`BR8`) vs virtual `ION 3102v` (`BR1`, `DC1`): handled `INVALID_PARAMETER_ERROR: Invalid Syntax` when filtering `inspect flow brief` by `srcv4`/`dstv4` inside VRF `Global` by falling back automatically to unfiltered `inspect flow brief` + local Python tuple matching, and decoupled Hub HA inspection from empty branch egress circuit strings via `hub_site_id` fallback.
+
 ## [3.2.9] - 2026-11-11
 
 ### Changed & Enhanced

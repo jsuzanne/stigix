@@ -258,8 +258,8 @@ MAX_PAGES = 180
 POLICY_MAX_CHARS = 512 * 1024
 _ELEMENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 TOOLKIT_API_VERSION = "v2.0"
-TOOLKIT_OPEN_TIMEOUT_S = 8
-TOTAL_TIMEOUT_S = 35.0
+TOOLKIT_OPEN_TIMEOUT_S = 10
+TOTAL_TIMEOUT_S = 45.0
 
 
 class ToolkitError(Exception):
@@ -327,7 +327,7 @@ def _bare_prompt(line: str, host: str) -> bool:
 
 
 def command_done(buf: str, command: str, host: str) -> bool:
-    lines = clean(buf).rstrip(" ").split("\n")
+    lines = clean(buf).rstrip().split("\n")
     if not _bare_prompt(lines[-1], host):
         return False
     cmd = _norm(command)
@@ -435,7 +435,7 @@ async def run_command(
     password: str,
     command: str,
     *,
-    login_timeout: float = 8.0,
+    login_timeout: float = 14.0,
     command_timeout: float = 22.0,
     idle: float = 1.5,
     early_stop_check: Optional[Callable[[str], bool]] = None,
@@ -447,11 +447,11 @@ async def run_command(
     except Exception:
         raise ToolkitError("connect_failed") from None
     try:
-        text, hit, closed = await _read(ws, LOGIN_RX, login_timeout, max(idle, 6.0))
+        text, hit, closed = await _read(ws, LOGIN_RX, login_timeout, max(idle, 8.0))
         if not hit and not closed and not PROMPT_RX.search(clean(text)):
             try:
                 await ws.send("\r")
-                extra, hit, closed = await _read(ws, LOGIN_RX, min(5.0, login_timeout), max(idle, 4.5))
+                extra, hit, closed = await _read(ws, LOGIN_RX, min(6.0, login_timeout), max(idle, 5.0))
                 text += extra
             except Exception:
                 pass
@@ -462,18 +462,22 @@ async def run_command(
                 raise ToolkitError("closed" if closed else "no_prompt")
         else:
             await ws.send(username + "\r")
-            text, hit, closed = await _read(ws, _PASSWORD_OR_FAIL_RX, login_timeout, max(idle, 4.5))
+            text, hit, closed = await _read(ws, _PASSWORD_OR_FAIL_RX, login_timeout, max(idle, 8.0))
             if LOGIN_FAILED_RX.search(clean(text)):
                 raise ToolkitError("login_failed")
             if not hit or not PASSWORD_RX.search(clean(text)):
                 raise ToolkitError("closed" if closed else "no_prompt")
             await ws.send(password + "\r")
-            text, hit, closed = await _read(ws, _PROMPT_OR_FAIL_RX, login_timeout, max(idle, 6.0))
+            # After password submission, vION echoes '\r\n' immediately and then spawns the toolkit CLI shell,
+            # which can take 8-16s on busy branch vIONs (e.g. BR1). Wait full post-password timeout before idle cutoff.
+            post_pw_timeout = max(login_timeout, 20.0) if login_timeout >= 5.0 else login_timeout
+            post_pw_settle = 0.12 if login_timeout >= 5.0 else 0.0
+            text, hit, closed = await _read(ws, _PROMPT_OR_FAIL_RX, post_pw_timeout, post_pw_timeout, settle=post_pw_settle)
             if LOGIN_FAILED_RX.search(clean(text)) or LOGIN_RX.search(clean(text)):
                 raise ToolkitError("login_failed")
             if not hit or not PROMPT_RX.search(clean(text)):
                 raise ToolkitError("closed" if closed else "no_prompt")
-        m = PROMPT_LINE_RX.match(clean(text).rstrip(" ").split("\n")[-1])
+        m = PROMPT_LINE_RX.match(clean(text).rstrip().split("\n")[-1])
         host = m.group(1) if m else ""
 
         candidates: List[str] = [command]
@@ -498,12 +502,15 @@ async def run_command(
             if device_rejection(shaped_text) and idx + 1 < len(candidates) and not closed:
                 continue
             # On Hub/Transit vIONs, vpn_to_core flows may be indexed with reversed srcv4/dstv4 columns;
-            # if an IP-filtered `inspect flow brief` returned 0 rows and the next candidate is another IP-filtered query,
-            # try the reversed IP filter immediately in the same open WebSocket session (~0.2s)
+            # ONLY if the query had BOTH srcv4= and dstv4= and returned 0 rows, try the reversed srcv4/dstv4 pair
+            # immediately in the same open WebSocket session (~0.2s). Never fall back to dropping srcv4= on 0 rows.
             if (
                 cand.startswith("inspect flow brief ")
+                and "srcv4=" in cand
+                and "dstv4=" in cand
                 and idx + 1 < len(candidates)
-                and candidates[idx + 1].startswith("inspect flow brief ")
+                and "srcv4=" in candidates[idx + 1]
+                and "dstv4=" in candidates[idx + 1]
                 and not closed
                 and not parse_inspect_flow_brief(shaped_text)
             ):
@@ -1179,9 +1186,9 @@ def build_command_fallbacks(norm_cmd: str, sw_version: str = "") -> List[str]:
 
         cached_mode = caps.get("inspect_flow_brief")
         if cached_mode in ("ip_only", "bare"):
-            ordered = [cmd_ip, cmd_dst, cmd_rev_ip, cmd_bare, norm_cmd]
+            ordered = [cmd_ip, cmd_rev_ip, cmd_dst, cmd_bare, norm_cmd]
         else:
-            ordered = [norm_cmd, cmd_ip, cmd_dst, cmd_rev_ip, cmd_bare]
+            ordered = [norm_cmd, cmd_ip, cmd_rev_ip, cmd_dst, cmd_bare]
         for c in ordered:
             if c and c not in fallbacks:
                 fallbacks.append(c)
@@ -1608,6 +1615,7 @@ def resolve_live_flow_cli(
     dst_port: Optional[int] = None,
     protocol: Optional[int] = None,
     allow_relaxed_fallback: bool = False,
+    allow_snat_fallback: bool = False,
 ) -> Dict[str, Any]:
     """Query real-time active dataplane flow(s) on a vION via `inspect flow brief <kv>`
     and resolve the active `WANPATH-ID` to a human-readable `egress_path`.
@@ -1620,7 +1628,11 @@ def resolve_live_flow_cli(
     element has 0 matching flows.
     """
     kv_parts: List[str] = []
-    if src_ip:
+    # When allow_snat_fallback is True (Ingress Branch ION) and dst_ip is known, query by
+    # dstv4=<dst_ip> in CLI and filter src_ip in Python so that if the Ingress ION applies
+    # Source NAT (e.g. BR1 translating 192.168.207.10 -> 10.10.207.135), we still see the flow
+    # in a single CLI round-trip.
+    if src_ip and not (allow_snat_fallback and dst_ip):
         kv_parts.append(f"srcv4={src_ip}")
     if dst_ip:
         kv_parts.append(f"dstv4={dst_ip}")
@@ -1708,6 +1720,7 @@ def resolve_live_flow_cli(
             exact_dst = [r for r in filtered if r.get("destination_ip") == dst_ip]
             if exact_dst:
                 filtered = exact_dst
+        snat_used = False
         if src_ip:
             src_matches = [r for r in filtered if r.get("source_ip") == src_ip or r.get("destination_ip") == src_ip]
             exact_src = [r for r in src_matches if r.get("source_ip") == src_ip]
@@ -1715,6 +1728,11 @@ def resolve_live_flow_cli(
                 filtered = exact_src
             elif src_matches:
                 filtered = src_matches
+            elif allow_snat_fallback and filtered:
+                # Ingress Branch ION applies Source NAT (e.g. BR1 translating 192.168.207.10 -> 10.10.207.135)
+                snat_used = True
+            else:
+                filtered = []
         if want_proto_int and want_proto_int > 0:
             proto_matches = [r for r in filtered if _proto_ok(r.get("protocol"), want_proto_int)]
             if proto_matches or not allow_relaxed_fallback or want_proto_int == 1:
@@ -1722,7 +1740,7 @@ def resolve_live_flow_cli(
 
         has_sport = bool(src_port and int(src_port) > 0)
         has_dport = bool(dst_port and int(dst_port) > 0)
-        confidence = "exact_5tuple" if (has_sport or has_dport) else "host_pair"
+        confidence = "snat_translated" if snat_used else ("exact_5tuple" if (has_sport or has_dport) else "host_pair")
         if has_sport or has_dport:
             sport_matches = (
                 [
@@ -2013,6 +2031,7 @@ def trace_flow_path_cli(
         dst_port=dst_port,
         protocol=protocol,
         allow_relaxed_fallback=True,
+        allow_snat_fallback=True,
     )
 
     ingress_flows = ingress.get("flows") or []

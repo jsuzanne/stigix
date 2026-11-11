@@ -421,6 +421,7 @@ func startCaptureSession(iface string, bpf string, duration int, maxPackets int,
 	}
 
 	cmdArgs := []string{
+		"--immediate-mode",
 		"-i", iface,
 		"-nn",
 		"-U",

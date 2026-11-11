@@ -428,6 +428,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         role: string;
         connected: boolean;
         elements: Array<{ id: string; name: string; connected: boolean; role: string; software_version: string }>;
+        stigix_peer?: { name: string; host: string; port: number; version: string; is_local: boolean } | null;
     }>>([]);
     const [detectedLocalSite, setDetectedLocalSite] = useState<string>(localSiteName || '');
     const [traceSourceSite, setTraceSourceSite] = useState<string>(localSiteName || 'BR8');
@@ -444,6 +445,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     const [traceEvidenceTab, setTraceEvidenceTab] = useState<'packets' | 'flows' | 'limits'>('packets');
     const [selectedTraceFlow, setSelectedTraceFlow] = useState<any | null>(null);
     const [showOnlyExactFlows, setShowOnlyExactFlows] = useState<boolean>(false);
+    const [showTraceAdvanced, setShowTraceAdvanced] = useState<boolean>(false);
     const activeTraceIdRef = useRef<string>('');
 
     // Draggable Column Widths for Virtual Packet Table
@@ -620,31 +622,36 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         activeTraceIdRef.current = currentTraceId;
         const effLocal = detectedLocalSite || localSiteName || 'BR8';
         const isLocalTrace = traceSourceMode !== 'ion_only' && effSite.toUpperCase() === effLocal.toUpperCase();
+        const matchedSiteObj = traceSites.find((s) => s.site_name.toUpperCase() === effSite.toUpperCase());
+        const remotePeer = !isLocalTrace && traceSourceMode !== 'ion_only' ? (matchedSiteObj?.stigix_peer || null) : null;
+        const hasRemotePeer = Boolean(remotePeer && !remotePeer.is_local);
         const dstPortLabelInit = effProto === 'icmp' ? 'ICMP' : `${effProto.toUpperCase()}/${effPort || '*'}`;
 
         setSelectedTraceFlow(null);
         setDisplayFilter('');
-        setSelectedHopId(isLocalTrace ? 'hop_source' : 'hop_ingress_ion');
+        setSelectedHopId(isLocalTrace || hasRemotePeer ? 'hop_source' : 'hop_ingress_ion');
         setTraceProgress({
             active: true,
             trace_id: currentTraceId,
-            phase: isLocalTrace ? 'LOCAL_CAPTURE_AND_PROBE' : 'INGRESS_ION_CLI',
+            phase: isLocalTrace ? 'LOCAL_CAPTURE_AND_PROBE' : hasRemotePeer ? 'REMOTE_PEER_AND_ION_CLI' : 'INGRESS_ION_CLI',
             phase_label: isLocalTrace
                 ? `Recording local PCAP & dispatching synthetic ${effProto.toUpperCase()} probe from ${effSite}...`
+                : hasRemotePeer && remotePeer
+                ? `Triggering remote Stigix Peer ${remotePeer.name} (${remotePeer.host}) & querying ${effSite} vION CLI...`
                 : `Querying ${effSite} vION flow table via WebSocket CLI...`,
             flow_identity: {
-                probe_5tuple: `${effSrcIp || 'Auto Source'} → ${effDst}${effPort && effProto !== 'icmp' ? `:${effPort}` : ''} · ${effProto.toUpperCase()}`
+                probe_5tuple: `${effSrcIp || (hasRemotePeer && remotePeer ? remotePeer.host : 'Auto Source')} → ${effDst}${effPort && effProto !== 'icmp' ? `:${effPort}` : ''} · ${effProto.toUpperCase()}`
             },
             hops: [
                 {
                     id: 'hop_source',
-                    role: isLocalTrace ? 'SOURCE_STIGIX' : 'SOURCE_CLIENT_AGENTLESS',
-                    role_label: isLocalTrace ? 'Source Probe' : 'Site Client (Agentless)',
-                    title: isLocalTrace ? `Stigix ${effSite}` : `Client (${effSite})`,
-                    subtitle: effSrcIp || (isLocalTrace ? 'Capturing local NIC...' : 'Agentless Mode'),
-                    status: isLocalTrace ? 'RUNNING' : 'PASSIVE',
-                    badge: isLocalTrace ? 'Capturing PCAP + Probe...' : 'No Local Probe',
-                    evidence_type: isLocalTrace ? 'Local PCAP + Active Probe' : 'Agentless (No Local Probe)'
+                    role: isLocalTrace ? 'SOURCE_STIGIX' : hasRemotePeer ? 'SOURCE_REMOTE_STIGIX' : 'SOURCE_CLIENT_AGENTLESS',
+                    role_label: isLocalTrace ? 'Source Probe' : hasRemotePeer ? 'Remote Stigix Peer' : 'Site Client (Agentless)',
+                    title: isLocalTrace || hasRemotePeer ? `Stigix ${effSite}` : `Client (${effSite})`,
+                    subtitle: effSrcIp || (isLocalTrace ? 'Capturing local NIC...' : hasRemotePeer && remotePeer ? `${remotePeer.host} (${remotePeer.name})` : 'Agentless Mode'),
+                    status: isLocalTrace || hasRemotePeer ? 'RUNNING' : 'PASSIVE',
+                    badge: isLocalTrace ? 'Capturing PCAP + Probe...' : hasRemotePeer && remotePeer ? `Stigix Peer (${remotePeer.host})` : 'No Local Probe',
+                    evidence_type: isLocalTrace ? 'Local PCAP + Active Probe' : hasRemotePeer && remotePeer ? `Remote Stigix Peer (${remotePeer.version ? 'v' + remotePeer.version : 'Active'})` : 'Agentless (No Local Probe)'
                 },
                 {
                     id: 'hop_ingress_ion',
@@ -679,8 +686,6 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             ]
         });
         setTracingFlow(true);
-        const toastId = 'e2e-flow-trace';
-        toast.loading(`Tracing flow from ${effSite} → ${effDst || 'active flows'} across SD-WAN fabric...`, { id: toastId });
 
         try {
             const res = await gFetch('/api/capture/trace-flow', {
@@ -740,19 +745,17 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 }
                 setTraceEvidenceTab('packets');
             } else {
+                setPackets([]);
+                setTotalPackets(0);
+                setActivePcapFile('');
+                setFileSizeBytes(0);
+                setDurationSeconds(0);
+                setSelectedPacketNo(null);
                 setTraceEvidenceTab('flows');
-            }
-
-            const appBadge = data.verdict?.app_id ? ` [App-ID: ${data.verdict.app_id}]` : '';
-            const pathBadge = data.verdict?.egress_path ? ` via ${data.verdict.egress_path}` : '';
-            if (data.verdict?.status === 'NO_MATCHING_FLOW') {
-                toast(`Trace completed on ${effSite}: No matching active flow in vION table`, { icon: '⚠️', id: toastId });
-            } else {
-                toast.success(`Trace complete!${appBadge}${pathBadge}`, { id: toastId });
             }
         } catch (e: any) {
             if (activeTraceIdRef.current === currentTraceId) {
-                toast.error(`Flow Trace error: ${e.message}`, { id: toastId });
+                toast.error(`Flow Trace error: ${e.message}`);
             }
         } finally {
             if (activeTraceIdRef.current === currentTraceId) {
@@ -1422,7 +1425,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     onClick={() => setCaptureMode('local')}
                                     className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                                         captureMode === 'local'
-                                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                                            ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30 shadow-sm'
                                             : 'text-text-muted hover:text-text-primary border border-transparent'
                                     }`}
                                 >
@@ -1434,7 +1437,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     onClick={() => setCaptureMode('trace')}
                                     className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                                         captureMode === 'trace'
-                                            ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
+                                            ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 dark:border-indigo-500/30 shadow-sm'
                                             : 'text-text-muted hover:text-text-primary border border-transparent'
                                     }`}
                                 >
@@ -1443,131 +1446,137 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </button>
                             </div>
 
-                            {capturing ? (
-                                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 animate-pulse whitespace-nowrap">
-                                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                                    RECORDING ({elapsedSeconds}s / {durationSec}s)
-                                </span>
-                            ) : loadingPackets ? (
-                                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 animate-pulse whitespace-nowrap">
-                                    <Loader2 size={11} className="animate-spin" />
-                                    DISSECTING {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}...
-                                </span>
-                            ) : activePcapFile ? (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-card-secondary text-text-muted border border-border flex items-center gap-2 whitespace-nowrap">
-                                    <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
-                                    <span className="text-cyan-400 font-bold flex items-center gap-0.5">
-                                        <Binary size={11} />
-                                        {totalPackets.toLocaleString()} pkts
+                            {captureMode === 'local' && (
+                                capturing ? (
+                                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 animate-pulse whitespace-nowrap">
+                                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                                        RECORDING ({elapsedSeconds}s / {durationSec}s)
                                     </span>
-                                    {durationSeconds > 0 && (
-                                        <span className="text-amber-400 font-bold flex items-center gap-0.5">
-                                            <Clock size={11} />
-                                            {durationSeconds}s
+                                ) : loadingPackets ? (
+                                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30 animate-pulse whitespace-nowrap">
+                                        <Loader2 size={11} className="animate-spin" />
+                                        DISSECTING {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}...
+                                    </span>
+                                ) : activePcapFile ? (
+                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-card-secondary text-text-muted border border-border flex items-center gap-2 whitespace-nowrap">
+                                        <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
+                                        <span className="text-cyan-600 dark:text-cyan-400 font-bold flex items-center gap-0.5">
+                                            <Binary size={11} />
+                                            {totalPackets.toLocaleString()} pkts
                                         </span>
-                                    )}
-                                    <span className="text-text-muted">
-                                        {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
+                                        {durationSeconds > 0 && (
+                                            <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-0.5">
+                                                <Clock size={11} />
+                                                {durationSeconds}s
+                                            </span>
+                                        )}
+                                        <span className="text-text-muted">
+                                            {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
+                                        </span>
                                     </span>
-                                </span>
-                            ) : null}
+                                ) : null
+                            )}
                         </div>
                     </div>
 
-                    {/* Action Buttons */}
+                    {/* Action Buttons (Full toolbar in Local PCAP mode; discrete Captures history access in E2E Trace mode) */}
                     <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-                        {captureMode === 'trace' ? (
-                            <button
-                                onClick={() => handleRunFlowTrace()}
-                                disabled={tracingFlow}
-                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-indigo-900/40 cursor-pointer"
-                            >
-                                {tracingFlow ? (
-                                    <>
-                                        <Loader2 size={14} className="animate-spin" />
-                                        Tracing Path...
-                                    </>
+                        {captureMode === 'local' ? (
+                            <>
+                                {capturing ? (
+                                    <button
+                                        onClick={handleStopCapture}
+                                        className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-rose-900/40 cursor-pointer"
+                                    >
+                                        <Square size={14} fill="currentColor" />
+                                        Stop Capture
+                                    </button>
                                 ) : (
+                                    <button
+                                        onClick={handleStartCapture}
+                                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer"
+                                    >
+                                        <Play size={14} fill="currentColor" />
+                                        Start Capture
+                                    </button>
+                                )}
+
+                                <button
+                                    onClick={handleOpenHistory}
+                                    className="px-3.5 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                                    title="View saved PCAP captures"
+                                >
+                                    <HardDrive size={13} />
+                                    Captures
+                                </button>
+
+                                {activePcapFile && (
                                     <>
-                                        <Sparkles size={14} />
-                                        Run E2E Path Trace
+                                        <button
+                                            onClick={() => handleDownloadCapture(activePcapFile)}
+                                            disabled={downloadingFile === activePcapFile}
+                                            className="px-3.5 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                            title="Download raw .pcap for local Wireshark"
+                                        >
+                                            {downloadingFile === activePcapFile ? (
+                                                <Loader2 size={13} className="animate-spin text-cyan-600 dark:text-cyan-400" />
+                                            ) : (
+                                                <Download size={13} />
+                                            )}
+                                            Download .pcap
+                                        </button>
+
+                                        <button
+                                            onClick={handleSendToReplay}
+                                            className="px-3.5 py-2.5 bg-purple-600/15 hover:bg-purple-600/25 border border-purple-500/40 dark:border-purple-500/30 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                                            title="Send trace to PCAP Replay engine"
+                                        >
+                                            <Zap size={13} />
+                                            Send to Replay
+                                        </button>
                                     </>
                                 )}
-                            </button>
-                        ) : capturing ? (
-                            <button
-                                onClick={handleStopCapture}
-                                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-rose-900/40 cursor-pointer"
-                            >
-                                <Square size={14} fill="currentColor" />
-                                Stop Capture
-                            </button>
+                            </>
                         ) : (
                             <button
-                                onClick={handleStartCapture}
-                                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer"
+                                onClick={handleOpenHistory}
+                                className="px-3 py-1.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[11px] font-bold text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                                title="Open saved PCAP capture history"
                             >
-                                <Play size={14} fill="currentColor" />
-                                Start Capture
+                                <HardDrive size={12} />
+                                <span>Captures</span>
                             </button>
-                        )}
-
-                        <button
-                            onClick={handleOpenHistory}
-                            className="px-3.5 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
-                            title="View saved PCAP captures"
-                        >
-                            <HardDrive size={13} />
-                            Captures
-                        </button>
-
-                        {activePcapFile && (
-                            <>
-                                <button
-                                    onClick={() => handleDownloadCapture(activePcapFile)}
-                                    disabled={downloadingFile === activePcapFile}
-                                    className="px-3.5 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                    title="Download raw .pcap for local Wireshark"
-                                >
-                                    {downloadingFile === activePcapFile ? (
-                                        <Loader2 size={13} className="animate-spin text-cyan-400" />
-                                    ) : (
-                                        <Download size={13} />
-                                    )}
-                                    Download .pcap
-                                </button>
-
-                                <button
-                                    onClick={handleSendToReplay}
-                                    className="px-3.5 py-2.5 bg-purple-600/15 hover:bg-purple-600/25 border border-purple-500/30 text-purple-300 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
-                                    title="Send trace to PCAP Replay engine"
-                                >
-                                    <Zap size={13} />
-                                    Send to Replay
-                                </button>
-                            </>
                         )}
                     </div>
                 </div>
 
                 {/* Configuration Controls Bar - Mode Aware */}
                 {captureMode === 'trace' ? (
-                    <div className="mt-4 pt-3.5 border-t border-border/60 space-y-3">
+                    <div className="mt-3.5 pt-3.5 border-t border-border/60 space-y-2.5">
+                        {/* Main Diagnostic Composer Row: FROM → TO → TEST → RUN TRACE */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-                            {/* Source SD-WAN Site Selector */}
+                            {/* FROM: Source SD-WAN Site Selector */}
                             <div className="lg:col-span-3 space-y-1">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Source SD-WAN Site</label>
+                                <div className="flex items-center justify-between gap-1">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">From · Source Site</label>
                                     {(() => {
                                         const effLocal = detectedLocalSite || localSiteName || 'BR8';
                                         const isLocal = traceSourceMode !== 'ion_only' && traceSourceSite.toUpperCase() === effLocal.toUpperCase();
+                                        const selectedSiteObj = traceSites.find((s) => s.site_name.toUpperCase() === traceSourceSite.toUpperCase());
+                                        const remotePeer = !isLocal && traceSourceMode !== 'ion_only' ? (selectedSiteObj?.stigix_peer || null) : null;
                                         return (
-                                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border ${
+                                            <span className={`text-[9px] font-mono font-bold truncate ${
                                                 isLocal
-                                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                                    : remotePeer
+                                                    ? 'text-cyan-600 dark:text-cyan-300'
+                                                    : 'text-amber-600 dark:text-amber-400'
                                             }`}>
-                                                {isLocal ? 'Stigix PCAP + ION CLI' : 'ION CLI Only (Agentless)'}
+                                                {isLocal
+                                                    ? 'Local probe + ION CLI'
+                                                    : remotePeer
+                                                    ? `Peer probe (${remotePeer.host})`
+                                                    : 'ION CLI only (agentless)'}
                                             </span>
                                         );
                                     })()}
@@ -1581,8 +1590,10 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                             role: string;
                                             connected: boolean;
                                             elements: Array<{ id: string; name: string; connected: boolean; role: string; software_version: string }>;
+                                            stigix_peer?: { name: string; host: string; port: number; version: string; is_local: boolean } | null;
                                         }): StigixSelectOption => {
                                             const isLocal = s.site_name.toUpperCase() === effLocal.toUpperCase();
+                                            const peer = s.stigix_peer || null;
                                             const elNames = s.elements.map((e) => e.name).filter(Boolean);
                                             const hasDistinctEls =
                                                 elNames.length > 1 ||
@@ -1593,6 +1604,9 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                             if (isLocal) {
                                                 const ionTarget = hasDistinctEls ? elNames.join(', ') : s.site_name;
                                                 sublabel = `ION: ${ionTarget} • ${s.connected ? 'Online' : 'Offline'}${swVer ? ` (${swVer})` : ''}`;
+                                            } else if (peer) {
+                                                const ionPart = hasDistinctEls ? elNames.join(', ') : (swVer || 'ION Online');
+                                                sublabel = `${peer.name} (${peer.host}) • ${ionPart}`;
                                             } else if (hasDistinctEls) {
                                                 sublabel = `${elNames.join(', ')}${swVer ? ` • ${swVer}` : ''}`;
                                             } else if (swVer) {
@@ -1601,18 +1615,24 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
 
                                             const badge = isLocal
                                                 ? 'Local Stigix'
+                                                : peer
+                                                ? 'Stigix Peer'
                                                 : s.connected
                                                 ? 'ION Online'
                                                 : 'Offline';
 
                                             const badgeClassName = isLocal
-                                                ? 'px-1.5 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-mono font-bold text-emerald-400'
+                                                ? 'px-1.5 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400'
+                                                : peer
+                                                ? 'px-1.5 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-[10px] font-mono font-bold text-cyan-700 dark:text-cyan-300'
                                                 : s.connected
-                                                ? 'px-1.5 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-[10px] font-mono font-bold text-indigo-300'
+                                                ? 'px-1.5 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-[10px] font-mono font-bold text-indigo-700 dark:text-indigo-300'
                                                 : 'px-1.5 py-0.5 rounded-md bg-slate-500/15 border border-slate-500/30 text-[10px] font-mono text-text-muted';
 
                                             const dotClass = isLocal && s.connected
                                                 ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
+                                                : peer && s.connected
+                                                ? 'bg-cyan-500 shadow-[0_0_6px_rgba(6,182,212,0.6)]'
                                                 : s.connected
                                                 ? 'bg-indigo-400 shadow-[0_0_6px_rgba(129,140,248,0.5)]'
                                                 : 'bg-slate-500';
@@ -1669,27 +1689,17 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </div>
                             </div>
 
-                            {/* Source Client IP (Optional) */}
-                            <div className="lg:col-span-2 space-y-1">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Source IP (Optional)</label>
-                                    <span className="text-[9px] text-text-muted font-mono">LAN Host</span>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={traceSrcIp}
-                                    onChange={(e) => setTraceSrcIp(e.target.value)}
-                                    disabled={tracingFlow}
-                                    placeholder="Auto (any LAN host, e.g. 192.168.219.1)"
-                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-indigo-500 h-9"
-                                />
-                            </div>
-
-                            {/* Destination IP or Domain/FQDN */}
+                            {/* TO: Destination IP or Domain/FQDN */}
                             <div className="lg:col-span-4 space-y-1">
                                 <div className="flex items-center justify-between">
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Destination IP or Domain (SaaS / DC App)</label>
-                                    <span className="text-[9px] text-indigo-400 font-bold">Auto DNS + Next-Hop</span>
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">To · Destination (IP or Domain)</label>
+                                    <span
+                                        className="text-[9px] text-text-muted font-mono flex items-center gap-1 cursor-help"
+                                        title="Domain names are resolved automatically on the source node before probing and inspecting vION flow tables."
+                                    >
+                                        <Info size={10} className="text-indigo-500 dark:text-indigo-400" />
+                                        <span>Auto DNS</span>
+                                    </span>
                                 </div>
                                 <input
                                     type="text"
@@ -1701,10 +1711,10 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 />
                             </div>
 
-                            {/* Protocol & Port */}
-                            <div className="lg:col-span-2 grid grid-cols-2 gap-1.5">
+                            {/* TEST: Protocol & Port */}
+                            <div className="lg:col-span-3 grid grid-cols-2 gap-2">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Protocol</label>
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Test · Protocol</label>
                                     <StigixSelect
                                         value={traceProtocol}
                                         onChange={(val) => setTraceProtocol(val as 'tcp' | 'udp' | 'icmp')}
@@ -1720,120 +1730,253 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Dst Port</label>
-                                    <input
-                                        type="number"
-                                        value={traceProtocol === 'icmp' ? 0 : traceDstPort}
-                                        onChange={(e) => setTraceDstPort(parseInt(e.target.value, 10) || 0)}
-                                        disabled={tracingFlow || traceProtocol === 'icmp'}
-                                        placeholder="443"
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-indigo-500 h-9 disabled:opacity-40"
-                                    />
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Port</label>
+                                    {traceProtocol === 'icmp' ? (
+                                        <div
+                                            title="ICMP operates at Layer 3 (Echo Request/Reply) and does not use a TCP/UDP transport port"
+                                            className="w-full bg-card-secondary/50 border border-border/60 rounded-xl px-2.5 py-1.5 text-[11px] text-text-muted font-mono flex items-center h-9 select-none"
+                                        >
+                                            Not applicable
+                                        </div>
+                                    ) : (
+                                        <input
+                                            type="number"
+                                            value={traceDstPort}
+                                            onChange={(e) => setTraceDstPort(parseInt(e.target.value, 10) || 0)}
+                                            disabled={tracingFlow}
+                                            placeholder="443"
+                                            className="w-full bg-card-secondary border border-border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-indigo-500 h-9"
+                                        />
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Collection Mode Toggle */}
-                            <div className="lg:col-span-1 space-y-1">
-                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Mode</label>
+                            {/* LAUNCH: Run trace button directly aligned with test inputs */}
+                            <div className="lg:col-span-2">
                                 <button
                                     type="button"
+                                    onClick={() => handleRunFlowTrace()}
                                     disabled={tracingFlow}
-                                    onClick={() => {
-                                        if (traceSourceMode === 'auto') {
-                                            setTraceSourceMode('ion_only');
-                                        } else {
-                                            setTraceSourceMode('auto');
-                                        }
-                                    }}
-                                    title="Switch between Full Stigix Probe + PCAP + ION CLI vs Agentless ION-Only Flow Inspection"
-                                    className={`w-full rounded-xl px-2 py-1.5 text-[10px] font-black uppercase tracking-wider border h-9 transition-all cursor-pointer ${
-                                        traceSourceMode === 'ion_only'
-                                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                            : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
-                                    }`}
+                                    className="w-full h-9 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-900/30 cursor-pointer"
                                 >
-                                    {traceSourceMode === 'ion_only' ? 'ION-Only' : 'Auto+PCAP'}
+                                    {tracingFlow ? (
+                                        <>
+                                            <Loader2 size={14} className="animate-spin shrink-0" />
+                                            <span>Tracing...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles size={14} className="shrink-0" />
+                                            <span>Run trace</span>
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </div>
 
-                        {/* Quick Scenario Pills (Private DC App, SaaS O365 Backhaul, Prisma Access / DIA, Agentless Client) */}
-                        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+                        {/* Secondary Row: Compact Favorites + Collapsible Advanced Options with Live Summary */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+                            {/* Compact Favorites with active state matching & full details on hover */}
                             <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
-                                <span className="font-black uppercase tracking-wider text-text-muted mr-1">Quick Targets:</span>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTraceDestination('192.168.212.100');
-                                        setTraceDstPort(8098);
-                                        setTraceProtocol('tcp');
-                                        setTraceSrcIp('');
-                                    }}
-                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-indigo-500/15 border border-border hover:border-indigo-500/40 text-text-secondary hover:text-indigo-300 font-mono transition-colors cursor-pointer"
-                                >
-                                    🏢 DC1 Private App (192.168.212.100:8098)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTraceDestination('192.168.203.100');
-                                        setTraceDstPort(8085);
-                                        setTraceProtocol('tcp');
-                                        setTraceSrcIp('');
-                                    }}
-                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-indigo-500/15 border border-border hover:border-indigo-500/40 text-text-secondary hover:text-indigo-300 font-mono transition-colors cursor-pointer"
-                                >
-                                    🏢 OnPrem App 8085 (192.168.203.100:8085)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTraceDestination('40.99.155.50');
-                                        setTraceDstPort(443);
-                                        setTraceProtocol('tcp');
-                                        setTraceSrcIp('');
-                                    }}
-                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-indigo-500/15 border border-border hover:border-indigo-500/40 text-text-secondary hover:text-indigo-300 font-mono transition-colors cursor-pointer"
-                                >
-                                    ☁️ O365 Backhaul via DC2 (40.99.155.50:443)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTraceDestination('login.microsoftonline.com');
-                                        setTraceDstPort(443);
-                                        setTraceProtocol('tcp');
-                                        setTraceSrcIp('');
-                                    }}
-                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-indigo-500/15 border border-border hover:border-indigo-500/40 text-text-secondary hover:text-indigo-300 font-mono transition-colors cursor-pointer"
-                                >
-                                    🌐 Microsoft 365 FQDN (login.microsoftonline.com:443)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTraceSourceSite('BR5');
-                                        setTraceDestination('172.217.20.46');
-                                        setTraceDstPort(443);
-                                        setTraceProtocol('tcp');
-                                        setTraceSrcIp('');
-                                    }}
-                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-amber-500/15 border border-border hover:border-amber-500/40 text-text-secondary hover:text-amber-300 font-mono transition-colors cursor-pointer"
-                                >
-                                    📡 Remote Branch BR5 DIA (172.217.20.46:443)
-                                </button>
+                                <span className="font-black uppercase tracking-wider text-text-muted mr-0.5">Favorites:</span>
+                                {[
+                                    {
+                                        id: 'dc1_app',
+                                        label: 'DC1 App',
+                                        dst: '192.168.212.100',
+                                        port: 8098,
+                                        proto: 'tcp' as const,
+                                        tooltip: 'DC1 Private App · 192.168.212.100 · TCP/8098'
+                                    },
+                                    {
+                                        id: 'onprem_app',
+                                        label: 'OnPrem App',
+                                        dst: '192.168.203.100',
+                                        port: 8085,
+                                        proto: 'tcp' as const,
+                                        tooltip: 'OnPrem App 8085 · 192.168.203.100 · TCP/8085'
+                                    },
+                                    {
+                                        id: 'o365_ip',
+                                        label: 'O365 via DC2',
+                                        dst: '40.99.155.50',
+                                        port: 443,
+                                        proto: 'tcp' as const,
+                                        tooltip: 'Microsoft 365 Backhaul · 40.99.155.50 · TCP/443'
+                                    },
+                                    {
+                                        id: 'm365_fqdn',
+                                        label: 'Microsoft 365',
+                                        dst: 'login.microsoftonline.com',
+                                        port: 443,
+                                        proto: 'tcp' as const,
+                                        tooltip: 'Microsoft 365 Login FQDN · login.microsoftonline.com · TCP/443'
+                                    },
+                                    {
+                                        id: 'br5_dia',
+                                        label: 'BR5 DIA',
+                                        site: 'BR5',
+                                        dst: '172.217.20.46',
+                                        port: 443,
+                                        proto: 'tcp' as const,
+                                        tooltip: 'Remote Branch BR5 Direct Internet Breakout · 172.217.20.46 · TCP/443'
+                                    }
+                                ].map((fav) => {
+                                    const isFavActive =
+                                        traceDestination.trim().toLowerCase() === fav.dst.toLowerCase() &&
+                                        traceProtocol === fav.proto &&
+                                        (String(fav.proto) === 'icmp' || traceDstPort === fav.port) &&
+                                        (!fav.site || traceSourceSite.toUpperCase() === fav.site.toUpperCase());
+                                    return (
+                                        <button
+                                            key={fav.id}
+                                            type="button"
+                                            title={fav.tooltip}
+                                            onClick={() => {
+                                                if (fav.site) setTraceSourceSite(fav.site);
+                                                setTraceDestination(fav.dst);
+                                                setTraceDstPort(fav.port);
+                                                setTraceProtocol(fav.proto);
+                                                setTraceSrcIp('');
+                                            }}
+                                            className={`px-2.5 py-0.5 rounded-lg border font-mono font-bold transition-all cursor-pointer ${
+                                                isFavActive
+                                                    ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                                                    : 'bg-card-secondary hover:bg-indigo-500/10 border-border hover:border-indigo-500/35 text-text-secondary hover:text-indigo-700 dark:hover:text-indigo-300'
+                                            }`}
+                                        >
+                                            {fav.label}
+                                        </button>
+                                    );
+                                })}
                             </div>
 
-                            <label className="flex items-center gap-1.5 text-[10px] font-bold text-text-muted cursor-pointer select-none">
-                                <input
-                                    type="checkbox"
-                                    checked={traceGenerateProbe}
-                                    onChange={(e) => setTraceGenerateProbe(e.target.checked)}
-                                    className="rounded border-border text-indigo-500 focus:ring-0"
-                                />
-                                <span>Send live synthetic probe when on local Stigix site</span>
-                            </label>
+                            {/* Collapsible Advanced Options Toggle + Persistent Summary */}
+                            {(() => {
+                                const effLocal = detectedLocalSite || localSiteName || 'BR8';
+                                const isLocal = traceSourceSite.toUpperCase() === effLocal.toUpperCase();
+                                const selectedSiteObj = traceSites.find((s) => s.site_name.toUpperCase() === traceSourceSite.toUpperCase());
+                                const hasPeer = Boolean(selectedSiteObj?.stigix_peer);
+                                const isAgentlessSite = !isLocal && !hasPeer;
+                                const modeShortLabel =
+                                    traceSourceMode === 'ion_only' || isAgentlessSite
+                                        ? 'ION CLI only'
+                                        : traceGenerateProbe
+                                        ? 'Probe + PCAP'
+                                        : 'Passive + PCAP';
+                                const srcSummary = traceSrcIp.trim() ? traceSrcIp.trim() : 'Auto';
+                                return (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTraceAdvanced((prev) => !prev)}
+                                        className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-card-secondary/80 hover:bg-card-hover border border-border/70 text-[10px] font-mono text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                                    >
+                                        <span className="font-sans font-black uppercase tracking-wider text-text-muted flex items-center gap-1">
+                                            <span>Advanced options</span>
+                                            <ChevronDown size={11} className={`transition-transform ${showTraceAdvanced ? 'rotate-180 text-indigo-400' : ''}`} />
+                                        </span>
+                                        <span className="text-border">|</span>
+                                        <span className="font-bold text-indigo-700 dark:text-indigo-300">{modeShortLabel}</span>
+                                        <span className="text-text-muted">·</span>
+                                        <span>
+                                            Source IP: <strong className="text-text-primary">{srcSummary}</strong>
+                                        </span>
+                                    </button>
+                                );
+                            })()}
                         </div>
+
+                        {/* Collapsible Advanced Options Drawer */}
+                        {showTraceAdvanced && (
+                            <div className="pt-2.5 mt-1 border-t border-border/50 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end animate-in fade-in duration-150">
+                                <div className="lg:col-span-4 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Collection Mode</label>
+                                        <span className="text-[9px] font-mono text-text-muted">
+                                            {traceSourceMode === 'ion_only' ? 'Agentless CLI' : traceGenerateProbe ? 'Synthetic Probe + PCAP' : 'Passive Capture'}
+                                        </span>
+                                    </div>
+                                    <StigixSelect
+                                        value={
+                                            traceSourceMode === 'ion_only'
+                                                ? 'ion_only'
+                                                : traceGenerateProbe
+                                                ? 'active_probe'
+                                                : 'passive_pcap'
+                                        }
+                                        onChange={(val) => {
+                                            if (val === 'ion_only') {
+                                                setTraceSourceMode('ion_only');
+                                                setTraceGenerateProbe(false);
+                                            } else if (val === 'passive_pcap') {
+                                                setTraceSourceMode('auto');
+                                                setTraceGenerateProbe(false);
+                                            } else {
+                                                setTraceSourceMode('auto');
+                                                setTraceGenerateProbe(true);
+                                            }
+                                        }}
+                                        disabled={tracingFlow}
+                                        accent="indigo"
+                                        menuMinWidth={280}
+                                        triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
+                                        options={[
+                                            {
+                                                value: 'active_probe',
+                                                label: 'Probe + PCAP',
+                                                sublabel: 'Send live socket/ICMP probe, capture PCAP & inspect IONs',
+                                                badge: 'Default'
+                                            },
+                                            {
+                                                value: 'passive_pcap',
+                                                label: 'Passive + PCAP',
+                                                sublabel: 'Observe existing LAN traffic without sending a synthetic probe',
+                                                badge: 'Passive'
+                                            },
+                                            {
+                                                value: 'ion_only',
+                                                label: 'ION CLI only',
+                                                sublabel: 'Inspect vION flow tables via WebSocket without PCAP capture',
+                                                badge: 'Agentless'
+                                            }
+                                        ]}
+                                    />
+                                </div>
+
+                                <div className="lg:col-span-4 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Source IP (Optional LAN Host)</label>
+                                        <span className="text-[9px] text-text-muted font-mono">
+                                            {traceSrcIp.trim() ? 'Filtering LAN Host' : 'Auto (Probe IP)'}
+                                        </span>
+                                    </div>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={traceSrcIp}
+                                            onChange={(e) => setTraceSrcIp(e.target.value)}
+                                            disabled={tracingFlow}
+                                            placeholder="Auto (leave blank for Stigix probe IP)"
+                                            className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-indigo-500 h-9 pr-7"
+                                        />
+                                        {traceSrcIp && !tracingFlow && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setTraceSrcIp('')}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5 cursor-pointer"
+                                                title="Reset to Auto Source IP"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="lg:col-span-4 text-[10px] text-text-muted leading-relaxed pb-1">
+                                    When <strong className="text-text-secondary">Source IP</strong> is blank, Stigix uses its own LAN interface IP for the synthetic probe. Specify a LAN host IP to filter existing client flows in <code className="font-mono">tcpdump</code> and <code className="font-mono">inspect flow brief</code>.
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ) : (
                 <div ref={dropdownBarRef} className="mt-4 pt-3.5 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
@@ -2175,70 +2318,101 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     ingressFlowsAll.filter((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW').length +
                     transitFlowsAll.filter((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW').length;
 
-                const getNodeTheme = (statusRaw: string) => {
+                const getNodeTheme = (statusRaw: string, roleRaw?: string) => {
                     const st = String(statusRaw || '').toUpperCase();
+                    const role = String(roleRaw || '').toUpperCase();
                     if (st === 'RUNNING') {
                         return {
-                            card: 'border-indigo-500/60 bg-indigo-500/10 shadow-[0_0_15px_rgba(99,102,241,0.15)]',
-                            badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
-                            dot: 'bg-indigo-400',
-                            icon: <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />,
+                            card: 'border-indigo-500/50 bg-indigo-500/10 shadow-[0_0_15px_rgba(99,102,241,0.12)]',
+                            badge: 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-500/40',
+                            dot: 'bg-indigo-500 dark:bg-indigo-400 ring-4 ring-indigo-500/20',
+                            icon: <Loader2 size={13} className="animate-spin text-indigo-600 dark:text-indigo-300 shrink-0" />,
                             label: 'ANALYZING'
                         };
                     }
                     if (st === 'OBSERVED') {
+                        const roleLabel =
+                            role === 'SOURCE_STIGIX' || role === 'SOURCE_REMOTE_STIGIX'
+                                ? 'CAPTURED'
+                                : role === 'INGRESS_ION' || role === 'TRANSIT_ION'
+                                ? 'FLOW MATCHED'
+                                : role === 'DESTINATION'
+                                ? 'REPLY RECEIVED'
+                                : role === 'TRANSIT_DIA'
+                                ? 'LOCAL BREAKOUT'
+                                : role === 'TRANSIT_SERVICELINK'
+                                ? 'TUNNEL UP'
+                                : 'OBSERVED';
                         return {
-                            card: 'border-emerald-500/40 bg-emerald-500/5 hover:border-emerald-500/70',
-                            badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-                            dot: 'bg-emerald-400',
-                            icon: <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />,
-                            label: 'OBSERVED'
+                            card: 'border-emerald-500/35 dark:border-emerald-500/30 bg-emerald-500/[0.06] dark:bg-emerald-500/[0.04] hover:border-emerald-500/70',
+                            badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35',
+                            dot: 'bg-emerald-500 dark:bg-emerald-400 ring-4 ring-emerald-500/20',
+                            icon: <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />,
+                            label: roleLabel
                         };
                     }
                     if (st === 'FORWARDED') {
+                        const fwdLabel =
+                            role === 'TRANSIT_DIA'
+                                ? 'LOCAL BREAKOUT'
+                                : role === 'TRANSIT_SERVICELINK'
+                                ? 'TUNNEL UP'
+                                : 'FORWARDED';
                         return {
-                            card: 'border-cyan-500/40 bg-cyan-500/5 hover:border-cyan-500/70',
-                            badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-                            dot: 'bg-cyan-400',
-                            icon: <CheckCircle2 size={14} className="text-cyan-400 shrink-0" />,
-                            label: 'FORWARDED'
+                            card: 'border-cyan-500/35 dark:border-cyan-500/30 bg-cyan-500/[0.06] dark:bg-cyan-500/[0.04] hover:border-cyan-500/70',
+                            badge: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/35',
+                            dot: 'bg-cyan-500 dark:bg-cyan-400 ring-4 ring-cyan-500/20',
+                            icon: <CheckCircle2 size={13} className="text-cyan-600 dark:text-cyan-400 shrink-0" />,
+                            label: fwdLabel
                         };
                     }
-                    if (st === 'BLOCKED' || st === 'UNREACHABLE') {
+                    if (st === 'NO_RESPONSE' || st === 'UNREACHABLE') {
                         return {
-                            card: 'border-rose-500/50 bg-rose-500/10 hover:border-rose-500/80',
-                            badge: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
-                            dot: 'bg-rose-400',
-                            icon: <AlertCircle size={14} className="text-rose-400 shrink-0" />,
-                            label: st
+                            card: 'border-amber-500/50 dark:border-amber-500/40 bg-amber-500/[0.08] dark:bg-amber-500/[0.06] hover:border-amber-500/80',
+                            badge: 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40',
+                            dot: 'bg-amber-500 dark:bg-amber-400 ring-4 ring-amber-500/20',
+                            icon: <AlertCircle size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />,
+                            label: 'NO RESPONSE'
+                        };
+                    }
+                    if (st === 'BLOCKED') {
+                        return {
+                            card: 'border-rose-500/50 dark:border-rose-500/45 bg-rose-500/[0.08] hover:border-rose-500/80',
+                            badge: 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40',
+                            dot: 'bg-rose-500 dark:bg-rose-400 ring-4 ring-rose-500/20',
+                            icon: <AlertCircle size={13} className="text-rose-600 dark:text-rose-400 shrink-0" />,
+                            label: 'BLOCKED'
                         };
                     }
                     if (st === 'NOT_OBSERVED' || st === 'UNAVAILABLE') {
                         return {
-                            card: 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/70',
-                            badge: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-                            dot: 'bg-amber-400',
-                            icon: <AlertCircle size={14} className="text-amber-400 shrink-0" />,
+                            card: 'border-amber-500/40 dark:border-amber-500/35 bg-amber-500/[0.06] dark:bg-amber-500/[0.04] hover:border-amber-500/70',
+                            badge: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/35',
+                            dot: 'bg-amber-500 dark:bg-amber-400 ring-4 ring-amber-500/15',
+                            icon: <AlertCircle size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />,
                             label: st === 'NOT_OBSERVED' ? 'NO MATCH' : 'CLI ERROR'
                         };
                     }
                     if (st === 'PASSIVE') {
                         return {
-                            card: 'border-slate-500/40 bg-card-secondary/60 hover:border-slate-400/60',
-                            badge: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
-                            dot: 'bg-slate-400',
-                            icon: <Info size={14} className="text-slate-400 shrink-0" />,
-                            label: 'AGENTLESS'
+                            card: 'border-slate-500/35 bg-card-secondary/50 hover:border-slate-400/60',
+                            badge: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/35',
+                            dot: 'bg-slate-400 ring-4 ring-slate-500/15',
+                            icon: <Info size={13} className="text-slate-600 dark:text-slate-400 shrink-0" />,
+                            label: 'PASSIVE'
                         };
                     }
                     return {
-                        card: 'border-border/60 bg-card-secondary/30 opacity-75',
+                        card: 'border-border/60 bg-card-secondary/25 opacity-75',
                         badge: 'bg-card-secondary text-text-muted border-border',
-                        dot: 'bg-slate-500',
-                        icon: <Clock size={14} className="text-text-muted shrink-0" />,
+                        dot: 'bg-slate-500/70 ring-4 ring-slate-500/10',
+                        icon: <Clock size={13} className="text-text-muted shrink-0" />,
                         label: 'PENDING'
                     };
                 };
+
+                const isIcmpFlow = String(flowIdObj?.protocol || traceProtocol || '').toUpperCase() === 'ICMP';
+                const activePcapFilename = traceResult?.pcap?.filename || activePcapFile || '';
 
                 const handleSelectIonFlowRow = (fl: any, hopOrigin: 'ingress' | 'transit') => {
                     setSelectedTraceFlow({ ...fl, hopOrigin });
@@ -2262,28 +2436,45 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         Analyzed Flow:
                                     </span>
                                     <span className="px-2.5 py-1 rounded-lg bg-card-secondary border border-indigo-500/30 font-mono text-xs font-black text-text-primary flex items-center gap-1.5">
-                                        <Zap size={12} className="text-indigo-400 shrink-0" />
+                                        <Zap size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                                         <span>{flowIdObj?.probe_5tuple || `${traceSrcIp || 'Auto'} → ${traceDestination}:${traceDstPort} · ${traceProtocol.toUpperCase()}`}</span>
                                     </span>
 
                                     {/* Precision / Match Scope Pill */}
                                     {tracingFlow ? (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5">
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 dark:border-indigo-500/30 flex items-center gap-1.5">
                                             <Loader2 size={11} className="animate-spin" />
                                             <span>{traceProgress?.phase_label || 'Collecting dataplane evidence...'}</span>
                                         </span>
                                     ) : flowIdObj?.primary_match_scope === 'EXACT_PCAP_5TUPLE' ? (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                        <span
+                                            title={
+                                                isIcmpFlow
+                                                    ? 'Correlated between PCAP and ION flow table using Source IP, Destination IP, Protocol (ICMP), and session activity window'
+                                                    : 'Correlated between PCAP and ION flow table using exact 5-tuple (Source IP, Ephemeral Source Port, Destination IP, Destination Port, Protocol)'
+                                            }
+                                            className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 dark:border-emerald-500/30 flex items-center gap-1 cursor-help"
+                                        >
                                             <CheckCircle2 size={11} />
-                                            <span>Exact 5-Tuple Match (PCAP ↔ ION)</span>
+                                            <span>{isIcmpFlow ? 'Exact Flow Match (ICMP)' : 'Exact Flow Match (5-Tuple)'}</span>
                                         </span>
                                     ) : flowIdObj?.primary_match_scope === 'SESSION_PROBE_FLOW' ? (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                                        <span
+                                            title={
+                                                isIcmpFlow
+                                                    ? 'Matched active ICMP probe flow in ION dataplane table (Source IP, Destination IP, Protocol)'
+                                                    : 'Matched active synthetic probe 5-tuple in ION dataplane table'
+                                            }
+                                            className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30 flex items-center gap-1 cursor-help"
+                                        >
                                             <CheckCircle2 size={11} />
-                                            <span>Session Probe 5-Tuple Match</span>
+                                            <span>{isIcmpFlow ? 'Session Probe Match (ICMP)' : 'Session Probe Match (5-Tuple)'}</span>
                                         </span>
                                     ) : flowIdObj?.primary_match_scope ? (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                        <span
+                                            title="Matched by host IP and destination protocol/port within the active flow table"
+                                            className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40 dark:border-amber-500/30 flex items-center gap-1 cursor-help"
+                                        >
                                             <Info size={11} />
                                             <span>{flowIdObj.primary_match_label || 'Host / Destination Match'}</span>
                                         </span>
@@ -2305,7 +2496,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 {!tracingFlow && verdictObj && (
                                     <div className="flex items-center gap-2 flex-wrap">
                                         {verdictObj.app_id && (
-                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30 flex items-center gap-1">
                                                 <Cpu size={11} />
                                                 <span>App-ID: {verdictObj.app_id}</span>
                                             </span>
@@ -2313,14 +2504,14 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         {verdictObj.sec_action && (
                                             <span className={`px-2 py-1 rounded-lg text-[10px] font-mono font-black border ${
                                                 String(verdictObj.sec_action).toUpperCase() === 'ALLOW'
-                                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                                    : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
+                                                    : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 dark:border-rose-500/30'
                                             }`}>
                                                 ZBFW: {verdictObj.sec_action}
                                             </span>
                                         )}
                                         {verdictObj.egress_path && (
-                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-cyan-500/15 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30">
                                                 {verdictObj.egress_path}
                                             </span>
                                         )}
@@ -2333,54 +2524,90 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 )}
                             </div>
 
-                            {/* Diagnostic Synthesis Sentences (Test Result + Path Visibility + Scope/Diagnosis) */}
-                            {!tracingFlow && synthesisObj && (
-                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start text-xs">
-                                    <div className="lg:col-span-7 space-y-1">
-                                        <div className="flex items-start gap-2">
-                                            <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border shrink-0 ${
-                                                verdictObj?.status === 'VERIFIED_E2E'
-                                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                                    : verdictObj?.status === 'FLOW_ACTIVE'
-                                                    ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
-                                                    : verdictObj?.status === 'BLOCKED' || verdictObj?.status === 'DNS_ERROR' || verdictObj?.status === 'UNIDIRECTIONAL_NO_REPLY' || verdictObj?.status === 'UNREACHABLE'
-                                                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                                                    : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                            }`}>
-                                                {verdictObj?.status?.replace(/_/g, ' ') || 'DIAGNOSTIC'}
-                                            </span>
-                                            <p className="font-bold text-text-primary leading-snug">
-                                                {synthesisObj.connectivity_headline}
-                                            </p>
+                            {/* Diagnostic Synthesis Sentences (Level 1 Outcome + Level 2 Path Summary + Compact Scope/Boundary) */}
+                            {!tracingFlow && synthesisObj && (() => {
+                                const vSt = String(verdictObj?.status || '');
+                                const isAnomaly =
+                                    vSt === 'UNIDIRECTIONAL_NO_REPLY' ||
+                                    vSt === 'NO_RESPONSE' ||
+                                    vSt === 'UNREACHABLE' ||
+                                    vSt === 'BLOCKED' ||
+                                    vSt === 'DNS_ERROR' ||
+                                    vSt === 'NO_MATCHING_FLOW';
+                                const badgeLabel =
+                                    vSt === 'VERIFIED_E2E'
+                                        ? 'REPLY RECEIVED'
+                                        : vSt === 'FLOW_ACTIVE'
+                                        ? 'FLOW OBSERVED'
+                                        : vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE' || vSt === 'UNREACHABLE'
+                                        ? 'NO RESPONSE'
+                                        : vSt === 'BLOCKED'
+                                        ? 'BLOCKED BY ZBFW'
+                                        : vSt.replace(/_/g, ' ') || 'DIAGNOSTIC';
+
+                                return (
+                                    <div className="space-y-2">
+                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                                            {/* Level 1 — Primary Test Outcome */}
+                                            <div className="flex items-center gap-2.5 flex-wrap">
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shrink-0 ${
+                                                    vSt === 'VERIFIED_E2E'
+                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                                        : vSt === 'FLOW_ACTIVE'
+                                                        ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40'
+                                                        : vSt === 'BLOCKED' || vSt === 'DNS_ERROR'
+                                                        ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
+                                                        : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/40'
+                                                }`}>
+                                                    {badgeLabel}
+                                                </span>
+                                                <span className="text-sm font-black text-text-primary leading-snug">
+                                                    {synthesisObj.connectivity_headline}
+                                                </span>
+                                            </div>
+
+                                            {/* Compact 1-Line Scope Pill in Normal Cases */}
+                                            {!isAnomaly && synthesisObj.limit_or_diagnosis && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTraceEvidenceTab('limits')}
+                                                    title="View full diagnostic collection scope & limits"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/80 hover:bg-card-hover border border-border/60 text-[10px] font-mono text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0 self-start lg:self-auto"
+                                                >
+                                                    <Info size={11} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
+                                                    <span>{synthesisObj.limit_or_diagnosis}</span>
+                                                </button>
+                                            )}
                                         </div>
-                                        <p className="text-[11px] text-text-secondary pl-1 leading-relaxed">
+
+                                        {/* Level 2 — Path Summary */}
+                                        <p className="text-xs text-text-secondary leading-relaxed">
                                             {synthesisObj.visibility_headline}
                                         </p>
-                                    </div>
 
-                                    <div className={`lg:col-span-5 rounded-xl p-2.5 border text-[11px] leading-relaxed ${
-                                        verdictObj?.status === 'UNIDIRECTIONAL_NO_REPLY' || verdictObj?.status === 'UNREACHABLE' || verdictObj?.status === 'BLOCKED'
-                                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-                                            : 'bg-card-secondary/70 border-border/60 text-text-muted'
-                                    }`}>
-                                        <div className="text-[9px] font-black uppercase tracking-wider mb-0.5 flex items-center gap-1 opacity-80">
-                                            <Info size={11} />
-                                            <span>
-                                                {verdictObj?.status === 'UNIDIRECTIONAL_NO_REPLY'
-                                                    ? 'Root-Cause & Return Path Analysis'
-                                                    : 'Diagnostic Scope & Boundary'}
-                                            </span>
-                                        </div>
-                                        <div>{synthesisObj.limit_or_diagnosis}</div>
+                                        {/* Highlighted Callout Only When Anomaly or Partial Visibility */}
+                                        {isAnomaly && synthesisObj.limit_or_diagnosis && (
+                                            <div className="rounded-xl px-3 py-2 border bg-amber-500/10 border-amber-500/35 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
+                                                <Info size={13} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                                <div>
+                                                    <span className="font-black uppercase text-[9px] tracking-wider mr-1.5">
+                                                        {vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE'
+                                                            ? 'Observation Boundary & Suggested Checks:'
+                                                            : 'Diagnostic Scope:'}
+                                                    </span>
+                                                    <span>{synthesisObj.limit_or_diagnosis}</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             {/* Active Associated Flow Override Banner (if user clicked another flow in the table) */}
                             {selectedTraceFlow && (
                                 <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-[11px]">
                                     <div className="flex items-center gap-2 flex-wrap font-mono">
-                                        <span className="font-black uppercase text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                                        <span className="font-black uppercase text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">
                                             Selected Flow Filter
                                         </span>
                                         <span className="text-text-primary font-bold">
@@ -2390,7 +2617,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                             ({selectedTraceFlow.match_label || selectedTraceFlow.match_scope})
                                         </span>
                                         {selectedTraceFlow.match_scope !== 'EXACT_PCAP_5TUPLE' && (
-                                            <span className="text-amber-300 text-[10px]">
+                                            <span className="text-amber-700 dark:text-amber-300 text-[10px]">
                                                 • Note: This flow used port :{selectedTraceFlow.client_port || selectedTraceFlow.source_port} outside the initial 3s PCAP snapshot.
                                             </span>
                                         )}
@@ -2408,116 +2635,154 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </div>
                             )}
 
-                            {/* ── SECTION C: COMPACT HORIZONTAL INTERACTIVE PATH TIMELINE ── */}
-                            <div className="pt-1">
-                                <div className="flex flex-col lg:flex-row lg:items-stretch gap-2 lg:gap-0">
+                            {/* ── SECTION C: CONNECTED HORIZONTAL PROGRESSION TIMELINE (●──────●──────●──────●) ── */}
+                            <div className="pt-2">
+                                <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                                     {activeHops.map((hop: any, idx: number) => {
-                                        const theme = getNodeTheme(hop.status);
+                                        const theme = getNodeTheme(hop.status, hop.role);
                                         const isSelected = selectedHop?.id === hop.id;
+                                        const hopSt = String(hop.status || '').toUpperCase();
+                                        const prevHop = idx > 0 ? activeHops[idx - 1] : null;
                                         const nextHop = activeHops[idx + 1] || null;
+                                        const prevSt = String(prevHop?.status || '').toUpperCase();
                                         const nextSt = String(nextHop?.status || '').toUpperCase();
 
-                                        // Determine connector style to next hop
-                                        const isSolidLink =
-                                            nextSt === 'OBSERVED' ||
-                                            (idx === 0 && (String(hop.status).toUpperCase() === 'OBSERVED' || String(hop.status).toUpperCase() === 'PASSIVE'));
-                                        const isBrokenLink = nextSt === 'UNREACHABLE' || nextSt === 'BLOCKED';
+                                        const hopConfirmed = hopSt === 'OBSERVED' || hopSt === 'FORWARDED';
+                                        const prevConfirmed =
+                                            prevSt === 'OBSERVED' ||
+                                            prevSt === 'FORWARDED' ||
+                                            (idx === 1 && prevSt === 'PASSIVE');
+                                        const nextConfirmed = nextSt === 'OBSERVED' || nextSt === 'FORWARDED';
 
-                                        // Connector label between Hop 2 (Ingress ION) and Hop 3 (Transit), or Hop 3 and Hop 4
+                                        const leftConfirmed = prevConfirmed && hopConfirmed;
+                                        const rightConfirmed =
+                                            (hopConfirmed || (idx === 0 && hopSt === 'PASSIVE')) && nextConfirmed;
+                                        const leftWarning =
+                                            !leftConfirmed &&
+                                            (hopSt === 'NO_RESPONSE' ||
+                                                hopSt === 'UNREACHABLE' ||
+                                                hopSt === 'BLOCKED' ||
+                                                hopSt === 'NOT_OBSERVED' ||
+                                                prevSt === 'NOT_OBSERVED');
+                                        const rightWarning =
+                                            !rightConfirmed &&
+                                            (nextSt === 'NO_RESPONSE' ||
+                                                nextSt === 'UNREACHABLE' ||
+                                                nextSt === 'BLOCKED' ||
+                                                nextSt === 'NOT_OBSERVED' ||
+                                                hopSt === 'NOT_OBSERVED');
+
+                                        // Connector pill shown on the right track segment between Hop 2 and Hop 3
                                         let connectorPill: string | null = null;
                                         if (idx === 1) {
                                             connectorPill =
                                                 hop.metrics?.egress_path ||
-                                                hop.secondary_info?.replace(/^App-ID:.*$/, '') ||
                                                 verdictObj?.egress_path ||
                                                 null;
-                                        } else if (idx === activeHops.length - 2 && isBrokenLink) {
-                                            connectorPill = '0 RX Return';
                                         }
 
                                         return (
-                                            <React.Fragment key={hop.id || idx}>
-                                                {/* Compact Timeline Node Card */}
+                                            <div key={hop.id || idx} className="flex flex-col min-w-0">
+                                                {/* Horizontal Progression Axis Track (●──────────) — -mx-1.5 bridges the gap-3 between grid columns */}
+                                                <div className="hidden lg:flex items-center h-7 mb-1.5 relative -mx-1.5">
+                                                    {/* Left half-line */}
+                                                    <div
+                                                        className={`flex-1 h-[2px] ${
+                                                            idx === 0
+                                                                ? 'bg-transparent'
+                                                                : leftConfirmed
+                                                                ? 'bg-emerald-500/70'
+                                                                : leftWarning
+                                                                ? 'border-t-2 border-dashed border-amber-500/60 bg-transparent'
+                                                                : 'border-t-2 border-dashed border-slate-500/40 bg-transparent'
+                                                        }`}
+                                                    />
+                                                    {/* Progression Node Circle (●) */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedHopId(hop.id)}
+                                                        title={`Select ${hop.title}`}
+                                                        className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all cursor-pointer z-10 ${
+                                                            theme.badge
+                                                        } ${
+                                                            isSelected
+                                                                ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 scale-110 shadow-sm'
+                                                                : 'hover:scale-105'
+                                                        }`}
+                                                    >
+                                                        {theme.icon}
+                                                    </button>
+                                                    {/* Right half-line */}
+                                                    <div
+                                                        className={`flex-1 h-[2px] relative ${
+                                                            !nextHop
+                                                                ? 'bg-transparent'
+                                                                : rightConfirmed
+                                                                ? 'bg-emerald-500/70'
+                                                                : rightWarning
+                                                                ? 'border-t-2 border-dashed border-amber-500/60 bg-transparent'
+                                                                : 'border-t-2 border-dashed border-slate-500/40 bg-transparent'
+                                                        }`}
+                                                    >
+                                                        {connectorPill && nextHop && (
+                                                            <span
+                                                                className="absolute right-0 -top-2.5 translate-x-1/2 px-1.5 py-0.5 rounded bg-card border border-cyan-500/35 text-[8px] font-mono font-bold text-cyan-700 dark:text-cyan-300 whitespace-nowrap z-20 shadow-xs"
+                                                                title={connectorPill}
+                                                            >
+                                                                {connectorPill}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Lighter Selectable Timeline Node Card */}
                                                 <button
                                                     type="button"
                                                     onClick={() => setSelectedHopId(hop.id)}
-                                                    className={`flex-1 min-w-0 text-left rounded-xl p-3 border transition-all duration-200 cursor-pointer flex flex-col justify-between gap-2 relative ${
+                                                    className={`flex-1 min-w-0 text-left rounded-xl px-3 py-2.5 border transition-all duration-150 cursor-pointer flex flex-col justify-between gap-1.5 ${
                                                         theme.card
                                                     } ${
                                                         isSelected
-                                                            ? 'ring-2 ring-indigo-400/70 shadow-md'
-                                                            : ' opacity-95 hover:opacity-100'
+                                                            ? 'ring-2 ring-indigo-500/80 dark:ring-indigo-400/70 shadow-sm'
+                                                            : 'opacity-90 hover:opacity-100'
                                                     }`}
                                                 >
-                                                    <div className="space-y-1.5">
-                                                        {/* 1. Role & Status Badge */}
+                                                    <div className="space-y-1">
+                                                        {/* Role + Status Label */}
                                                         <div className="flex items-center justify-between gap-1.5">
                                                             <span className="text-[9px] font-black uppercase tracking-wider text-text-muted truncate">
                                                                 {idx + 1}. {hop.role_label || hop.role?.replace(/_/g, ' ')}
                                                             </span>
                                                             <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase border flex items-center gap-1 shrink-0 ${theme.badge}`}>
-                                                                {theme.icon}
+                                                                <span className="lg:hidden">{theme.icon}</span>
                                                                 <span>{theme.label}</span>
                                                             </span>
                                                         </div>
 
-                                                        {/* 2. Equipment / Destination Name */}
+                                                        {/* Equipment / Destination Name */}
                                                         <div className="text-xs font-black text-text-primary truncate" title={hop.title}>
                                                             {hop.title}
                                                         </div>
 
-                                                        {/* 3. Short Result */}
-                                                        <div className="text-[11px] font-mono font-bold text-indigo-200 truncate" title={hop.badge}>
+                                                        {/* Concise State Summary */}
+                                                        <div className="text-[11px] font-mono font-bold text-text-primary/90 truncate" title={hop.badge}>
                                                             {hop.badge || hop.subtitle}
                                                         </div>
                                                     </div>
 
-                                                    <div className="pt-1.5 border-t border-border/40 flex items-center justify-between gap-1.5 text-[9px] font-mono">
-                                                        {/* 4. Evidence Type */}
-                                                        <span className="px-1.5 py-0.5 rounded bg-card-secondary/90 border border-border/60 text-text-muted truncate" title={hop.evidence_type}>
+                                                    {/* Discrete Evidence Footer */}
+                                                    <div className="pt-1 border-t border-border/35 flex items-center justify-between gap-1.5 text-[9px] font-mono text-text-muted">
+                                                        <span className="truncate" title={hop.evidence_type}>
                                                             {hop.evidence_type || 'Telemetry'}
                                                         </span>
-
-                                                        {/* 5. Secondary Useful Info (Max 1) */}
                                                         {hop.secondary_info && (
-                                                            <span className="text-cyan-300 font-bold truncate" title={hop.secondary_info}>
+                                                            <span className="text-cyan-700 dark:text-cyan-300 font-bold truncate shrink-0" title={hop.secondary_info}>
                                                                 {hop.secondary_info}
                                                             </span>
                                                         )}
                                                     </div>
                                                 </button>
-
-                                                {/* Horizontal Connector between Hops on Desktop */}
-                                                {nextHop && (
-                                                    <div className="hidden lg:flex flex-col items-center justify-center px-1.5 shrink-0 min-w-[68px] max-w-[130px]">
-                                                        {connectorPill && (
-                                                            <span className={`mb-1 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold truncate max-w-[125px] border ${
-                                                                isBrokenLink
-                                                                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                                                                    : 'bg-card-secondary text-cyan-300 border-border'
-                                                            }`} title={connectorPill}>
-                                                                {connectorPill}
-                                                            </span>
-                                                        )}
-                                                        <div className="w-full flex items-center">
-                                                            <div className={`flex-1 h-0.5 ${
-                                                                isBrokenLink
-                                                                    ? 'border-t-2 border-dashed border-rose-500/70'
-                                                                    : isSolidLink
-                                                                    ? 'bg-emerald-500/60'
-                                                                    : 'border-t-2 border-dashed border-slate-500/60'
-                                                            }`} />
-                                                            <ArrowRight size={13} className={`-ml-1 shrink-0 ${
-                                                                isBrokenLink
-                                                                    ? 'text-rose-400'
-                                                                    : isSolidLink
-                                                                    ? 'text-emerald-400'
-                                                                    : 'text-slate-500'
-                                                            }`} />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </React.Fragment>
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -2528,7 +2793,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 <div className="mt-2 pt-3 border-t border-border/60 bg-card-secondary/35 rounded-xl p-3.5 border border-border/50 space-y-2.5">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 dark:border-indigo-500/30">
                                                 Selected Point Detail
                                             </span>
                                             <span className="text-xs font-black text-text-primary">
@@ -2542,20 +2807,20 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                             <span className="text-text-muted">
                                                 Evidence: <strong className="text-text-primary">{selectedHop.evidence_type || 'Dataplane'}</strong>
                                             </span>
-                                            {selectedHop.role === 'SOURCE_STIGIX' && traceResult?.pcap && (
+                                            {!tracingFlow && selectedHop.role === 'SOURCE_STIGIX' && traceResult?.pcap && (
                                                 <button
                                                     type="button"
                                                     onClick={() => setTraceEvidenceTab('packets')}
-                                                    className="px-2 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 font-bold cursor-pointer"
+                                                    className="px-2 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30 font-bold cursor-pointer"
                                                 >
                                                     View PCAP ({traceResult.pcap.total_packets} frames)
                                                 </button>
                                             )}
-                                            {(selectedHop.role === 'INGRESS_ION' || selectedHop.role === 'TRANSIT_ION') && totalIonFlows > 0 && (
+                                            {!tracingFlow && (selectedHop.role === 'INGRESS_ION' || selectedHop.role === 'TRANSIT_ION') && totalIonFlows > 0 && (
                                                 <button
                                                     type="button"
                                                     onClick={() => setTraceEvidenceTab('flows')}
-                                                    className="px-2 py-0.5 rounded bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 font-bold cursor-pointer"
+                                                    className="px-2 py-0.5 rounded bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 dark:border-indigo-500/30 font-bold cursor-pointer"
                                                 >
                                                     View vION Flows ({totalIonFlows})
                                                 </button>
@@ -2564,7 +2829,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     </div>
 
                                     {selectedHop.error && (
-                                        <div className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs font-mono text-rose-300">
+                                        <div className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs font-mono text-rose-700 dark:text-rose-300">
                                             {selectedHop.error}
                                         </div>
                                     )}
@@ -2580,16 +2845,16 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50">
                                                         <div className="text-[9px] uppercase text-text-muted">Captured Packets (TX / RX)</div>
-                                                        <div className="font-bold text-cyan-300 mt-0.5">
+                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
                                                             {selectedHop.metrics.tx_packets ?? 0} TX / {selectedHop.metrics.rx_packets ?? 0} RX ({selectedHop.metrics.flow_packets ?? 0} flow frames)
                                                         </div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50">
                                                         <div className="text-[9px] uppercase text-text-muted">TCP Handshake Flags</div>
                                                         <div className="font-bold text-text-primary mt-0.5">
-                                                            SYN-ACK: <span className={selectedHop.metrics.syn_ack_seen ? 'text-emerald-400' : 'text-amber-400'}>{selectedHop.metrics.syn_ack_seen ? 'Observed' : 'Not Seen'}</span>
+                                                            SYN-ACK: <span className={selectedHop.metrics.syn_ack_seen ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{selectedHop.metrics.syn_ack_seen ? 'Observed' : 'Not Seen'}</span>
                                                             {' • '}
-                                                            RST: <span className={selectedHop.metrics.rst_seen ? 'text-rose-400' : 'text-text-muted'}>{selectedHop.metrics.rst_seen ? 'Observed' : 'None'}</span>
+                                                            RST: <span className={selectedHop.metrics.rst_seen ? 'text-rose-600 dark:text-rose-400' : 'text-text-muted'}>{selectedHop.metrics.rst_seen ? 'Observed' : 'None'}</span>
                                                         </div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50">
@@ -2597,6 +2862,27 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                         <div className="font-bold text-text-primary mt-0.5 truncate" title={selectedHop.metrics.pcap_file || ''}>
                                                             Port :{selectedHop.metrics.local_port || '-'} • {selectedHop.metrics.pcap_file || 'No PCAP'}
                                                         </div>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {selectedHop.role === 'SOURCE_REMOTE_STIGIX' && (
+                                                <>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Remote Stigix Instance</div>
+                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
+                                                            {selectedHop.metrics.peer_name} (v{selectedHop.metrics.peer_version || '3.1'})
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Peer LAN IP &amp; Port</div>
+                                                        <div className="font-bold text-text-primary mt-0.5">
+                                                            {selectedHop.metrics.source_ip}{selectedHop.metrics.source_port ? `:${selectedHop.metrics.source_port}` : ''}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                        <div className="text-[9px] uppercase text-text-muted">Collection Mode</div>
+                                                        <div className="font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">{selectedHop.metrics.mode}</div>
                                                     </div>
                                                 </>
                                             )}
@@ -2609,11 +2895,11 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50">
                                                         <div className="text-[9px] uppercase text-text-muted">Client Source Port</div>
-                                                        <div className="font-bold text-cyan-300 mt-0.5">{selectedHop.metrics.source_port || 'Any'}</div>
+                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">{selectedHop.metrics.source_port || 'Any'}</div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
                                                         <div className="text-[9px] uppercase text-text-muted">Collection Mode</div>
-                                                        <div className="font-bold text-amber-300 mt-0.5">{selectedHop.metrics.mode}</div>
+                                                        <div className="font-bold text-amber-700 dark:text-amber-300 mt-0.5">{selectedHop.metrics.mode}</div>
                                                     </div>
                                                 </>
                                             )}
@@ -2622,7 +2908,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                 <>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50">
                                                         <div className="text-[9px] uppercase text-text-muted">Application &amp; ZBFW</div>
-                                                        <div className="font-bold text-purple-300 mt-0.5">
+                                                        <div className="font-bold text-purple-700 dark:text-purple-300 mt-0.5">
                                                             App-ID: {selectedHop.metrics.app_id || 'None'} • ZBFW: {selectedHop.metrics.sec_action || '-'}
                                                         </div>
                                                     </div>
@@ -2634,7 +2920,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50">
                                                         <div className="text-[9px] uppercase text-text-muted">Selected Egress WAN Path</div>
-                                                        <div className="font-bold text-cyan-300 mt-0.5">
+                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
                                                             {selectedHop.metrics.egress_path || '-'} ({selectedHop.metrics.raw_path_type || '-'})
                                                         </div>
                                                     </div>
@@ -2651,7 +2937,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                 <>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50">
                                                         <div className="text-[9px] uppercase text-text-muted">Overlay Tunnel Arrival</div>
-                                                        <div className="font-bold text-cyan-300 mt-0.5">
+                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
                                                             {selectedHop.metrics.tunnel || '-'} ({selectedHop.metrics.raw_path_type || 'Not Observed'})
                                                         </div>
                                                     </div>
@@ -2679,7 +2965,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                         {Array.isArray(selectedHop.metrics.servicelinks) && selectedHop.metrics.servicelinks.length > 0
                                                             ? selectedHop.metrics.servicelinks.map((sl: any, sIdx: number) => (
                                                                 <span key={sIdx} className="px-2 py-0.5 rounded bg-card-secondary border border-border">
-                                                                    {sl.device} ({sl.name}): <span className={sl.status === 'up' ? 'text-emerald-400' : 'text-rose-400'}>{sl.status}/{sl.ext_state}</span> → {sl.peer}
+                                                                    {sl.device} ({sl.name}): <span className={sl.status === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{sl.status}/{sl.ext_state}</span> → {sl.peer}
                                                                 </span>
                                                             ))
                                                             : <span>Tunnel: {selectedHop.metrics.egress_path}</span>}
@@ -2691,7 +2977,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                 <>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
                                                         <div className="text-[9px] uppercase text-text-muted">Direct Internet Breakout Circuit</div>
-                                                        <div className="font-bold text-cyan-300 mt-0.5">{selectedHop.metrics.circuit || 'Direct WAN'}</div>
+                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">{selectedHop.metrics.circuit || 'Direct WAN'}</div>
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
                                                         <div className="text-[9px] uppercase text-text-muted">Forwarding Mode</div>
@@ -2710,7 +2996,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                     </div>
                                                     <div className="p-2 rounded-lg bg-card border border-border/50">
                                                         <div className="text-[9px] uppercase text-text-muted">Protocol / Service Port</div>
-                                                        <div className="font-bold text-cyan-300 mt-0.5">
+                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
                                                             {selectedHop.metrics.protocol}/{selectedHop.metrics.port || '*'}
                                                             {selectedHop.metrics.dns_resolution_ms !== null && selectedHop.metrics.dns_resolution_ms !== undefined
                                                                 ? ` (DNS: ${selectedHop.metrics.dns_resolution_ms}ms)`
@@ -2745,7 +3031,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         onClick={() => setTraceEvidenceTab('packets')}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                                             traceEvidenceTab === 'packets'
-                                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                                                ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30 shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary border border-transparent'
                                         }`}
                                     >
@@ -2761,7 +3047,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         onClick={() => setTraceEvidenceTab('flows')}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                                             traceEvidenceTab === 'flows'
-                                                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
+                                                ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 dark:border-indigo-500/30 shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary border border-transparent'
                                         }`}
                                     >
@@ -2777,7 +3063,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         onClick={() => setTraceEvidenceTab('limits')}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                                             traceEvidenceTab === 'limits'
-                                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm'
+                                                ? 'bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30 shadow-sm'
                                                 : 'text-text-muted hover:text-text-primary border border-transparent'
                                         }`}
                                     >
@@ -2786,14 +3072,64 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     </button>
                                 </div>
 
-                                <div className="text-[10px] font-mono text-text-muted flex items-center gap-2">
-                                    {traceEvidenceTab === 'packets' && traceResult.pcap?.filename && (
-                                        <span>PCAP: <strong className="text-cyan-300">{traceResult.pcap.filename}</strong> (BPF: <code className="text-text-primary">{traceResult.query?.bpf_used || 'all'}</code>)</span>
-                                    )}
-                                    {traceEvidenceTab === 'flows' && (
-                                        <span>
-                                            <strong className="text-emerald-300">{exactIonFlowsCount}</strong> exact probe match / <strong className="text-text-primary">{totalIonFlows}</strong> total records
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {/* Capture Summary Pill */}
+                                    {activePcapFilename && (
+                                        <span
+                                            title={`Active capture file: ${activePcapFilename}${traceResult.query?.bpf_used ? ` • BPF: ${traceResult.query.bpf_used}` : ''}`}
+                                            className="px-2.5 py-1 rounded-lg bg-card-secondary border border-border/70 text-[10px] font-mono text-text-secondary flex items-center gap-1.5"
+                                        >
+                                            <HardDrive size={11} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                            <span>
+                                                Capture · <strong className="text-text-primary">{totalPackets}</strong> packet{totalPackets === 1 ? '' : 's'}
+                                                {fileSizeBytes ? ` · ${(fileSizeBytes / 1024).toFixed(1)} KB` : ''}
+                                            </span>
                                         </span>
+                                    )}
+
+                                    {traceEvidenceTab === 'flows' && (
+                                        <span className="text-[10px] font-mono text-text-muted px-2 py-1">
+                                            <strong className="text-emerald-700 dark:text-emerald-300">{exactIonFlowsCount}</strong> exact match / <strong className="text-text-primary">{totalIonFlows}</strong> records
+                                        </span>
+                                    )}
+
+                                    {/* Contextual PCAP Actions attached to Evidence Bar */}
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenHistory}
+                                        title="Browse or manage saved PCAP captures"
+                                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all flex items-center gap-1.5 cursor-pointer bg-card-secondary text-text-secondary border-border hover:text-text-primary hover:border-border/80"
+                                    >
+                                        <HardDrive size={12} />
+                                        <span>Captures</span>
+                                    </button>
+
+                                    {activePcapFilename && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDownloadCapture(activePcapFilename)}
+                                                disabled={downloadingFile === activePcapFilename}
+                                                title={`Download ${activePcapFilename}`}
+                                                className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                            >
+                                                {downloadingFile === activePcapFilename ? (
+                                                    <Loader2 size={12} className="animate-spin" />
+                                                ) : (
+                                                    <Download size={12} />
+                                                )}
+                                                <span>Download PCAP</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleSendToReplay}
+                                                title="Send trace to PCAP Replay engine"
+                                                className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-purple-600/15 hover:bg-purple-600/25 border border-purple-500/40 dark:border-purple-500/30 text-purple-700 dark:text-purple-300 transition-all flex items-center gap-1.5 cursor-pointer"
+                                            >
+                                                <Zap size={12} />
+                                                <span>Replay</span>
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -2804,7 +3140,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                             <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                                 <div className="px-4 py-2.5 bg-card-secondary border-b border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
-                                        <Terminal size={14} className="text-indigo-400" />
+                                        <Terminal size={14} className="text-indigo-600 dark:text-indigo-400" />
                                         <span className="text-xs font-black uppercase tracking-wider text-text-primary">
                                             vION Dataplane Flow Records (inspect flow brief)
                                         </span>
@@ -2818,7 +3154,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                             onClick={() => setShowOnlyExactFlows((prev) => !prev)}
                                             className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border cursor-pointer transition-colors ${
                                                 showOnlyExactFlows
-                                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
                                                     : 'bg-card text-text-muted hover:text-text-primary border-border'
                                             }`}
                                         >
@@ -2867,7 +3203,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                                 onClick={() => handleSelectIonFlowRow(fl, 'ingress')}
                                                                 className={`cursor-pointer transition-colors ${
                                                                     isRowSelected
-                                                                        ? 'bg-indigo-500/20 border-l-4 border-l-indigo-400'
+                                                                        ? 'bg-indigo-500/20 border-l-4 border-l-indigo-500 dark:border-l-indigo-400'
                                                                         : isExact
                                                                         ? 'bg-emerald-500/5 hover:bg-indigo-500/10'
                                                                         : 'hover:bg-indigo-500/10'
@@ -2876,34 +3212,34 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                                 <td className="py-1.5 px-3">
                                                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
                                                                         isExact
-                                                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                                                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
                                                                             : isSession
-                                                                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-                                                                            : 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                                                                            ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/40 dark:border-cyan-500/30'
+                                                                            : 'bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/40 dark:border-slate-500/30'
                                                                     }`}>
                                                                         {isExact ? '★ Exact Probe 5-Tuple' : isSession ? 'Probe Keepalive' : 'Associated Flow'}
                                                                     </span>
                                                                 </td>
-                                                                <td className="py-1.5 px-3 font-bold text-cyan-400">
+                                                                <td className="py-1.5 px-3 font-bold text-cyan-700 dark:text-cyan-400">
                                                                     Ingress ({traceResult.hops?.[1]?.metrics?.element || traceResult.query?.source_site})
                                                                 </td>
                                                                 <td className="py-1.5 px-3 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
                                                                 <td className="py-1.5 px-3 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
                                                                 <td className="py-1.5 px-3 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
-                                                                <td className="py-1.5 px-3 font-bold text-purple-300">{fl.app_id}</td>
+                                                                <td className="py-1.5 px-3 font-bold text-purple-700 dark:text-purple-300">{fl.app_id}</td>
                                                                 <td className="py-1.5 px-3 text-text-secondary">{fl.net_policy || '-'}</td>
                                                                 <td className="py-1.5 px-3 text-text-secondary">{fl.pri_policy || '-'}</td>
                                                                 <td className="py-1.5 px-3 text-text-secondary">{fl.sec_policy || '-'}</td>
                                                                 <td className="py-1.5 px-3">
                                                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
                                                                         String(fl.sec_action).toUpperCase() === 'ALLOW'
-                                                                            ? 'bg-emerald-500/20 text-emerald-300'
-                                                                            : 'bg-rose-500/20 text-rose-300'
+                                                                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                                                                            : 'bg-rose-500/20 text-rose-700 dark:text-rose-300'
                                                                     }`}>
                                                                         {fl.sec_action}
                                                                     </span>
                                                                 </td>
-                                                                <td className="py-1.5 px-3 text-cyan-300">{fl.egress_path} ({fl.raw_path_type})</td>
+                                                                <td className="py-1.5 px-3 text-cyan-700 dark:text-cyan-300">{fl.egress_path} ({fl.raw_path_type})</td>
                                                             </tr>
                                                         );
                                                     })}
@@ -2921,15 +3257,15 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                                 <td className="py-1.5 px-3">
                                                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
                                                                         isExact
-                                                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                                                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
                                                                             : isSession
-                                                                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-                                                                            : 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                                                                            ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/40 dark:border-cyan-500/30'
+                                                                            : 'bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/40 dark:border-slate-500/30'
                                                                     }`}>
                                                                         {isExact ? '★ Exact Probe 5-Tuple' : isSession ? 'Probe Keepalive' : 'Associated Flow'}
                                                                     </span>
                                                                 </td>
-                                                                <td className="py-1.5 px-3 font-bold text-emerald-400">
+                                                                <td className="py-1.5 px-3 font-bold text-emerald-700 dark:text-emerald-400">
                                                                     Transit Hub ({traceResult.hops?.[2]?.metrics?.element || traceResult.verdict?.peer_site_name})
                                                                 </td>
                                                                 <td className="py-1.5 px-3 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
@@ -2940,7 +3276,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                                 <td className="py-1.5 px-3 text-text-muted">{fl.pri_policy || '-'}</td>
                                                                 <td className="py-1.5 px-3 text-text-muted">{fl.sec_policy || '-'}</td>
                                                                 <td className="py-1.5 px-3 text-text-muted">{fl.sec_action}</td>
-                                                                <td className="py-1.5 px-3 text-emerald-300 font-bold">{fl.raw_path_type} (WANPATH {fl.wanpath_id})</td>
+                                                                <td className="py-1.5 px-3 text-emerald-700 dark:text-emerald-300 font-bold">{fl.raw_path_type} (WANPATH {fl.wanpath_id})</td>
                                                             </tr>
                                                         );
                                                     })}
@@ -2955,20 +3291,20 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                         {!tracingFlow && traceResult && traceEvidenceTab === 'limits' && (
                             <div className="bg-card border border-border rounded-2xl p-4 shadow-sm grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs font-mono">
                                 <div className="p-3 rounded-xl bg-card-secondary/50 border border-border/60 space-y-2">
-                                    <div className="text-[10px] font-black uppercase tracking-wider text-indigo-300">
+                                    <div className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
                                         1. Search Criteria vs Probe Identity
                                     </div>
                                     <div className="space-y-1 text-[11px]">
                                         <div>Source Site: <strong className="text-text-primary">{traceResult.query?.source_site}</strong> ({traceResult.query?.source_mode})</div>
                                         <div>Input Source IP: <strong className="text-text-primary">{traceResult.query?.src_ip_input || 'Auto (Detected from Probe)'}</strong></div>
-                                        <div>Actual Probe 5-Tuple: <strong className="text-cyan-300">{flowIdObj?.probe_5tuple}</strong></div>
+                                        <div>Actual Probe 5-Tuple: <strong className="text-cyan-700 dark:text-cyan-300">{flowIdObj?.probe_5tuple}</strong></div>
                                         <div>PCAP Snapshot Ports: <strong className="text-text-primary">{(flowIdObj?.pcap_ports || []).join(', ') || 'None'}</strong></div>
-                                        <div>Kernel BPF Filter: <code className="text-emerald-300">{traceResult.query?.bpf_used || 'N/A (Agentless)'}</code></div>
+                                        <div>Kernel BPF Filter: <code className="text-emerald-700 dark:text-emerald-300">{traceResult.query?.bpf_used || 'N/A (Agentless)'}</code></div>
                                     </div>
                                 </div>
 
                                 <div className="p-3 rounded-xl bg-card-secondary/50 border border-border/60 space-y-2">
-                                    <div className="text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                                    <div className="text-[10px] font-black uppercase tracking-wider text-cyan-700 dark:text-cyan-300">
                                         2. vION WebSocket CLI Collection Audit
                                     </div>
                                     <div className="space-y-1 text-[11px]">
@@ -2991,12 +3327,12 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </div>
 
                                 <div className="p-3 rounded-xl bg-card-secondary/50 border border-border/60 space-y-2 font-sans">
-                                    <div className="text-[10px] font-black uppercase tracking-wider text-amber-300 font-mono">
+                                    <div className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 font-mono">
                                         3. Methodological Scope &amp; Limits
                                     </div>
                                     <ul className="space-y-1 text-[11px] text-text-secondary list-disc pl-4">
                                         <li><strong>Destination Node:</strong> External/remote targets do not run a Stigix probe; reachability is inferred from return frames captured at the source.</li>
-                                        <li><strong>Hub Policy Columns:</strong> Prisma SD-WAN enforces App-ID, Path, QoS, and ZBFW at the ingress Branch ION; Hub IONs display overlay transit state (<code className="font-mono text-cyan-300">vpn_to_core</code>).</li>
+                                        <li><strong>Hub Policy Columns:</strong> Prisma SD-WAN enforces App-ID, Path, QoS, and ZBFW at the ingress Branch ION; Hub IONs display overlay transit state (<code className="font-mono text-cyan-700 dark:text-cyan-300">vpn_to_core</code>).</li>
                                         <li><strong>PCAP Window vs CLI Keepalive:</strong> Local PCAP records the initial ~3s probe handshake, while Stigix pulses keepalive probes during CLI collection so embryonic flows do not expire.</li>
                                     </ul>
                                 </div>
@@ -3007,7 +3343,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             })()}
 
             {/* Display Search & Filter Bar + 3-Pane Wireshark Inspector (Always visible in Local PCAP mode, or in Trace mode when 'Captured Packets' tab is selected) */}
-            {(captureMode === 'local' || (captureMode === 'trace' && traceResult && traceEvidenceTab === 'packets') || (captureMode === 'trace' && !tracingFlow && !traceResult)) && (
+            {(captureMode === 'local' || (captureMode === 'trace' && !tracingFlow && traceResult && traceEvidenceTab === 'packets') || (captureMode === 'trace' && !tracingFlow && !traceResult)) && (
             <>
             <div className="bg-card border border-border px-4 py-2.5 rounded-2xl flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2 flex-1">

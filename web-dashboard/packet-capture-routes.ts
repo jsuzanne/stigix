@@ -5,6 +5,8 @@ import net from 'net';
 import tls from 'tls';
 import dgram from 'dgram';
 import dns from 'dns';
+import http from 'http';
+import jwt from 'jsonwebtoken';
 import { spawn } from 'child_process';
 
 export function createCaptureApiRouter(
@@ -49,10 +51,9 @@ export function createCaptureApiRouter(
                 CONFIG_DIR: configDir,
                 STIGIX_CAPTURES_DIR: capturesDir
             };
-            const goBin = shouldUseGoEngine() ? resolveStigixGoBin() : null;
-            const proc = goBin
-                ? spawn(goBin, ['pcap-capture', ...args], { env })
-                : spawn(pythonPath, [captureScript, ...args], { env });
+            // Always use pcap_capture_engine.py so tcpdump runs with --immediate-mode
+            // (disabling TPACKET_V3 kernel ring block buffering on short sub-second probe captures)
+            const proc = spawn(pythonPath, [captureScript, ...args], { env });
             let stdout = '';
             let stderr = '';
 
@@ -307,22 +308,23 @@ export function createCaptureApiRouter(
             let stdout = '';
             let stderr = '';
             let stderrLineBuf = '';
+            let lastProgress: any = null;
             proc.stdout.on('data', (d) => { stdout += d.toString(); });
             proc.stderr.on('data', (d) => {
                 const chunk = d.toString();
                 stderr += chunk;
-                if (onProgress) {
-                    stderrLineBuf += chunk;
-                    const lines = stderrLineBuf.split('\n');
-                    stderrLineBuf = lines.pop() || '';
-                    for (const line of lines) {
-                        const markerIdx = line.indexOf('STIGIX_TRACE_PROGRESS:');
-                        if (markerIdx >= 0) {
-                            try {
-                                const jsonPart = line.slice(markerIdx + 'STIGIX_TRACE_PROGRESS:'.length).trim();
-                                onProgress(JSON.parse(jsonPart));
-                            } catch {}
-                        }
+                stderrLineBuf += chunk;
+                const lines = stderrLineBuf.split('\n');
+                stderrLineBuf = lines.pop() || '';
+                for (const line of lines) {
+                    const markerIdx = line.indexOf('STIGIX_TRACE_PROGRESS:');
+                    if (markerIdx >= 0) {
+                        try {
+                            const jsonPart = line.slice(markerIdx + 'STIGIX_TRACE_PROGRESS:'.length).trim();
+                            const parsedProg = JSON.parse(jsonPart);
+                            lastProgress = parsedProg;
+                            if (onProgress) onProgress(parsedProg);
+                        } catch {}
                     }
                 }
             });
@@ -332,9 +334,37 @@ export function createCaptureApiRouter(
                     const parsed = JSON.parse(idx >= 0 ? stdout.slice(idx) : stdout);
                     resolve(parsed);
                 } catch {
+                    // If Ingress ION already succeeded (lastProgress emitted) before Transit Hub CLI timed out,
+                    // preserve Hop 2 (ingress_ion + primary_flow) and mark only Hop 3 (transit_ion) as timed out!
+                    if (lastProgress && lastProgress.ingress_ion) {
+                        resolve({
+                            success: true,
+                            forwarding_mode: lastProgress.forwarding_mode || 'VPN_OVERLAY',
+                            peer_site_name: lastProgress.peer_site_name || 'Transit Hub',
+                            ingress_ion: {
+                                ...lastProgress.ingress_ion,
+                                success: true,
+                                flows: lastProgress.primary_flow ? [lastProgress.primary_flow] : []
+                            },
+                            primary_flow: lastProgress.primary_flow || null,
+                            transit_ion: {
+                                success: false,
+                                element: lastProgress.peer_site_name || 'Transit Hub',
+                                site_name: lastProgress.peer_site_name || 'Transit Hub',
+                                error: `Transit Hub (${lastProgress.peer_site_name || 'Hub'}) WebSocket CLI timed out while inspecting flow table`
+                            },
+                            servicelinks: []
+                        });
+                        return;
+                    }
+                    const cleanErr = (stderr || stdout || '')
+                        .split('\n')
+                        .filter((l) => !l.includes('STIGIX_TRACE_PROGRESS:'))
+                        .join('\n')
+                        .trim();
                     resolve({
                         success: false,
-                        error: (stderr || stdout || 'Failed to parse sdwan_ion_cli output').trim().slice(0, 400)
+                        error: (cleanErr || 'vION WebSocket CLI session timed out').slice(0, 400)
                     });
                 }
             });
@@ -345,7 +375,138 @@ export function createCaptureApiRouter(
     };
 
     let cachedTraceSites: { ts: number; data: any } | null = null;
+    let cachedFleetPeers: { ts: number; map: Map<string, { name: string; host: string; port: number; version: string; is_local: boolean }> } | null = null;
     let activeFlowTraceProgress: any = null;
+    let activeDelegatedPeer: { host: string; port: number; authHeader?: string } | null = null;
+
+    const normalizeSitePrefix = (raw?: string): string => {
+        if (!raw) return '';
+        return String(raw)
+            .trim()
+            .replace(/-(ubuntu|debian|linux|node|vm|host|srv|server|stigix)$/i, '')
+            .trim()
+            .toUpperCase();
+    };
+
+    const getFleetStigixPeersMap = async (localSite: string): Promise<Map<string, { name: string; host: string; port: number; version: string; is_local: boolean }>> => {
+        const now = Date.now();
+        if (cachedFleetPeers && now - cachedFleetPeers.ts < 15_000) {
+            return cachedFleetPeers.map;
+        }
+        const map = new Map<string, { name: string; host: string; port: number; version: string; is_local: boolean }>();
+        const localNorm = normalizeSitePrefix(localSite);
+
+        const ingestTargetList = (list: any[]) => {
+            if (!Array.isArray(list)) return;
+            for (const t of list) {
+                if (!t || !t.name || !t.host || t.enabled === false) continue;
+                const siteKey = normalizeSitePrefix(t.name);
+                if (!siteKey) continue;
+                const isSelf = Boolean(t.meta?.self) || (localNorm && siteKey === localNorm);
+                const entry = {
+                    name: String(t.name),
+                    host: String(t.host).trim(),
+                    port: Number(t.ports?.dashboard || 8080),
+                    version: String(t.meta?.version || ''),
+                    is_local: isSelf
+                };
+                if (!map.has(siteKey) || isSelf || t.meta?.registry) {
+                    map.set(siteKey, entry);
+                }
+            }
+        };
+
+        try {
+            const secPath = path.join(configDir, '.cli-local-secret');
+            const cliSecret = fs.existsSync(secPath) ? fs.readFileSync(secPath, 'utf8').trim() : '';
+            const localPort = parseInt(process.env.PORT || '8080', 10) || 8080;
+            const targetsData = await new Promise<any[]>((resolve) => {
+                const req = http.get(
+                    {
+                        hostname: '127.0.0.1',
+                        port: localPort,
+                        path: '/api/targets',
+                        headers: cliSecret ? { 'x-stigix-cli-secret': cliSecret } : {},
+                        timeout: 1500
+                    },
+                    (resp) => {
+                        let body = '';
+                        resp.on('data', (c) => { body += c.toString(); });
+                        resp.on('end', () => {
+                            try {
+                                const parsed = JSON.parse(body);
+                                resolve(Array.isArray(parsed) ? parsed : []);
+                            } catch {
+                                resolve([]);
+                            }
+                        });
+                    }
+                );
+                req.on('error', () => resolve([]));
+                req.on('timeout', () => { req.destroy(); resolve([]); });
+            });
+            ingestTargetList(targetsData);
+        } catch {}
+
+        if (map.size === 0) {
+            try {
+                const tFile = path.join(configDir, 'targets.json');
+                if (fs.existsSync(tFile)) {
+                    ingestTargetList(JSON.parse(fs.readFileSync(tFile, 'utf8')));
+                }
+            } catch {}
+        }
+
+        cachedFleetPeers = { ts: now, map };
+        return map;
+    };
+
+    const forwardHttpJson = (opts: {
+        host: string;
+        port: number;
+        path: string;
+        method: 'GET' | 'POST';
+        headers?: Record<string, string>;
+        body?: any;
+        timeoutMs?: number;
+    }): Promise<{ status: number; data: any }> => {
+        return new Promise((resolve) => {
+            const bodyStr = opts.body !== undefined ? JSON.stringify(opts.body) : '';
+            const headers: Record<string, string> = {
+                'Accept': 'application/json',
+                ...(opts.headers || {})
+            };
+            if (bodyStr) {
+                headers['Content-Type'] = 'application/json';
+                headers['Content-Length'] = String(Buffer.byteLength(bodyStr));
+            }
+            const req = http.request(
+                {
+                    hostname: opts.host,
+                    port: opts.port || 8080,
+                    path: opts.path,
+                    method: opts.method,
+                    headers,
+                    timeout: opts.timeoutMs || 60000
+                },
+                (resp) => {
+                    let raw = '';
+                    resp.on('data', (chunk) => { raw += chunk.toString(); });
+                    resp.on('end', () => {
+                        try {
+                            resolve({ status: resp.statusCode || 500, data: JSON.parse(raw) });
+                        } catch {
+                            resolve({ status: resp.statusCode || 500, data: null });
+                        }
+                    });
+                }
+            );
+            req.on('error', () => resolve({ status: 0, data: null }));
+            req.on('timeout', () => { req.destroy(); resolve({ status: 0, data: null }); });
+            if (bodyStr) req.write(bodyStr);
+            req.end();
+        });
+    };
 
     // 11. List Prisma SD-WAN tenant sites & elements for E2E Flow Trace
     router.get('/trace-sites', async (req: Request, res: Response) => {
@@ -353,9 +514,21 @@ export function createCaptureApiRouter(
             const force = req.query.refresh === '1' || req.query.refresh === 'true';
             const now = Date.now();
             const localSite = getLocalSiteName();
+            const peersMap = await getFleetStigixPeersMap(localSite);
+            const enrichSites = (rawSites: any[]) =>
+                (Array.isArray(rawSites) ? rawSites : []).map((s: any) => {
+                    const sKey = normalizeSitePrefix(s.site_name);
+                    const peer = peersMap.get(sKey) || null;
+                    return {
+                        ...s,
+                        stigix_peer: peer
+                    };
+                });
+
             if (!force && cachedTraceSites && now - cachedTraceSites.ts < 60_000) {
                 return res.json({
                     ...cachedTraceSites.data,
+                    sites: enrichSites(cachedTraceSites.data.sites),
                     local_site_name: localSite
                 });
             }
@@ -365,6 +538,7 @@ export function createCaptureApiRouter(
             }
             res.json({
                 ...result,
+                sites: enrichSites(result?.sites || []),
                 local_site_name: localSite
             });
         } catch (e: any) {
@@ -373,7 +547,25 @@ export function createCaptureApiRouter(
     });
 
     // 11b. Live Progress Endpoint for End-to-End Flow & Path Trace
-    router.get('/trace-flow/progress', (_req: Request, res: Response) => {
+    router.get('/trace-flow/progress', async (req: Request, res: Response) => {
+        if (activeDelegatedPeer && req.headers['x-stigix-delegated'] !== '1') {
+            try {
+                const hdrs: Record<string, string> = { 'x-stigix-delegated': '1' };
+                if (req.headers.authorization) hdrs['Authorization'] = String(req.headers.authorization);
+                else if (activeDelegatedPeer.authHeader) hdrs['Authorization'] = activeDelegatedPeer.authHeader;
+                const peerProg = await forwardHttpJson({
+                    host: activeDelegatedPeer.host,
+                    port: activeDelegatedPeer.port,
+                    path: '/api/capture/trace-flow/progress',
+                    method: 'GET',
+                    headers: hdrs,
+                    timeoutMs: 1500
+                });
+                if (peerProg.status === 200 && peerProg.data) {
+                    return res.json(peerProg.data);
+                }
+            } catch {}
+        }
         if (!activeFlowTraceProgress) {
             return res.json({ active: false });
         }
@@ -414,6 +606,61 @@ export function createCaptureApiRouter(
                 effectiveSourceSite.toUpperCase() === localSite.toUpperCase())
         );
 
+        // Check if the selected remote site has a Stigix Peer instance in the fleet (e.g. BR1-Ubuntu 192.168.207.10)
+        const peersMap = await getFleetStigixPeersMap(localSite);
+        const remoteStigixPeer = !isLocalStigixSite && sourceMode !== 'ion_only'
+            ? (peersMap.get(normalizeSitePrefix(effectiveSourceSite)) || null)
+            : null;
+        const hasRemoteStigixPeer = Boolean(remoteStigixPeer && !remoteStigixPeer.is_local);
+
+        // If the remote Stigix peer supports /api/capture/trace-flow, delegate execution directly
+        // to that peer so it captures local PCAP + fires a local synthetic socket probe on the remote site!
+        if (hasRemoteStigixPeer && remoteStigixPeer && req.headers['x-stigix-delegated'] !== '1') {
+            try {
+                const delegatedHdrs: Record<string, string> = { 'x-stigix-delegated': '1' };
+                let authHdr = req.headers.authorization ? String(req.headers.authorization) : '';
+                if (!authHdr) {
+                    const secret = process.env.JWT_SECRET || 'your-secure-secret-here';
+                    authHdr = `Bearer ${jwt.sign({ username: 'stigix-gateway', role: 'admin' }, secret, { expiresIn: '120s' })}`;
+                }
+                delegatedHdrs['Authorization'] = authHdr;
+                activeDelegatedPeer = {
+                    host: remoteStigixPeer.host,
+                    port: remoteStigixPeer.port || 8080,
+                    authHeader: authHdr
+                };
+                const delegatedRes = await forwardHttpJson({
+                    host: remoteStigixPeer.host,
+                    port: remoteStigixPeer.port || 8080,
+                    path: '/api/capture/trace-flow',
+                    method: 'POST',
+                    headers: delegatedHdrs,
+                    body: {
+                        ...req.body,
+                        sourceSite: effectiveSourceSite,
+                        sourceMode: 'stigix'
+                    },
+                    timeoutMs: 85000
+                });
+                activeDelegatedPeer = null;
+                if (delegatedRes.status === 200 && delegatedRes.data?.success) {
+                    if (delegatedRes.data?.pcap?.filename && delegatedRes.data?.pcap?.raw_pcap_b64) {
+                        try {
+                            const localCopyPath = path.join(capturesDir, path.basename(delegatedRes.data.pcap.filename));
+                            fs.writeFileSync(localCopyPath, Buffer.from(delegatedRes.data.pcap.raw_pcap_b64, 'base64'));
+                        } catch {}
+                        delete delegatedRes.data.pcap.raw_pcap_b64;
+                    }
+                    return res.json({
+                        ...delegatedRes.data,
+                        delegated_to_peer: remoteStigixPeer
+                    });
+                }
+            } catch {
+                activeDelegatedPeer = null;
+            }
+        }
+
         let resolvedDstIp = '';
         let dnsResolutionMs: number | null = null;
         let dnsError: string | null = null;
@@ -440,28 +687,60 @@ export function createCaptureApiRouter(
             ? `${rawDest} (${resolvedDstIp || 'Unresolved'})`
             : (resolvedDstIp || rawDest || 'Target Destination');
 
+        const defaultSourceIpLabel = cleanSrcIp || (hasRemoteStigixPeer && remoteStigixPeer ? remoteStigixPeer.host : 'Auto Source');
+
         // Initialize real-time step-by-step progress state
         activeFlowTraceProgress = {
             active: true,
             trace_id: traceId,
             started_at: t0,
-            phase: isLocalStigixSite ? 'LOCAL_CAPTURE_AND_PROBE' : 'INGRESS_ION_CLI',
+            phase: isLocalStigixSite
+                ? 'LOCAL_CAPTURE_AND_PROBE'
+                : hasRemoteStigixPeer
+                ? 'REMOTE_PEER_AND_ION_CLI'
+                : 'INGRESS_ION_CLI',
             phase_label: isLocalStigixSite
                 ? `Recording local PCAP & dispatching synthetic ${protoStr.toUpperCase()} probe...`
+                : hasRemoteStigixPeer && remoteStigixPeer
+                ? `Triggering remote Stigix Peer ${remoteStigixPeer.name} (${remoteStigixPeer.host}) & inspecting ${effectiveSourceSite} vION CLI...`
                 : `Querying ${effectiveSourceSite} vION flow table via WebSocket CLI...`,
             flow_identity: {
-                probe_5tuple: `${cleanSrcIp || 'Auto Source'} → ${resolvedDstIp || rawDest}${portNum && protoNum !== 1 ? `:${portNum}` : ''} · ${protoStr.toUpperCase()}`
+                probe_5tuple: `${defaultSourceIpLabel} → ${resolvedDstIp || rawDest}${portNum && protoNum !== 1 ? `:${portNum}` : ''} · ${protoStr.toUpperCase()}`
             },
             hops: [
                 {
                     id: 'hop_source',
-                    role: isLocalStigixSite ? 'SOURCE_STIGIX' : 'SOURCE_CLIENT_AGENTLESS',
-                    role_label: isLocalStigixSite ? 'Source Probe' : 'Site Client',
-                    title: isLocalStigixSite ? `Stigix ${effectiveSourceSite}` : `Client (${effectiveSourceSite})`,
-                    subtitle: cleanSrcIp || (isLocalStigixSite ? 'Capturing local NIC...' : 'Agentless Mode'),
-                    status: isLocalStigixSite ? 'RUNNING' : 'PASSIVE',
-                    badge: isLocalStigixSite ? 'Capturing PCAP + Probe...' : 'ION-Only Mode',
-                    evidence_type: isLocalStigixSite ? 'Local PCAP + Active Probe' : 'Agentless (No Local Probe)'
+                    role: isLocalStigixSite
+                        ? 'SOURCE_STIGIX'
+                        : hasRemoteStigixPeer
+                        ? 'SOURCE_REMOTE_STIGIX'
+                        : 'SOURCE_CLIENT_AGENTLESS',
+                    role_label: isLocalStigixSite
+                        ? 'Source Probe'
+                        : hasRemoteStigixPeer
+                        ? 'Remote Stigix Peer'
+                        : 'Site Client (Agentless)',
+                    title: isLocalStigixSite || hasRemoteStigixPeer
+                        ? `Stigix ${effectiveSourceSite}`
+                        : `Client (${effectiveSourceSite})`,
+                    subtitle: cleanSrcIp || (
+                        isLocalStigixSite
+                            ? 'Capturing local NIC...'
+                            : hasRemoteStigixPeer && remoteStigixPeer
+                            ? `${remoteStigixPeer.host} (${remoteStigixPeer.name})`
+                            : 'Agentless Mode'
+                    ),
+                    status: isLocalStigixSite || hasRemoteStigixPeer ? 'RUNNING' : 'PASSIVE',
+                    badge: isLocalStigixSite
+                        ? 'Capturing PCAP + Probe...'
+                        : hasRemoteStigixPeer && remoteStigixPeer
+                        ? `Stigix Peer (${remoteStigixPeer.host})`
+                        : 'ION-Only Mode',
+                    evidence_type: isLocalStigixSite
+                        ? 'Local PCAP + Active Probe'
+                        : hasRemoteStigixPeer && remoteStigixPeer
+                        ? `Remote Stigix Peer (${remoteStigixPeer.version ? 'v' + remoteStigixPeer.version : 'Active'})`
+                        : 'Agentless (No Local Probe)'
                 },
                 {
                     id: 'hop_ingress_ion',
@@ -498,12 +777,17 @@ export function createCaptureApiRouter(
 
         let activeProbeSocket: net.Socket | null = null;
         let activeUdpSocket: dgram.Socket | null = null;
+        let activePingProc: ReturnType<typeof spawn> | null = null;
         let probeKeepaliveTimer: ReturnType<typeof setInterval> | null = null;
         const sessionProbePorts = new Set<number>();
         const stopProbeKeepalive = () => {
             if (probeKeepaliveTimer) {
                 clearInterval(probeKeepaliveTimer);
                 probeKeepaliveTimer = null;
+            }
+            if (activePingProc) {
+                try { activePingProc.kill('SIGTERM'); } catch {}
+                activePingProc = null;
             }
             if (activeProbeSocket) {
                 try { (activeProbeSocket as net.Socket).destroy(); } catch {}
@@ -539,6 +823,7 @@ export function createCaptureApiRouter(
             if (isLocalStigixSite && resolvedDstIp) {
                 const protoBpf = protoNum === 6 ? 'tcp' : protoNum === 17 ? 'udp' : protoNum === 1 ? 'icmp' : '';
                 const bpfParts: string[] = [`host ${resolvedDstIp}`];
+                if (cleanSrcIp) bpfParts.push(`host ${cleanSrcIp}`);
                 if (protoBpf) bpfParts.push(protoBpf);
                 if (portNum > 0 && protoNum !== 1) {
                     bpfParts.push(`port ${portNum}`);
@@ -813,9 +1098,12 @@ export function createCaptureApiRouter(
                                 resolveProbe();
                             });
                         });
-                        probeKeepaliveTimer = setInterval(() => {
-                            try { spawn('ping', ['-c', '1', '-W', '1', resolvedDstIp]); } catch {}
-                        }, 900);
+                        // Keep a single continuous ping process alive (same ICMP Echo Identifier) so the flow entry
+                        // never expires from the vION flow table during WebSocket CLI inspection
+                        try {
+                            activePingProc = spawn('ping', ['-i', '0.4', '-W', '1', resolvedDstIp]);
+                            activePingProc.on('error', () => {});
+                        } catch {}
                     }
                 }
                 // Give kernel/NIC 250ms to deliver any return packets (SYN-ACK / HTTP banner / ICMP reply) to PF_PACKET,
@@ -835,6 +1123,41 @@ export function createCaptureApiRouter(
                     } catch {}
                     localCaptureStarted = false;
                 }
+            }
+
+            // If the selected site has a remote Stigix peer on an older version (< v3.2.10), trigger its live
+            // reachability/connectivity endpoints so it emits fresh packets from its LAN IP before we inspect the vION
+            let remotePeerProbeTriggered = false;
+            if (!isLocalStigixSite && hasRemoteStigixPeer && remoteStigixPeer && generateProbe !== false && resolvedDstIp) {
+                try {
+                    const peerHdrs: Record<string, string> = {};
+                    if (req.headers.authorization) {
+                        peerHdrs['Authorization'] = String(req.headers.authorization);
+                    }
+                    await Promise.race([
+                        Promise.allSettled([
+                            forwardHttpJson({
+                                host: remoteStigixPeer.host,
+                                port: remoteStigixPeer.port || 8080,
+                                path: '/api/convergence/reachability',
+                                method: 'POST',
+                                headers: peerHdrs,
+                                body: { target: resolvedDstIp, port: portNum || 80, force: true },
+                                timeoutMs: 1800
+                            }),
+                            forwardHttpJson({
+                                host: remoteStigixPeer.host,
+                                port: remoteStigixPeer.port || 8080,
+                                path: '/api/connectivity/test?live=true',
+                                method: 'GET',
+                                headers: peerHdrs,
+                                timeoutMs: 1800
+                            })
+                        ]),
+                        new Promise((r) => setTimeout(r, 900))
+                    ]);
+                    remotePeerProbeTriggered = true;
+                } catch {}
             }
 
             // Summarize PCAP observations for Hop 1 before running ION CLI so we can pass the exact probe source IP
@@ -862,19 +1185,31 @@ export function createCaptureApiRouter(
             if (!probeInfo.localPort && pcapPorts.length > 0) {
                 probeInfo.localPort = pcapPorts[0];
             }
-            const effectiveSrcIp = cleanSrcIp || (isLocalStigixSite && probeInfo.attempted ? probeInfo.localIp : '');
+            const effectiveSrcIp =
+                cleanSrcIp ||
+                (isLocalStigixSite && probeInfo.attempted
+                    ? probeInfo.localIp
+                    : hasRemoteStigixPeer && remoteStigixPeer
+                    ? remoteStigixPeer.host
+                    : '');
             const primaryProbePort = pcapPorts[0] || probeInfo.localPort || null;
 
             // Milestone 1 complete: Update live progress so Hop 1 (Stigix Probe) turns green/amber and Hop 2 enters RUNNING!
             if (activeFlowTraceProgress && activeFlowTraceProgress.trace_id === traceId) {
                 const hop1LiveStatus = isLocalStigixSite
                     ? (dstPackets.length > 0 || probeInfo.reachable === true ? 'OBSERVED' : 'NOT_OBSERVED')
+                    : hasRemoteStigixPeer
+                    ? 'OBSERVED'
                     : 'PASSIVE';
                 const tupleStr = `${effectiveSrcIp || 'Auto'}${primaryProbePort && protoNum !== 1 ? `:${primaryProbePort}` : ''} → ${resolvedDstIp || rawDest}${portNum && protoNum !== 1 ? `:${portNum}` : ''} · ${protoStr.toUpperCase()}`;
                 activeFlowTraceProgress = {
                     ...activeFlowTraceProgress,
                     phase: 'INGRESS_ION_CLI',
-                    phase_label: `Hop 1 validated (${txCount} TX / ${rxCount} RX). Inspecting ${effectiveSourceSite} vION flow table via WebSocket CLI...`,
+                    phase_label: isLocalStigixSite
+                        ? `Hop 1 validated (${txCount} TX / ${rxCount} RX). Inspecting ${effectiveSourceSite} vION flow table via WebSocket CLI...`
+                        : hasRemoteStigixPeer && remoteStigixPeer
+                        ? `Hop 1 (${remoteStigixPeer.name} · ${remoteStigixPeer.host}) ready. Inspecting ${effectiveSourceSite} vION flow table via WebSocket CLI...`
+                        : `Inspecting ${effectiveSourceSite} vION flow table via WebSocket CLI...`,
                     flow_identity: {
                         probe_5tuple: tupleStr,
                         src_ip: effectiveSrcIp,
@@ -886,13 +1221,31 @@ export function createCaptureApiRouter(
                     hops: [
                         {
                             id: 'hop_source',
-                            role: isLocalStigixSite ? 'SOURCE_STIGIX' : 'SOURCE_CLIENT_AGENTLESS',
-                            role_label: isLocalStigixSite ? 'Source Probe' : 'Site Client',
-                            title: isLocalStigixSite ? `Stigix ${effectiveSourceSite}` : `Client (${effectiveSourceSite})`,
+                            role: isLocalStigixSite
+                                ? 'SOURCE_STIGIX'
+                                : hasRemoteStigixPeer
+                                ? 'SOURCE_REMOTE_STIGIX'
+                                : 'SOURCE_CLIENT_AGENTLESS',
+                            role_label: isLocalStigixSite
+                                ? 'Source Probe'
+                                : hasRemoteStigixPeer
+                                ? 'Remote Stigix Peer'
+                                : 'Site Client (Agentless)',
+                            title: isLocalStigixSite || hasRemoteStigixPeer
+                                ? `Stigix ${effectiveSourceSite}`
+                                : `Client (${effectiveSourceSite})`,
                             subtitle: effectiveSrcIp || 'Local Interface',
                             status: hop1LiveStatus,
-                            badge: capturedPcapFile ? `${ txCount } TX / ${ rxCount } RX (${ dstPackets.length } pkts)` : 'Local Probe',
-                            evidence_type: isLocalStigixSite ? 'Local PCAP + Active Probe' : 'Agentless (No Local Probe)'
+                            badge: capturedPcapFile
+                                ? `${txCount} TX / ${rxCount} RX (${dstPackets.length} pkts)`
+                                : hasRemoteStigixPeer && remoteStigixPeer
+                                ? `Stigix Peer (${remoteStigixPeer.host})`
+                                : 'Local Probe',
+                            evidence_type: isLocalStigixSite
+                                ? 'Local PCAP + Active Probe'
+                                : hasRemoteStigixPeer && remoteStigixPeer
+                                ? `Remote Stigix Peer (${remoteStigixPeer.version ? 'v' + remoteStigixPeer.version : 'Active'})`
+                                : 'Agentless (No Local Probe)'
                         },
                         {
                             id: 'hop_ingress_ion',
@@ -915,8 +1268,12 @@ export function createCaptureApiRouter(
             if (resolvedDstIp) {
                 cliArgs.push('--dst-ip', resolvedDstIp);
             }
-            if (effectiveSrcIp) {
-                cliArgs.push('--src-ip', effectiveSrcIp);
+            const cliSrcIp = cleanSrcIp || (isLocalStigixSite && probeInfo.attempted ? probeInfo.localIp : '');
+            if (cliSrcIp) {
+                cliArgs.push('--src-ip', cliSrcIp);
+            }
+            if (primaryProbePort && protoNum !== 1) {
+                cliArgs.push('--src-port', String(primaryProbePort));
             }
             if (portNum > 0 && protoNum !== 1) {
                 cliArgs.push('--dst-port', String(portNum));
@@ -1002,6 +1359,18 @@ export function createCaptureApiRouter(
                             matchScope = 'SAME_HOST_FLOW';
                             matchLabel = 'Associated Flow (Same Host / Diff Port)';
                         }
+                    } else if (effectiveSrcIp && resolvedDstIp && (fl.destination_ip === resolvedDstIp || fl.source_ip === resolvedDstIp)) {
+                        const snatIp = fl.destination_ip === resolvedDstIp ? fl.source_ip : fl.destination_ip;
+                        if (protoNum === 1 || (clientPort > 0 && pcapPorts.includes(clientPort))) {
+                            matchScope = 'EXACT_PCAP_5TUPLE';
+                            matchLabel = `Exact Probe 5-Tuple (SNAT ${effectiveSrcIp} → ${snatIp})`;
+                        } else if (clientPort > 0 && sessionProbePorts.has(clientPort)) {
+                            matchScope = 'SESSION_PROBE_FLOW';
+                            matchLabel = `Session Probe Flow (SNAT ${effectiveSrcIp} → ${snatIp})`;
+                        } else {
+                            matchScope = 'SAME_HOST_FLOW';
+                            matchLabel = `Source NAT Flow (${effectiveSrcIp} → ${snatIp})`;
+                        }
                     }
                     return {
                         ...fl,
@@ -1049,13 +1418,21 @@ export function createCaptureApiRouter(
                 hops.push({
                     id: 'hop_source',
                     role: 'SOURCE_STIGIX',
-                    role_label: 'Source Probe',
+                    role_label: probeInfo.attempted ? 'Source Probe' : 'Passive Capture',
                     title: `Stigix ${effectiveSourceSite}`,
-                    subtitle: probeInfo.localIp || 'Local Interface',
+                    subtitle: cleanSrcIp || probeInfo.localIp || 'Local Interface',
                     status: hop1Status,
-                    badge: capturedPcapFile ? `${txCount} TX / ${rxCount} RX` : 'Local Probe',
-                    evidence_type: capturedPcapFile ? 'Local PCAP + Active Probe' : 'Active Socket Probe',
-                    secondary_info: primaryProbePort && protoNum !== 1 ? `Src Port :${primaryProbePort} (${dstPackets.length} pkts)` : `${dstPackets.length} pkts captured`,
+                    badge: capturedPcapFile
+                        ? dstPackets.length > 0
+                            ? `Packets captured (${txCount} TX / ${rxCount} RX)`
+                            : '0 packets captured'
+                        : probeInfo.attempted
+                        ? 'Active probe sent'
+                        : 'Passive mode',
+                    evidence_type: capturedPcapFile
+                        ? (probeInfo.attempted ? 'Local PCAP + Active Probe' : 'Local Passive PCAP')
+                        : 'Active Socket Probe',
+                    secondary_info: primaryProbePort && protoNum !== 1 ? `Src Port :${primaryProbePort}` : `${dstPackets.length} pkts`,
                     metrics: {
                         interface: iface,
                         pcap_file: capturedPcapFile || null,
@@ -1071,6 +1448,36 @@ export function createCaptureApiRouter(
                         probe_detail: probeInfo.detail,
                         local_port: primaryProbePort || null,
                         pcap_ports: pcapPorts
+                    }
+                });
+            } else if (hasRemoteStigixPeer && remoteStigixPeer) {
+                const peerSrcIp = cleanSrcIp || primaryFlow?.source_ip || remoteStigixPeer.host;
+                const peerSrcPort = primaryFlow?.client_port || primaryFlow?.source_port || null;
+                hops.push({
+                    id: 'hop_source',
+                    role: 'SOURCE_REMOTE_STIGIX',
+                    role_label: 'Remote Stigix Peer',
+                    title: `Stigix ${effectiveSourceSite}`,
+                    subtitle: `${peerSrcIp} (${remoteStigixPeer.name})`,
+                    status: primaryFlow ? 'OBSERVED' : 'FORWARDED',
+                    badge: primaryFlow
+                        ? `Peer Flow Active${peerSrcPort ? ` (:${peerSrcPort})` : ''}`
+                        : `Stigix Peer (${remoteStigixPeer.host})`,
+                    evidence_type: `Remote Stigix Peer (${remoteStigixPeer.version ? 'v' + remoteStigixPeer.version : 'Active'})`,
+                    secondary_info: primaryFlow && primaryFlow.destination_port && Number(primaryFlow.destination_port) !== portNum
+                        ? `Active Flow on Port :${primaryFlow.destination_port}`
+                        : peerSrcPort
+                        ? `Src Port :${peerSrcPort}`
+                        : `Host ${remoteStigixPeer.host}`,
+                    metrics: {
+                        peer_name: remoteStigixPeer.name,
+                        peer_host: remoteStigixPeer.host,
+                        peer_port: remoteStigixPeer.port,
+                        peer_version: remoteStigixPeer.version || 'unknown',
+                        source_ip: peerSrcIp,
+                        source_port: peerSrcPort,
+                        remote_probe_triggered: remotePeerProbeTriggered,
+                        mode: `Remote Stigix Peer (${remoteStigixPeer.name}) + Direct ION WebSocket CLI`
                     }
                 });
             } else {
@@ -1117,7 +1524,7 @@ export function createCaptureApiRouter(
                     title: `ION ${ingressIon?.element || effectiveSourceSite}`,
                     subtitle: `SW ${ingressIon?.software_version || 'vION'} • VRF ${primaryFlow.vrf || 'Global'}`,
                     status: isBlocked ? 'BLOCKED' : 'OBSERVED',
-                    badge: isBlocked ? `Blocked (${secAction})` : `Matching Flow Found · ${secAction}`,
+                    badge: isBlocked ? `Blocked (${secAction})` : 'Matching flow found',
                     evidence_type: 'vION Flow Table',
                     secondary_info: `App-ID: ${primaryFlow.app_id || 'unknown'}`,
                     metrics: {
@@ -1200,9 +1607,9 @@ export function createCaptureApiRouter(
                             title: `Hub ${peerSite} (${transitIon?.element || peerSite})`,
                             subtitle: `${primaryFlow.egress_path} • ${transitPrimaryFlow.raw_path_type || 'vpn_to_core'}`,
                             status: 'OBSERVED',
-                            badge: `Flow Arrived (${transitPrimaryFlow.raw_path_type || 'vpn_to_core'})`,
+                            badge: 'Matching flow found',
                             evidence_type: 'vION Flow Table (HA)',
-                            secondary_info: `Element: ${transitIon?.element || peerSite}`,
+                            secondary_info: `${transitIon?.element || peerSite} (${transitPrimaryFlow.raw_path_type || 'vpn_to_core'})`,
                             metrics: {
                                 element: transitIon?.element,
                                 site_name: transitIon?.site_name || peerSite,
@@ -1285,58 +1692,83 @@ export function createCaptureApiRouter(
             }
 
             // Hop 4: Target Destination / Application
-            const dstLabel = rawDest && rawDest !== resolvedDstIp
-                ? `${rawDest} (${resolvedDstIp || 'Unresolved'})`
-                : (resolvedDstIp || primaryFlow?.destination_ip || 'Any Destination');
-            const dstPortLabel = protoNum === 1 ? 'ICMP' : `${protoStr.toUpperCase()}/${portNum || primaryFlow?.destination_port || '*'}`;
+            const effDstIp = resolvedDstIp || primaryFlow?.destination_ip || '';
+            const effDstPort = protoNum === 1 ? 0 : (portNum || Number(primaryFlow?.destination_port || 0));
+            const dstPortLabel = protoNum === 1 ? 'ICMP' : `${protoStr.toUpperCase()}/${effDstPort || '*'}`;
+            let resolvedServiceTitle = rawDest || effDstIp || 'Destination';
+            if (protoNum === 6 && effDstIp === '192.168.212.100' && effDstPort === 8098) {
+                resolvedServiceTitle = 'DC1 Private App';
+            } else if (protoNum === 6 && effDstIp === '192.168.203.100' && effDstPort === 8085) {
+                resolvedServiceTitle = 'OnPrem App 8085';
+            } else if (protoNum === 6 && effDstIp === '192.168.203.100' && effDstPort === 8096) {
+                resolvedServiceTitle = 'OnPrem App 8096';
+            } else if (protoNum === 6 && effDstIp === '40.99.155.50' && effDstPort === 443) {
+                resolvedServiceTitle = 'Microsoft 365 (O365)';
+            } else if (protoNum === 6 && rawDest.toLowerCase().includes('login.microsoftonline.com') && effDstPort === 443) {
+                resolvedServiceTitle = 'Microsoft 365 Login';
+            } else if (effDstIp === '192.168.212.100') {
+                resolvedServiceTitle = 'DC2-Ubuntu (192.168.212.100)';
+            } else if (effDstIp === '192.168.203.100') {
+                resolvedServiceTitle = 'DC1-Ubuntu (192.168.203.100)';
+            }
+            const dstLabel = `${effDstIp || rawDest || 'Any Destination'} · ${dstPortLabel}`;
             const secAction = String(primaryFlow?.sec_action || '').toUpperCase();
             const isBlocked = secAction.includes('DENY') || secAction.includes('DROP') || secAction.includes('REJECT');
             const dstReached =
                 !isUnidirectionalNoReply &&
                 ((isLocalStigixSite && (seenSynAck || rxCount > 0 || probeInfo.reachable === true)) ||
                 (!isLocalStigixSite && Boolean(primaryFlow) && secAction === 'ALLOW'));
+            const lastObservedPoint = transitObserved
+                ? (transitIon?.element || ionTrace?.peer_site_name || 'Transit Hub')
+                : primaryFlow
+                ? `ION ${ingressIon?.element || effectiveSourceSite}`
+                : `Stigix ${effectiveSourceSite}`;
             const unidirDiagnosis = isUnidirectionalNoReply
-                ? transitObserved
-                    ? `Unidirectional flow (${txCount} TX / 0 RX): forward packets reached Hub ION (${transitIon?.element || ionTrace?.peer_site_name} via ${primaryFlow?.egress_path || 'SD-WAN VPN'}), but 0 return packets came back. Drop occurs downstream of the Hub ION (e.g., DC LAN/WAN firewall) or on the return route toward ${effectiveSrcIp || effectiveSourceSite}.`
-                    : `Unidirectional flow (${txCount} TX / 0 RX): packets left ${effectiveSourceSite}, but 0 return packets were received from ${resolvedDstIp || rawDest}. Check overlay transit, downstream firewall, or return routing.`
+                ? `Last confirmed flow observation: ${lastObservedPoint}. Failure location not determined — suggested checks: ${
+                      transitObserved
+                          ? 'hub egress, downstream filtering, or return routing'
+                          : 'overlay tunnel, policy routing, or downstream filtering'
+                  }.`
                 : null;
             hops.push({
                 id: 'hop_destination',
                 role: 'DESTINATION',
                 role_label: `Destination ${dstPortLabel}`,
-                title: rawDest || resolvedDstIp || primaryFlow?.destination_ip || 'Destination',
+                title: resolvedServiceTitle,
                 subtitle: dstLabel,
                 status: dnsError
                     ? 'BLOCKED'
                     : isBlocked
                     ? 'BLOCKED'
                     : isUnidirectionalNoReply
-                    ? 'UNREACHABLE'
+                    ? 'NO_RESPONSE'
                     : dstReached && isLocalStigixSite
                     ? 'OBSERVED'
                     : primaryFlow
                     ? 'FORWARDED'
                     : 'NOT_OBSERVED',
                 badge: dnsError
-                    ? 'DNS Resolution Failed'
+                    ? 'DNS resolution failed'
                     : isBlocked
                     ? `Blocked by ZBFW (${secAction})`
                     : isUnidirectionalNoReply
-                    ? (transitObserved ? 'No Reply Received (0 RX · Drop After Hub)' : 'No Reply Received (0 RX · Timeout)')
+                    ? 'No response received'
+                    : seenRst
+                    ? `TCP RST received at source (${rxCount} RX)`
                     : seenSynAck
-                    ? `Reply Verified (SYN-ACK · ${rxCount} RX)`
+                    ? `Reply verified at source (SYN-ACK · ${rxCount} RX)`
                     : rxCount > 0
-                    ? `Reply Verified (${rxCount} RX pkts)`
+                    ? `Reply verified at source (${rxCount} RX)`
                     : primaryFlow
-                    ? 'Forwarded (Uninstrumented Target)'
-                    : 'No Response Received',
+                    ? 'No destination-side capture'
+                    : 'No response received',
                 evidence_type: isLocalStigixSite
-                    ? 'Source Probe · No Remote Capture'
-                    : 'Uninstrumented Remote Target',
+                    ? 'Source probe · No destination capture'
+                    : 'Uninstrumented remote target',
                 secondary_info: dnsError
                     ? 'DNS Error'
                     : isUnidirectionalNoReply
-                    ? `${txCount} TX sent / 0 RX returned`
+                    ? `${txCount} TX / 0 RX at source`
                     : probeInfo.rttMs !== null
                     ? `RTT ${probeInfo.rttMs}ms`
                     : (resolvedDstIp || null),
@@ -1360,7 +1792,7 @@ export function createCaptureApiRouter(
                 : isUnidirectionalNoReply && primaryFlow
                 ? 'UNIDIRECTIONAL_NO_REPLY'
                 : isUnidirectionalNoReply
-                ? 'UNREACHABLE'
+                ? 'NO_RESPONSE'
                 : primaryFlow
                 ? (dstReached && isLocalStigixSite ? 'VERIFIED_E2E' : 'FLOW_ACTIVE')
                 : 'NO_MATCHING_FLOW';
@@ -1369,43 +1801,59 @@ export function createCaptureApiRouter(
             const exact5TupleIngress = annotatedIngressFlows.some((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW');
             const exact5TupleTransit = annotatedTransitFlows.some((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW');
             const displayedSrcIp = effectiveSrcIp || primaryFlow?.source_ip || 'Auto';
+            const snatTranslatedIp =
+                effectiveSrcIp &&
+                primaryFlow?.source_ip &&
+                primaryFlow.source_ip !== effectiveSrcIp &&
+                primaryFlow.source_ip !== resolvedDstIp
+                    ? String(primaryFlow.source_ip)
+                    : null;
             const displayedSrcPort = primaryProbePort || primaryFlow?.client_port || primaryFlow?.source_port || null;
             const displayedDstIp = resolvedDstIp || primaryFlow?.destination_ip || rawDest;
-            const displayedDstPort = portNum || primaryFlow?.destination_port || null;
-            const tupleDisplay = `${displayedSrcIp}${displayedSrcPort && protoNum !== 1 ? `:${displayedSrcPort}` : ''} → ${displayedDstIp}${displayedDstPort && protoNum !== 1 ? `:${displayedDstPort}` : ''} · ${protoStr.toUpperCase()}`;
+            const displayedDstPort = primaryFlow?.destination_port || portNum || null;
+            const srcTuplePart = `${displayedSrcIp}${displayedSrcPort && protoNum !== 1 ? `:${displayedSrcPort}` : ''}${snatTranslatedIp ? ` (SNAT ${snatTranslatedIp})` : ''}`;
+            const tupleDisplay = `${srcTuplePart} → ${displayedDstIp}${displayedDstPort && protoNum !== 1 ? `:${displayedDstPort}` : ''} · ${protoStr.toUpperCase()}`;
 
             const connectivityHeadline = dnsError
                 ? `DNS resolution failed for "${rawDest}": ${dnsError}.`
                 : isBlocked
                 ? `Flow blocked at Ingress ION (${ingressIon?.element || effectiveSourceSite}) by Zone-Based Firewall policy "${primaryFlow?.sec_policy || 'Security Rule'}" (${secAction}).`
                 : isUnidirectionalNoReply
-                ? `No reply received during the test (${txCount} TX sent / 0 RX returned on ${ effectiveSourceSite }).`
+                ? `No response received — no return packets captured at ${effectiveSourceSite} during the test (${txCount} TX / 0 RX).`
                 : dstReached && isLocalStigixSite
-                ? `Bidirectional connectivity confirmed: return traffic received at ${effectiveSourceSite} (${txCount} TX / ${rxCount} RX packets${probeInfo.rttMs ? `, ${probeInfo.rttMs}ms RTT` : ''}).`
+                ? seenRst
+                    ? `Reply received (TCP RST) — host reachable at ${effectiveSourceSite} (${txCount} TX / ${rxCount} RX packets${probeInfo.rttMs ? `, ${probeInfo.rttMs}ms RTT` : ''}).`
+                    : `Reply received — bidirectional connectivity confirmed at ${effectiveSourceSite} (${txCount} TX / ${rxCount} RX packets${probeInfo.rttMs ? `, ${probeInfo.rttMs}ms RTT` : ''}).`
+                : primaryFlow && hasRemoteStigixPeer && remoteStigixPeer
+                ? `Active dataplane flow observed from Stigix Peer ${remoteStigixPeer.name} (${remoteStigixPeer.host}) across the SD-WAN fabric.`
                 : primaryFlow
-                ? `Active dataplane flow confirmed on SD-WAN fabric (${isLocalStigixSite ? 'forwarded by ION' : 'Agentless ION-Only inspection'}).`
+                ? `Active dataplane flow observed on SD-WAN fabric (${isLocalStigixSite ? 'passive capture mode' : 'ION-only inspection'}).`
                 : `No active matching flow observed in ${effectiveSourceSite} vION flow table during collection window.`;
 
             const peerSiteLabel = ionTrace?.peer_site_name || 'Hub';
             const visibilityHeadline = !ionTrace || ionTrace.success === false
-                ? `Local probe completed on ${effectiveSourceSite}, but vION WebSocket CLI collection was unavailable (${ionTrace?.error || 'CLI error'}).`
+                ? `Source check completed on ${effectiveSourceSite}, but vION WebSocket CLI collection was unavailable (${ionTrace?.error || 'CLI error'}).`
                 : !primaryFlow
-                ? `Local probe recorded ${txCount} TX / ${rxCount} RX packets, but no matching flow entry remained in ${ingressIon?.element || effectiveSourceSite} (${ingressIon?.total_table_flows || 0} active flows scanned).`
+                ? hasRemoteStigixPeer && remoteStigixPeer
+                    ? `Stigix Peer ${remoteStigixPeer.name} (${remoteStigixPeer.host}) is online, but no active flow to ${displayedDstIp}:${portNum} was present in ${ingressIon?.element || effectiveSourceSite} (${ingressIon?.total_table_flows || 0} active flows scanned).`
+                    : `Local capture recorded ${txCount} TX / ${rxCount} RX packets, with no matching flow entry in ${ingressIon?.element || effectiveSourceSite} (${ingressIon?.total_table_flows || 0} active flows scanned).`
                 : forwardingMode === 'DIRECT_INTERNET_DIA'
-                ? `Matching flow confirmed on Ingress ION (${ingressIon?.element || effectiveSourceSite}) breaking out directly via local WAN circuit "${primaryFlow.egress_path || 'Direct WAN'}" (${primaryFlow.raw_path_type || 'direct'}).`
+                ? `Local Internet breakout identified on ${ingressIon?.element || effectiveSourceSite} via "${primaryFlow.egress_path || 'Direct WAN'}" (${primaryFlow.raw_path_type || 'direct'}).`
                 : forwardingMode === 'SERVICELINK_SSE'
-                ? `Matching flow confirmed on Ingress ION (${ingressIon?.element || effectiveSourceSite}) routed into ServiceLink SSE tunnel "${primaryFlow.egress_path}".`
+                ? `Matching flow found on ${ingressIon?.element || effectiveSourceSite} routed into ServiceLink SSE tunnel "${primaryFlow.egress_path}".`
                 : transitObserved
-                ? `Matching flow confirmed on Ingress ION (${ingressIon?.element || effectiveSourceSite}) and verified arriving on Hub ION ${transitIon?.element || peerSiteLabel} via tunnel "${primaryFlow.egress_path}" (${transitPrimaryFlow?.raw_path_type || 'vpn_to_core'}).`
-                : `Matching flow confirmed on Ingress ION (${ingressIon?.element || effectiveSourceSite} via "${primaryFlow.egress_path}"), but no matching flow was found on ${peerSiteLabel} IONs.`;
+                ? `Matching flows found on ${ingressIon?.element || effectiveSourceSite} and hub ${transitIon?.element || peerSiteLabel} via "${primaryFlow.egress_path}" (${transitPrimaryFlow?.raw_path_type || 'vpn_to_core'}).`
+                : `Matching flow found on ${ingressIon?.element || effectiveSourceSite} via "${primaryFlow.egress_path}", with no matching flow found on ${peerSiteLabel} IONs.`;
 
             const limitOrDiagnosis = isUnidirectionalNoReply
                 ? (unidirDiagnosis as string)
                 : !primaryFlow && txCount > 0
                 ? 'Short-lived or rejected flows can expire from the vION flow table before WebSocket CLI inspection completes.'
                 : primaryFlow && !transitObserved && (forwardingMode === 'DC_BACKHAUL_INTERNET' || forwardingMode === 'DC_PRIVATE_APP' || forwardingMode === 'BRANCH_TO_BRANCH_VPN')
-                ? `Absence of a matching flow on ${peerSiteLabel} alone does not prove packet loss in the tunnel (flow may have completed before the second CLI poll or traversed an uninspected path).`
-                : 'The final destination does not host a Stigix capture agent; end-to-end reachability is inferred from return packets captured at the source probe.';
+                ? `Last confirmed flow observation: ${ingressIon?.element || effectiveSourceSite}. Absence of a matching flow on ${peerSiteLabel} alone does not locate a packet drop.`
+                : dstReached && isLocalStigixSite
+                ? 'Reply verified at source · No destination-side capture.'
+                : 'No destination-side capture agent · Path visibility relies on source and ION flow tables.';
 
             activeFlowTraceProgress = {
                 active: false,
@@ -1422,7 +1870,12 @@ export function createCaptureApiRouter(
                 query: {
                     source_site: effectiveSourceSite,
                     is_local_stigix: isLocalStigixSite,
-                    source_mode: isLocalStigixSite ? 'stigix_plus_ion' : 'ion_only_agentless',
+                    stigix_peer: remoteStigixPeer || null,
+                    source_mode: isLocalStigixSite
+                        ? 'stigix_plus_ion'
+                        : hasRemoteStigixPeer
+                        ? 'remote_stigix_peer_plus_ion'
+                        : 'ion_only_agentless',
                     src_ip: displayedSrcIp,
                     src_ip_input: cleanSrcIp || '',
                     destination: rawDest,
@@ -1478,7 +1931,16 @@ export function createCaptureApiRouter(
                           flow_packets: dstPackets.length,
                           file_size_bytes: dissectedPcap.file_size_bytes || 0,
                           duration_seconds: dissectedPcap.duration_seconds || 0,
-                          packets: pcapPackets
+                          packets: pcapPackets,
+                          ...(req.headers['x-stigix-delegated'] === '1' &&
+                          capturedPcapFile &&
+                          fs.existsSync(path.join(capturesDir, path.basename(capturedPcapFile)))
+                              ? {
+                                    raw_pcap_b64: fs
+                                        .readFileSync(path.join(capturesDir, path.basename(capturedPcapFile)))
+                                        .toString('base64')
+                                }
+                              : {})
                       }
                     : null
             });
