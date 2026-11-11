@@ -268,7 +268,12 @@ def test_cross_version_fallbacks_and_regex_flow_parser():
     """Verify cross-version command fallback ladder and regex-anchored flow brief parsing."""
     fbs = build_command_fallbacks("inspect flow brief dstv4=192.168.203.100 sport=30454", "6.8.1-b4")
     assert "inspect flow brief dstv4=192.168.203.100" in fbs
+    assert "inspect flow brief srcv4=192.168.203.100" in fbs
     assert "inspect flow brief" in fbs
+
+    fbs_pair = build_command_fallbacks("inspect flow brief srcv4=192.168.219.1 dstv4=192.168.212.100", "6.8.1-b4")
+    assert "inspect flow brief srcv4=192.168.219.1 dstv4=192.168.212.100" in fbs_pair
+    assert "inspect flow brief srcv4=192.168.212.100 dstv4=192.168.219.1" in fbs_pair
 
     np_fbs = build_command_fallbacks(
         "inspect network-policy lookup srcv4=192.168.201.2 dstv4=10.99.99.2 protocol=6 dport=443 app=ssl",
@@ -338,5 +343,47 @@ def test_resolve_live_flow_cli_strict_port_filter(monkeypatch):
     assert len(res_8085["flows"]) == 1
     assert res_8085["flows"][0]["destination_port"] == 8085
     assert res_8085["flows"][0]["app_id"] == "STX_Onprem8085-131103"
+
+
+def test_multiword_policies_and_trace_flow_path(monkeypatch):
+    """Verify multi-word policy names, servicelink summary parsing, and E2E trace chaining across HA DC hubs."""
+    import sdwan_ion_cli
+
+    multiword_out = (
+        "VRF                  SRC             DST                  SPORT           DPORT      PROTOCOL   START-TIME           APP-ID               NET-POLICY                PRI-POLICY                SEC-POLICY\n"
+        "    SEC-ACTION                WANPATH-ID           PATH\n"
+        "Global               192.168.219.1   192.168.212.100      43920           8098       6          2026-11-11 09:01:35  STX_Onprem8085-131103 Hetzner via DC1           VOIP on MPLS              Allow Lan to Overlay\n"
+        "    ALLOW                     1762789921682021645  lan_to_public_vpn\n"
+    )
+    rows = sdwan_ion_cli.parse_inspect_flow_brief(multiword_out)
+    assert len(rows) == 1
+    assert rows[0]["net_policy"] == "Hetzner via DC1"
+    assert rows[0]["pri_policy"] == "VOIP on MPLS"
+    assert rows[0]["sec_policy"] == "Allow Lan to Overlay"
+    assert rows[0]["sec_action"] == "ALLOW"
+
+    sl_out = (
+        "-------------- SERVICE LINKS ----------------------------------\n"
+        "Total      : 6\n"
+        "TotalUP    : 2\n"
+        "---------------------------------------------------------------\n"
+        "Vrf             SlDev       SlName                              Status ExtState                  ParentDev LocalIP            Peer               Type    IpsecProfile\n"
+        "---------------------------------------------------------------\n"
+        "Global          sl6         sl-zscaler-1762786660418014645      up     tunnel_up                eth1      192.168.123.10     165.225.76.42      ipsec   zscaler-ipsec\n"
+    )
+    sls = sdwan_ion_cli.parse_servicelink_summary(sl_out)
+    assert len(sls) == 1
+    assert sls[0]["device"] == "sl6"
+    assert sls[0]["status"] == "up"
+    assert sls[0]["ext_state"] == "tunnel_up"
+    assert sls[0]["peer"] == "165.225.76.42"
+
+    # Deterministic toolkit password must be identical across calls for the same tenant_id + label
+    p1 = sdwan_ion_cli._deterministic_toolkit_password("1234567890", "stigix-ai", "a16-sym")
+    p2 = sdwan_ion_cli._deterministic_toolkit_password("1234567890", "stigix-ai", "a16-sym")
+    assert p1 == p2
+    assert len(p1) == 16
+
+
 
 

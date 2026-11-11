@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.8] - 2026-11-11
+
+### Added
+- **End-to-End SD-WAN Flow & Path Trace ("NWPI-like" Path & App-ID Insight) (`web-dashboard/src/PacketCapture.tsx`, `web-dashboard/packet-capture-routes.ts`, `engines/sdwan_ion_cli.py`, `engines/pcap_capture_engine.py`, `web-dashboard/src/components/common/StigixSelect.tsx`)**:
+  - Added the **End-to-End Flow & Path Trace** tab inside **Packet Capture & Web Analyzer**, correlating local L2–L7 packet capture (`pcap_capture_engine.py`) and synthetic probe generation (TCP/TLS with SNI, RFC 1035 DNS A queries on UDP port 53, and ICMP Echo) with live Prisma SD-WAN WebSocket Device Toolkit CLI (`inspect flow brief` and `dump servicelink summary all`).
+  - Automatically chains hop inspection across **Local Stigix Probe** $\rightarrow$ **Ingress Branch ION** (`App-ID`, `Network Policy`, `Priority/QoS Policy`, `Security Zone/Policy/Action`, `Egress WAN Path`) $\rightarrow$ **Transit / Backhaul Hub ION** (`DC1-R1`/`DC1-R2`, `DC2-R1`/`DC2-R2`) or **Remote Branch ION** (`BR5` Agentless ION-Only mode) or **ServiceLink SSE Tunnel** (`Prisma Access` / `Zscaler`) $\rightarrow$ **Destination**.
+  - Added 1-click **Load into Live Capture & Analyzer** button to open the captured E2E trace `.pcap` directly in the 3-pane Wireshark packet analyzer with a pre-populated display filter.
+
+### Fixed & Hardened
+- **WebSocket Device Toolkit Session Hardening & Anti-Lockout (`engines/sdwan_ion_cli.py`, `web-dashboard/packet-capture-routes.ts`)**:
+  - Replaced random toolkit user password rotation with a deterministic tenant-scoped HMAC-SHA256 password (`_deterministic_toolkit_password`) so all Stigix nodes in a fleet share the exact same `stigix-ai` password and never trigger PAM `faillock` account lockouts across nodes.
+  - Raised `LOGIN_RX` prompt timeout to `6.0s` (preventing premature `\r` after the immediate `__CGNX_REMOTE_ACCESS_SESSION_ID__` banner), raised `POLICY_MAX_CHARS` to `512 KB`, and ensured clean pager/VTY termination (`"q"` on `--More--` early stop + `"exit\r"` with `200ms` drain before closing WebSocket).
+  - Preserved hardware IP filter capabilities (`inspect flow brief srcv4=... dstv4=...`) across bare 3-token CLI calls and added automatic in-session bidirectional IP filter fallback (`srcv4=<dst> dstv4=<src>`) for Hub `vpn_to_core` flows.
+  - Added continuous synthetic probe keepalive pulsing (`probeKeepaliveTimer` every `800–900ms`) during vION CLI inspection so short-lived DIA DNS (`8.8.8.8:53`, `1.1.1.1:53`), HTTPS, and ICMP flows stay active in the vION flow table.
+  - Hardened BPF filter compilation (`port <N>` instead of invalid `tcp or udp port <N>` when protocol is `any`) in `packet-capture-routes.ts` and enforced explicit `-n -p` snapshot capture flags in `engines/pcap_capture_engine.py`.
+
 ## [3.2.7] - 2026-11-11
 
 ### Fixed

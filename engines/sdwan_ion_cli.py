@@ -25,7 +25,7 @@ import re
 import secrets
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:
@@ -42,7 +42,7 @@ READ_VERBS = frozenset({"dump", "inspect"})
 DIAG_VERBS = frozenset({"ping", "traceroute", "debug"})
 MAX_TOKENS = 12
 MAX_TOKEN_CHARS = 64
-MAX_OUTPUT_BYTES = 48 * 1024
+MAX_OUTPUT_BYTES = 512 * 1024
 _ALLOWED_CHARS = re.compile(r"^[A-Za-z0-9 _.:/=,-]+$")
 
 FORBIDDEN_TOKENS = frozenset({
@@ -85,6 +85,7 @@ RULES = (
     ("dump waninterface summary", "circuits (WAN interfaces) summary"),
     ("dump vpn summary all", "VPN (overlay) tunnels summary"),
     ("dump servicelink status all", "service links (IKE / ESP / DPD of the standard VPNs)"),
+    ("dump servicelink summary all", "service links summary (Prisma Access / Zscaler / Standard VPNs)"),
     ("dump service end points", "service endpoints"),
     ("dump routing peer status all", "BGP peer status"),
     ("dump routing peer received-routes all", "BGP routes received from peers"),
@@ -237,20 +238,28 @@ LOGIN_RX = re.compile(r"(?:login|username)\s*:\s*$", re.I)
 PASSWORD_RX = re.compile(r"password\s*:\s*$", re.I)
 PROMPT_RX = re.compile(r"[>#$]\s*$")
 LOGIN_FAILED_RX = re.compile(
-    r"(login incorrect|authentication fail|access denied|invalid (?:user|login|credentials)|permission denied)",
+    r"(account locked|login incorrect|authentication fail|access denied|invalid (?:user|login|credentials)|permission denied)",
     re.I,
+)
+_PASSWORD_OR_FAIL_RX = re.compile(
+    r"(?:password\s*:\s*$)|(?:account locked|login incorrect|authentication fail|access denied|invalid (?:user|login|credentials)|permission denied)",
+    re.I | re.M,
+)
+_PROMPT_OR_FAIL_RX = re.compile(
+    r"(?:[>#$]\s*$)|(?:account locked|login incorrect|authentication fail|access denied|invalid (?:user|login|credentials)|permission denied)",
+    re.I | re.M,
 )
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 MORE_RX = re.compile(r"(?:--\s*more\s*--|\(\d+%\)\s*\[press space to continue[^\]]*\])", re.I)
 PROMPT_LINE_RX = re.compile(r"^\s*([\w.@-]+)[>#$]\s?(.*)$")
-MAX_RAW_CHARS = 256 * 1024
-MAX_PAGES = 60
-POLICY_MAX_CHARS = 48 * 1024
+MAX_RAW_CHARS = 1024 * 1024
+MAX_PAGES = 180
+POLICY_MAX_CHARS = 512 * 1024
 _ELEMENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 TOOLKIT_API_VERSION = "v2.0"
 TOOLKIT_OPEN_TIMEOUT_S = 8
-TOTAL_TIMEOUT_S = 27.0
+TOTAL_TIMEOUT_S = 35.0
 
 
 class ToolkitError(Exception):
@@ -376,6 +385,11 @@ async def _read_output(
                     pass
             if answered >= MAX_PAGES or len(text) >= max_chars:
                 truncated = True
+                try:
+                    await ws.send("q")
+                    await asyncio.wait_for(ws.recv(), 0.2)
+                except Exception:
+                    pass
                 break
             answered = len(marks)
             try:
@@ -385,6 +399,11 @@ async def _read_output(
                 break
         if len(buf) >= MAX_RAW_CHARS:
             truncated = True
+            try:
+                await ws.send("q")
+                await asyncio.wait_for(ws.recv(), 0.2)
+            except Exception:
+                pass
             break
     return buf, False, closed, truncated
 
@@ -417,7 +436,7 @@ async def run_command(
     command: str,
     *,
     login_timeout: float = 8.0,
-    command_timeout: float = 15.0,
+    command_timeout: float = 22.0,
     idle: float = 1.5,
     early_stop_check: Optional[Callable[[str], bool]] = None,
     fallback_commands: Optional[List[str]] = None,
@@ -428,11 +447,11 @@ async def run_command(
     except Exception:
         raise ToolkitError("connect_failed") from None
     try:
-        text, hit, closed = await _read(ws, LOGIN_RX, login_timeout, idle)
+        text, hit, closed = await _read(ws, LOGIN_RX, login_timeout, max(idle, 6.0))
         if not hit and not closed and not PROMPT_RX.search(clean(text)):
             try:
                 await ws.send("\r")
-                extra, hit, closed = await _read(ws, LOGIN_RX, min(4.0, login_timeout), idle)
+                extra, hit, closed = await _read(ws, LOGIN_RX, min(5.0, login_timeout), max(idle, 4.5))
                 text += extra
             except Exception:
                 pass
@@ -443,14 +462,16 @@ async def run_command(
                 raise ToolkitError("closed" if closed else "no_prompt")
         else:
             await ws.send(username + "\r")
-            text, hit, closed = await _read(ws, PASSWORD_RX, login_timeout, idle)
-            if not hit:
+            text, hit, closed = await _read(ws, _PASSWORD_OR_FAIL_RX, login_timeout, max(idle, 4.5))
+            if LOGIN_FAILED_RX.search(clean(text)):
+                raise ToolkitError("login_failed")
+            if not hit or not PASSWORD_RX.search(clean(text)):
                 raise ToolkitError("closed" if closed else "no_prompt")
             await ws.send(password + "\r")
-            text, hit, closed = await _read(ws, PROMPT_RX, login_timeout, idle)
+            text, hit, closed = await _read(ws, _PROMPT_OR_FAIL_RX, login_timeout, max(idle, 6.0))
             if LOGIN_FAILED_RX.search(clean(text)) or LOGIN_RX.search(clean(text)):
                 raise ToolkitError("login_failed")
-            if not hit:
+            if not hit or not PROMPT_RX.search(clean(text)):
                 raise ToolkitError("closed" if closed else "no_prompt")
         m = PROMPT_LINE_RX.match(clean(text).rstrip(" ").split("\n")[-1])
         host = m.group(1) if m else ""
@@ -476,10 +497,25 @@ async def run_command(
             # If the device rejected this syntax and we have a fallback candidate, try it immediately in the same session
             if device_rejection(shaped_text) and idx + 1 < len(candidates) and not closed:
                 continue
+            # On Hub/Transit vIONs, vpn_to_core flows may be indexed with reversed srcv4/dstv4 columns;
+            # if an IP-filtered `inspect flow brief` returned 0 rows and the next candidate is another IP-filtered query,
+            # try the reversed IP filter immediately in the same open WebSocket session (~0.2s)
+            if (
+                cand.startswith("inspect flow brief ")
+                and idx + 1 < len(candidates)
+                and candidates[idx + 1].startswith("inspect flow brief ")
+                and not closed
+                and not parse_inspect_flow_brief(shaped_text)
+            ):
+                continue
             break
 
         try:
             await ws.send("exit\r")
+            try:
+                await asyncio.wait_for(ws.recv(), 0.2)
+            except Exception:
+                pass
         except Exception:
             pass
         shaped = CliOutput(shaped_text)
@@ -560,6 +596,44 @@ LADDER = (
 LADDER_LABELS = tuple(lbl for lbl, _ in LADDER)
 
 
+def _deterministic_toolkit_password(tenant_id: str, uname: str, label: str) -> str:
+    """Derive a deterministic tenant-scoped password so all Stigix nodes in a fleet share
+    the exact same Device Toolkit password and never overwrite each other across nodes."""
+    digest = hmac.new(
+        str(tenant_id or "stigix").encode("utf-8"),
+        f"stigix-toolkit-v2:{uname}:{label}".encode("utf-8"),
+        "sha256",
+    ).digest()
+    pool = _UP + _LOW + _DIG
+    if label == "a16-sym":
+        chars = [
+            _UP[digest[0] % len(_UP)],
+            _LOW[digest[1] % len(_LOW)],
+            _DIG[digest[2] % len(_DIG)],
+            "-_"[digest[3] % 2],
+        ]
+        chars += [pool[digest[4 + i] % len(pool)] for i in range(12)]
+        return "".join(chars)
+    if label == "b12-alnum":
+        chars = [
+            _UP[digest[0] % len(_UP)],
+            _LOW[digest[1] % len(_LOW)],
+            _DIG[digest[2] % len(_DIG)],
+        ]
+        chars += [pool[digest[3 + i] % len(pool)] for i in range(9)]
+        return "".join(chars)
+    if label == "c32-alnum":
+        return "".join(pool[digest[i % len(digest)] % len(pool)] for i in range(32))
+    chars = [
+        _UP[digest[0] % len(_UP)],
+        _LOW[digest[1] % len(_LOW)],
+        _DIG[digest[2] % len(_DIG)],
+        "#",
+    ]
+    chars += [pool[digest[4 + i] % len(pool)] for i in range(6)]
+    return "".join(chars)
+
+
 def _resp_body(resp: Any) -> Any:
     if resp is None:
         return None
@@ -591,10 +665,10 @@ def _resp_err_code(resp: Any) -> str:
 def _toolkit_secret_paths() -> List[str]:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     return [
+        "/app/config/prisma-toolkit-user.json",
+        "/data/stigix/config/prisma-toolkit-user.json",
         os.path.join(os.getcwd(), "config", "prisma-toolkit-user.json"),
         os.path.join(script_dir, "..", "config", "prisma-toolkit-user.json"),
-        "/data/stigix/config/prisma-toolkit-user.json",
-        "/app/config/prisma-toolkit-user.json",
         "/tmp/prisma-toolkit-user.json",
     ]
 
@@ -671,7 +745,6 @@ def ensure_toolkit_user(
         and isinstance(stored, dict)
         and stored.get("username") == uname
         and stored.get("password")
-        and (now_epoch - float(stored.get("verified_epoch") or 0)) < 900
     ):
         return {
             "state": "cached",
@@ -732,8 +805,25 @@ def ensure_toolkit_user(
     user_id = existing.get("id") if existing else None
     last_code = "-"
 
+    # When rotating on a real SDK (e.g. after PAM account lock or stale password),
+    # delete and recreate the user so the vION clears its PAM faillock tally.
+    if rotate and is_real_sdk and user_id is not None and hasattr(getattr(sdk, "delete", None), "elementusers"):
+        try:
+            del_resp = sdk.delete.elementusers(user_id)
+            if _resp_ok(del_resp):
+                user_id = None
+                existing = None
+                time.sleep(1.5)
+        except Exception:
+            pass
+
     for label, gen in steps:
-        password = password_factory(label) if password_factory else gen()
+        if password_factory is not None:
+            password = password_factory(label)
+        elif is_real_sdk:
+            password = _deterministic_toolkit_password(str(tenant_id), uname, label)
+        else:
+            password = gen()
         doc = {
             "username": uname,
             "login_id": uname,
@@ -773,6 +863,10 @@ def ensure_toolkit_user(
         verified = _read_back_password(sdk, user_id, password) if user_id else None
         if verified is False:
             raise IonCliError("toolkit_user_error", "Controller did not accept the password for the device toolkit user.", status=502)
+
+        if is_real_sdk:
+            # Allow Prisma SASE Controller 3.5s to propagate the new user/password to vION elements
+            time.sleep(3.5)
 
         return {
             "state": state,
@@ -838,6 +932,53 @@ def _ion_cli_lock():
                 pass
 
 
+INVENTORY_CACHE_FILE = "/tmp/stigix_ion_inventory.json"
+
+
+def _load_tenant_inventory(sdk: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Return `(sites, elements)` for the tenant, using in-memory + 10-minute file cache on real SDKs."""
+    mem = getattr(sdk, "_stigix_inventory", None)
+    if isinstance(mem, tuple) and len(mem) == 2:
+        return mem
+
+    is_real_sdk = getattr(sdk, "_session", None) is not None
+    now_epoch = datetime.now(timezone.utc).timestamp()
+    if is_real_sdk and os.path.exists(INVENTORY_CACHE_FILE):
+        try:
+            with open(INVENTORY_CACHE_FILE, "r", encoding="utf-8") as f:
+                doc = json.load(f) or {}
+            if (now_epoch - float(doc.get("ts") or 0)) < 600:
+                sites = [s for s in (doc.get("sites") or []) if isinstance(s, dict)]
+                elements = [e for e in (doc.get("elements") or []) if isinstance(e, dict)]
+                if sites and elements:
+                    try:
+                        setattr(sdk, "_stigix_inventory", (sites, elements))
+                    except Exception:
+                        pass
+                    return sites, elements
+        except Exception:
+            pass
+
+    sites_body = _resp_body(sdk.get.sites()) or {}
+    sites = [s for s in (sites_body.get("items") or []) if isinstance(s, dict)]
+    els_body = _resp_body(sdk.get.elements()) or {}
+    elements = [e for e in (els_body.get("items") or []) if isinstance(e, dict)]
+
+    try:
+        setattr(sdk, "_stigix_inventory", (sites, elements))
+    except Exception:
+        pass
+
+    if is_real_sdk and sites and elements:
+        try:
+            with open(INVENTORY_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump({"ts": now_epoch, "sites": sites, "elements": elements}, f)
+        except Exception:
+            pass
+
+    return sites, elements
+
+
 def resolve_target_element(sdk: Any, device_or_site: str) -> Tuple[Dict[str, Any], Optional[str]]:
     """Resolve `device_or_site` (e.g. 'br1-vion1', 'Branch-01-01', 'BR1', 'Branch-01', 'DC1')
     to an element dict and its site name."""
@@ -874,12 +1015,8 @@ def resolve_target_element(sdk: Any, device_or_site: str) -> Tuple[Dict[str, Any
                 pass
         return el_obj, sname
 
-    sites_body = _resp_body(sdk.get.sites()) or {}
-    sites = sites_body.get("items") or []
+    sites, elements = _load_tenant_inventory(sdk)
     site_names = {str(s["id"]): s.get("name") for s in sites if isinstance(s, dict) and s.get("id")}
-
-    els_body = _resp_body(sdk.get.elements()) or {}
-    elements = [e for e in (els_body.get("items") or []) if isinstance(e, dict)]
 
     q_low = query.lower()
     mapped_el_name = DEVICES_MAP.get(re.sub(r"[\s_]+", "-", q_low))
@@ -926,6 +1063,69 @@ def resolve_target_element(sdk: Any, device_or_site: str) -> Tuple[Dict[str, Any
     )
 
 
+def resolve_site_elements(sdk: Any, device_or_site: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Return all connected vION elements for a site (e.g. ['DC1-R1', 'DC1-R2'] for 'DC1')
+    or a single-element list if `device_or_site` names a specific element."""
+    if sdk is None or getattr(sdk, "get", None) is None:
+        return ([{"name": device_or_site, "connected": True}], device_or_site)
+
+    query = str(device_or_site or "").strip()
+    if not query:
+        return ([], None)
+
+    try:
+        sites, elements = _load_tenant_inventory(sdk)
+        site_names = {str(s["id"]): s.get("name") for s in sites if isinstance(s, dict) and s.get("id")}
+    except Exception:
+        return ([], None)
+
+    q_low = query.lower()
+    mapped_el_name = DEVICES_MAP.get(re.sub(r"[\s_]+", "-", q_low))
+
+    # 1. If query matches an exact element name, return just that element
+    for el in elements:
+        ename = str(el.get("name") or "")
+        eid = str(el.get("id") or "")
+        if ename.lower() == q_low or eid.lower() == q_low or (mapped_el_name and ename.lower() == mapped_el_name.lower()):
+            return ([el], site_names.get(str(el.get("site_id"))))
+
+    # 2. Match by site name / canonical site token -> return all connected elements for that site
+    q_norm = _normalize_site_token(query)
+    matched_site_ids = [
+        str(s["id"])
+        for s in sites
+        if str(s.get("name", "")).lower() == q_low
+        or (q_norm and _normalize_site_token(str(s.get("name", ""))) == q_norm)
+    ]
+    if matched_site_ids:
+        site_els = [e for e in elements if str(e.get("site_id")) in matched_site_ids and bool(e.get("connected"))]
+        if not site_els:
+            site_els = [e for e in elements if str(e.get("site_id")) in matched_site_ids]
+        if site_els:
+            # Prefer cached active HA member first if present in TARGET_CACHE_FILE
+            preferred_id = None
+            q_key = q_norm or q_low
+            if os.path.exists(TARGET_CACHE_FILE):
+                try:
+                    with open(TARGET_CACHE_FILE, "r", encoding="utf-8") as f:
+                        cache_doc = json.load(f) or {}
+                    cached_el = (cache_doc.get(q_key) or {}).get("element") or {}
+                    preferred_id = str(cached_el.get("id") or "")
+                except Exception:
+                    pass
+            site_els.sort(
+                key=lambda e: (
+                    0 if (preferred_id and str(e.get("id")) == preferred_id) else 1,
+                    not bool(e.get("connected")),
+                    str(e.get("name") or ""),
+                )
+            )
+            sname = site_names.get(str(site_els[0].get("site_id")))
+            return (site_els, sname)
+
+    return ([], None)
+
+
 CAPABILITIES_CACHE_FILE = "/tmp/stigix_ion_capabilities.json"
 
 
@@ -966,17 +1166,22 @@ def build_command_fallbacks(norm_cmd: str, sw_version: str = "") -> List[str]:
         kv_tokens = tokens[3:]
         ip_only = [t for t in kv_tokens if t.startswith(("srcv4=", "dstv4="))]
         dst_only = [t for t in kv_tokens if t.startswith("dstv4=")]
+        rev_ip_only = [
+            ("dstv4=" + t.split("=", 1)[1]) if t.startswith("srcv4=") else ("srcv4=" + t.split("=", 1)[1])
+            for t in ip_only
+        ]
+        # Keep canonical order (srcv4= before dstv4=) in reversed IP filter
+        rev_ip_only.sort(key=lambda x: 0 if x.startswith("srcv4=") else 1)
         cmd_ip = ("inspect flow brief " + " ".join(ip_only)).strip()
         cmd_dst = ("inspect flow brief " + " ".join(dst_only)).strip()
+        cmd_rev_ip = ("inspect flow brief " + " ".join(rev_ip_only)).strip() if rev_ip_only else ""
         cmd_bare = "inspect flow brief"
 
         cached_mode = caps.get("inspect_flow_brief")
-        if cached_mode == "bare":
-            ordered = [cmd_bare, cmd_ip, cmd_dst, norm_cmd]
-        elif cached_mode == "ip_only":
-            ordered = [cmd_ip, cmd_dst, cmd_bare, norm_cmd]
+        if cached_mode in ("ip_only", "bare"):
+            ordered = [cmd_ip, cmd_dst, cmd_rev_ip, cmd_bare, norm_cmd]
         else:
-            ordered = [norm_cmd, cmd_ip, cmd_dst, cmd_bare]
+            ordered = [norm_cmd, cmd_ip, cmd_dst, cmd_rev_ip, cmd_bare]
         for c in ordered:
             if c and c not in fallbacks:
                 fallbacks.append(c)
@@ -1007,6 +1212,15 @@ def build_command_fallbacks(norm_cmd: str, sw_version: str = "") -> List[str]:
                 c = f"{prefix} {' '.join(cand_kv)}"
                 if c not in fallbacks:
                     fallbacks.append(c)
+        return fallbacks
+
+    # 3. dump servicelink status/summary all
+    if tokens[:2] == ["dump", "servicelink"]:
+        for c in ("dump servicelink summary all", "dump servicelink status all"):
+            if c not in fallbacks:
+                fallbacks.append(c)
+        if norm_cmd not in fallbacks:
+            fallbacks.insert(0, norm_cmd)
         return fallbacks
 
     return [norm_cmd]
@@ -1141,8 +1355,8 @@ def execute_ion_cli(
             status=422,
         )
 
-    # Record successful syntax mode for this software_version
-    if sw_version and executed_cmd.startswith("inspect flow brief"):
+    # Record successful syntax mode for this software_version only when a filtered command was requested
+    if sw_version and executed_cmd.startswith("inspect flow brief") and len(norm_cmd.split()) > 3:
         ex_toks = executed_cmd.split()
         if len(ex_toks) == 3:
             _save_capability(sw_version, "inspect_flow_brief", "bare")
@@ -1218,7 +1432,7 @@ def parse_inspect_flow_brief(output: str) -> List[Dict[str, Any]]:
         if is_new_record:
             merged_lines.append(stripped)
         elif merged_lines:
-            sep = " " if line[0].isspace() else ""
+            sep = "  " if line.startswith("  ") else (" " if line[0].isspace() else "")
             merged_lines[-1] = f"{merged_lines[-1]}{sep}{stripped}"
 
     flows: List[Dict[str, Any]] = []
@@ -1229,7 +1443,12 @@ def parse_inspect_flow_brief(output: str) -> List[Dict[str, Any]]:
         rest = m_head.group("rest")
         m_tail = _FLOW_TAIL_RX.match(rest)
         if m_tail:
-            mid_tokens = m_tail.group("mid").split()
+            mid_raw = m_tail.group("mid").strip()
+            multi_cols = [c.strip() for c in re.split(r"\s{2,}", mid_raw) if c.strip()]
+            if len(multi_cols) >= 3:
+                mid_tokens = [multi_cols[0], multi_cols[1], " ".join(multi_cols[2:])]
+            else:
+                mid_tokens = mid_raw.split()
             sec_action = m_tail.group("sec_action")
             wanpath_id = m_tail.group("wanpath")
             raw_path_type = m_tail.group("path")
@@ -1259,6 +1478,30 @@ def parse_inspect_flow_brief(output: str) -> List[Dict[str, Any]]:
             "raw_path_type": raw_path_type,
         })
     return flows
+
+
+def parse_servicelink_summary(output: str) -> List[Dict[str, Any]]:
+    """Parse `dump servicelink summary all` CLI output into structured ServiceLink tunnel records."""
+    links: List[Dict[str, Any]] = []
+    for raw_line in str(output or "").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("-") or line.startswith("Total") or line.lower().startswith("vrf"):
+            continue
+        toks = line.split()
+        if len(toks) >= 7 and toks[1].startswith("sl"):
+            links.append({
+                "vrf": toks[0],
+                "device": toks[1],
+                "name": toks[2],
+                "status": toks[3],
+                "ext_state": toks[4],
+                "parent_dev": toks[5] if len(toks) > 5 else None,
+                "local_ip": toks[6] if len(toks) > 6 else None,
+                "peer": toks[7] if len(toks) > 7 else None,
+                "type": toks[8] if len(toks) > 8 else None,
+                "ipsec_profile": toks[9] if len(toks) > 9 else None,
+            })
+    return links
 
 
 def resolve_wanpath_id(
@@ -1364,6 +1607,7 @@ def resolve_live_flow_cli(
     src_port: Optional[int] = None,
     dst_port: Optional[int] = None,
     protocol: Optional[int] = None,
+    allow_relaxed_fallback: bool = False,
 ) -> Dict[str, Any]:
     """Query real-time active dataplane flow(s) on a vION via `inspect flow brief <kv>`
     and resolve the active `WANPATH-ID` to a human-readable `egress_path`.
@@ -1371,6 +1615,9 @@ def resolve_live_flow_cli(
     Note: vION `inspect flow brief` accepts `srcv4=<ip>` and `dstv4=<ip>` in CLI,
     and rejects `sport=` / `protocol=` keywords. Port and protocol filtering is
     therefore performed locally on the parsed flow table.
+    When `device_or_site` resolves to a multi-element HA site (e.g. 'DC1' with
+    'DC1-R1' and 'DC1-R2'), automatically checks sibling HA elements if the first
+    element has 0 matching flows.
     """
     kv_parts: List[str] = []
     if src_ip:
@@ -1380,10 +1627,39 @@ def resolve_live_flow_cli(
 
     cmd = "inspect flow brief" + (" " + " ".join(kv_parts) if kv_parts else "")
 
+    def _norm_proto_int(val: Any) -> Optional[int]:
+        if val is None:
+            return None
+        s = str(val).strip().upper()
+        if not s:
+            return None
+        if s in ("6", "TCP"):
+            return 6
+        if s in ("17", "UDP"):
+            return 17
+        if s in ("1", "ICMP"):
+            return 1
+        return int(s) if s.isdigit() and int(s) > 0 else None
+
+    want_proto_int = _norm_proto_int(protocol)
+
+    def _proto_ok(row_proto: Any, want_proto: Optional[int]) -> bool:
+        if not want_proto or want_proto <= 0:
+            return True
+        p_str = str(row_proto or "").strip().upper()
+        proto_aliases = {
+            6: ("6", "TCP"),
+            17: ("17", "UDP"),
+            1: ("1", "ICMP"),
+        }
+        allowed = proto_aliases.get(want_proto, (str(want_proto),))
+        return p_str in allowed
+
     def _stop_when_found(partial_text: str) -> bool:
         has_sport = bool(src_port and int(src_port) > 0)
         has_dport = bool(dst_port and int(dst_port) > 0)
-        if not has_sport and not has_dport:
+        is_icmp = bool(want_proto_int == 1)
+        if not has_sport and not has_dport and not is_icmp:
             return False
         # Only stop early when querying a single destination IP; in batch mode (no dst_ip)
         # we want the full flow table so all active destination targets are collected.
@@ -1393,68 +1669,164 @@ def resolve_live_flow_cli(
         for r in rows:
             if not str(r.get("wanpath_id") or "").isdigit():
                 continue
-            if protocol and int(protocol) > 0 and str(r.get("protocol")) != str(int(protocol)):
+            if str(r.get("app_id") or "").lower() == "cloudgenix-probe":
                 continue
-            if has_sport and str(r.get("source_port")) == str(int(src_port)):
+            if dst_ip and r.get("destination_ip") != dst_ip and r.get("source_ip") != dst_ip:
+                continue
+            if src_ip and r.get("source_ip") != src_ip and r.get("destination_ip") != src_ip:
+                continue
+            if not _proto_ok(r.get("protocol"), want_proto_int):
+                continue
+            if is_icmp:
                 return True
-            if not has_sport and has_dport and str(r.get("destination_port")) == str(int(dst_port)):
+            if has_sport and (
+                str(r.get("source_port")) == str(int(src_port))
+                or str(r.get("destination_port")) == str(int(src_port))
+            ):
+                return True
+            if has_dport and (
+                str(r.get("destination_port")) == str(int(dst_port))
+                or str(r.get("source_port")) == str(int(dst_port))
+            ):
                 return True
         return False
 
-    cli_res = execute_ion_cli(sdk, device_or_site, cmd, early_stop_check=_stop_when_found)
-    all_rows = parse_inspect_flow_brief(cli_res.get("output") or "")
-    # Sort newest flows first by start_time
-    all_rows.sort(key=lambda r: str(r.get("start_time") or ""), reverse=True)
+    def _filter_rows(all_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], str]:
+        all_rows.sort(key=lambda r: str(r.get("start_time") or ""), reverse=True)
+        filtered = all_rows
+        if dst_ip:
+            filtered = [r for r in filtered if r.get("destination_ip") == dst_ip or r.get("source_ip") == dst_ip]
+            non_probe = [r for r in filtered if str(r.get("app_id") or "").lower() != "cloudgenix-probe"]
+            if non_probe:
+                filtered = non_probe
+            exact_dst = [r for r in filtered if r.get("destination_ip") == dst_ip]
+            if exact_dst:
+                filtered = exact_dst
+        if src_ip:
+            src_matches = [r for r in filtered if r.get("source_ip") == src_ip or r.get("destination_ip") == src_ip]
+            exact_src = [r for r in src_matches if r.get("source_ip") == src_ip]
+            if exact_src:
+                filtered = exact_src
+            elif src_matches:
+                filtered = src_matches
+        if want_proto_int and want_proto_int > 0:
+            proto_matches = [r for r in filtered if _proto_ok(r.get("protocol"), want_proto_int)]
+            if proto_matches or not allow_relaxed_fallback or want_proto_int == 1:
+                filtered = proto_matches
 
-    # Filter locally by dst_ip, src_ip, protocol, src_port, dst_port (handles vION 6.5 bare fallback & NAT)
-    filtered = all_rows
-    if dst_ip:
-        filtered = [r for r in filtered if r.get("destination_ip") == dst_ip]
-    if src_ip:
-        src_matches = [r for r in filtered if r.get("source_ip") == src_ip]
-        if src_matches:
-            filtered = src_matches
-    if protocol and int(protocol) > 0:
-        filtered = [r for r in filtered if str(r.get("protocol")) == str(int(protocol))]
-
-    has_sport = bool(src_port and int(src_port) > 0)
-    has_dport = bool(dst_port and int(dst_port) > 0)
-    if has_sport or has_dport:
-        sport_matches = (
-            [
-                r for r in filtered
-                if str(r.get("source_port")) == str(int(src_port)) or str(r.get("destination_port")) == str(int(src_port))
-            ]
-            if has_sport
-            else []
-        )
-        dport_matches = (
-            [
-                r for r in filtered
-                if str(r.get("destination_port")) == str(int(dst_port)) or str(r.get("source_port")) == str(int(dst_port))
-            ]
-            if has_dport
-            else []
-        )
-        if sport_matches:
-            filtered = sport_matches
-            if has_dport:
-                both = [
+        has_sport = bool(src_port and int(src_port) > 0)
+        has_dport = bool(dst_port and int(dst_port) > 0)
+        confidence = "exact_5tuple" if (has_sport or has_dport) else "host_pair"
+        if has_sport or has_dport:
+            sport_matches = (
+                [
+                    r for r in filtered
+                    if str(r.get("source_port")) == str(int(src_port)) or str(r.get("destination_port")) == str(int(src_port))
+                ]
+                if has_sport
+                else []
+            )
+            dport_matches = (
+                [
                     r for r in filtered
                     if str(r.get("destination_port")) == str(int(dst_port)) or str(r.get("source_port")) == str(int(dst_port))
                 ]
-                if both:
-                    filtered = both
-        elif dport_matches:
-            filtered = dport_matches
-        else:
-            # Strict port enforcement: never fall back to unrelated ports on the same destination IP
-            filtered = []
+                if has_dport
+                else []
+            )
+            if sport_matches:
+                filtered = sport_matches
+                if has_dport:
+                    both = [
+                        r for r in filtered
+                        if str(r.get("destination_port")) == str(int(dst_port)) or str(r.get("source_port")) == str(int(dst_port))
+                    ]
+                    if both:
+                        filtered = both
+                    else:
+                        confidence = "sport_match"
+            elif dport_matches:
+                filtered = dport_matches
+                confidence = "dport_match" if has_sport else "exact_5tuple"
+            elif allow_relaxed_fallback and filtered:
+                # Keep host/protocol matches with lower confidence for interactive E2E trace
+                confidence = "host_pair_relaxed"
+            else:
+                # Strict port enforcement: never fall back to unrelated ports on the same destination IP
+                filtered = []
+        return filtered, confidence
 
-    parsed_rows = filtered
+    candidate_els, resolved_sname = resolve_site_elements(sdk, device_or_site)
+    ha_checked: List[Dict[str, Any]] = []
+    cli_res: Optional[Dict[str, Any]] = None
+    parsed_rows: List[Dict[str, Any]] = []
+    match_confidence = "exact_5tuple"
+    total_table_flows = 0
+
+    if len(candidate_els) <= 1:
+        cli_res = execute_ion_cli(sdk, device_or_site, cmd, early_stop_check=_stop_when_found)
+        raw_rows = parse_inspect_flow_brief(cli_res.get("output") or "")
+        total_table_flows = len(raw_rows)
+        parsed_rows, match_confidence = _filter_rows(raw_rows)
+        ha_checked.append({
+            "element": cli_res.get("element"),
+            "total_flows": total_table_flows,
+            "matched_flows": len(parsed_rows),
+            "status": "ok",
+        })
+    else:
+        last_err: Optional[Exception] = None
+        for el_obj in candidate_els:
+            el_name = str(el_obj.get("name") or device_or_site)
+            try:
+                res_el = execute_ion_cli(sdk, el_name, cmd, early_stop_check=_stop_when_found)
+                raw_rows = parse_inspect_flow_brief(res_el.get("output") or "")
+                matched_el, conf_el = _filter_rows(raw_rows)
+                ha_checked.append({
+                    "element": res_el.get("element") or el_name,
+                    "total_flows": len(raw_rows),
+                    "matched_flows": len(matched_el),
+                    "status": "ok",
+                })
+                if cli_res is None or len(matched_el) > len(parsed_rows) or (len(parsed_rows) == 0 and len(raw_rows) > total_table_flows):
+                    cli_res = res_el
+                    parsed_rows = matched_el
+                    match_confidence = conf_el
+                    total_table_flows = len(raw_rows)
+                if len(matched_el) > 0:
+                    # Update target cache so future lookups hit the active HA element first
+                    q_key = _normalize_site_token(device_or_site) or device_or_site.lower()
+                    try:
+                        cache_doc = {}
+                        if os.path.exists(TARGET_CACHE_FILE):
+                            with open(TARGET_CACHE_FILE, "r", encoding="utf-8") as f:
+                                cache_doc = json.load(f) or {}
+                        cache_doc[q_key] = {
+                            "element": el_obj,
+                            "site_name": resolved_sname or res_el.get("site"),
+                            "ts": datetime.now(timezone.utc).timestamp(),
+                        }
+                        with open(TARGET_CACHE_FILE, "w", encoding="utf-8") as f:
+                            json.dump(cache_doc, f)
+                    except Exception:
+                        pass
+                    break
+            except Exception as e:
+                last_err = e
+                ha_checked.append({
+                    "element": el_name,
+                    "total_flows": 0,
+                    "matched_flows": 0,
+                    "status": "error",
+                    "error": str(e),
+                })
+        if cli_res is None:
+            if last_err:
+                raise last_err
+            raise IonCliError("unavailable", f"No reachable vION elements for {device_or_site}")
 
     site_id = str(cli_res.get("site_id") or "")
-    site_name = str(cli_res.get("site") or device_or_site)
+    site_name = str(cli_res.get("site") or resolved_sname or device_or_site)
 
     enriched_flows: List[Dict[str, Any]] = []
     for row in parsed_rows:
@@ -1469,6 +1841,7 @@ def resolve_live_flow_cli(
             **row,
             "egress_path": egress_path,
             "path_type": path_type,
+            "match_confidence": match_confidence,
             "path_history": [{"path": egress_path, "path_type": path_type, "timestamp": cli_res.get("read_at")}],
         })
 
@@ -1482,7 +1855,184 @@ def resolve_live_flow_cli(
         "command": cli_res.get("command"),
         "duration_ms": cli_res.get("duration_ms"),
         "query_time": cli_res.get("read_at"),
+        "total_table_flows": total_table_flows,
+        "match_confidence": match_confidence,
+        "ha_elements_checked": ha_checked,
         "flows": enriched_flows,
+    }
+
+
+def list_tenant_sites_cli(sdk: Any) -> Dict[str, Any]:
+    """List all Prisma SD-WAN sites and their bound vION elements for E2E Flow Trace selection."""
+    sites_raw, elements = _load_tenant_inventory(sdk)
+    sites = [s for s in sites_raw if isinstance(s, dict) and s.get("id")]
+
+    els_by_site: Dict[str, List[Dict[str, Any]]] = {}
+    for el in elements:
+        sid = str(el.get("site_id") or "")
+        if sid:
+            els_by_site.setdefault(sid, []).append({
+                "id": str(el.get("id") or ""),
+                "name": el.get("name"),
+                "connected": bool(el.get("connected")),
+                "role": el.get("role"),
+                "software_version": el.get("software_version"),
+            })
+
+    out_sites: List[Dict[str, Any]] = []
+    for s in sites:
+        sid = str(s["id"])
+        sname = str(s.get("name") or sid)
+        s_els = els_by_site.get(sid, [])
+        if not s_els:
+            continue
+        s_els.sort(key=lambda e: (not bool(e.get("connected")), str(e.get("name") or "")))
+        role = s.get("element_cluster_role") or (
+            "HUB" if any(e.get("role") == "HUB" for e in s_els) or "dc" in sname.lower() else "SPOKE"
+        )
+        out_sites.append({
+            "site_id": sid,
+            "site_name": sname,
+            "role": role,
+            "connected": any(e.get("connected") for e in s_els),
+            "elements": s_els,
+        })
+
+    out_sites.sort(key=lambda s: (not s["connected"], s["role"] == "HUB", s["site_name"]))
+    return {
+        "success": True,
+        "sites": out_sites,
+    }
+
+
+def _extract_peer_site_from_egress(sdk: Any, egress_path: str, current_site_name: str) -> Optional[str]:
+    """Extract the peer SD-WAN site name from an `egress_path` like 'BR8-INET1 → DC1-INET'."""
+    if not egress_path or "→" not in egress_path:
+        return None
+    rhs = egress_path.split("→", 1)[1].strip()
+    if not rhs or rhs.lower() in ("standard vpn", "direct / local", "unknown"):
+        return None
+    # Candidate prefix before '-' (e.g. 'DC1-INET' -> 'DC1', 'BR5-INET2' -> 'BR5')
+    cand_prefix = rhs.split("-", 1)[0].strip()
+    try:
+        sites_raw, _ = _load_tenant_inventory(sdk)
+        sites = [s for s in sites_raw if isinstance(s, dict) and s.get("name")]
+        for s in sites:
+            sname = str(s.get("name") or "")
+            if sname.upper() == current_site_name.upper():
+                continue
+            if rhs.upper().startswith(sname.upper() + "-") or sname.upper() == cand_prefix.upper():
+                return sname
+    except Exception:
+        pass
+    if cand_prefix and cand_prefix.upper() != current_site_name.upper():
+        return cand_prefix
+    return None
+
+
+def trace_flow_path_cli(
+    sdk: Any,
+    source_site: str,
+    *,
+    dst_ip: Optional[str] = None,
+    src_ip: Optional[str] = None,
+    src_port: Optional[int] = None,
+    dst_port: Optional[int] = None,
+    protocol: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Execute an End-to-End SD-WAN Dataplane Flow Trace:
+    1. Inspect active flow table on the Ingress Branch ION (`source_site`) to extract App-ID,
+       Network/Path Policy, QoS Priority Policy, Security Zone/Policy/Action, and Egress WAN Path.
+    2. Automatically determine the Forwarding Mode:
+       - `VPN_OVERLAY` (Site-to-Site or DC Backhaul): automatically chain `inspect flow brief`
+         onto the peer/transit Hub or Branch ION (e.g. DC1-R2 / DC2-R1 / BR5) to verify tunnel arrival!
+       - `SERVICELINK_SSE` (Prisma Access / Zscaler / Standard IPSec): query `dump servicelink summary all`
+         on the ingress ION to report live ServiceLink tunnel status.
+       - `DIRECT_INTERNET_DIA` (Local Breakout): report direct WAN circuit breakout.
+    """
+    t0 = time.monotonic()
+    ingress = resolve_live_flow_cli(
+        sdk,
+        source_site,
+        dst_ip=dst_ip,
+        src_ip=src_ip,
+        src_port=src_port,
+        dst_port=dst_port,
+        protocol=protocol,
+        allow_relaxed_fallback=True,
+    )
+
+    ingress_flows = ingress.get("flows") or []
+    primary_flow = ingress_flows[0] if ingress_flows else None
+
+    forwarding_mode = "NO_ACTIVE_FLOW"
+    peer_site_name: Optional[str] = None
+    transit_hop: Optional[Dict[str, Any]] = None
+    servicelinks: List[Dict[str, Any]] = []
+
+    if primary_flow:
+        p_type = str(primary_flow.get("path_type") or "")
+        raw_path = str(primary_flow.get("raw_path_type") or "").lower()
+        egress_path = str(primary_flow.get("egress_path") or "")
+        net_pol = str(primary_flow.get("net_policy") or "").lower()
+
+        if p_type == "ServiceLink" or "servicelink" in raw_path or "zscaler" in egress_path.lower() or "prisma" in egress_path.lower() or "zscaler" in net_pol or "prisma" in net_pol:
+            forwarding_mode = "SERVICELINK_SSE"
+            try:
+                sl_res = execute_ion_cli(sdk, str(ingress.get("element") or source_site), "dump servicelink summary all")
+                servicelinks = parse_servicelink_summary(sl_res.get("output") or "")
+            except Exception:
+                servicelinks = []
+        elif p_type == "VPN" or "vpn" in raw_path:
+            peer_site_name = _extract_peer_site_from_egress(sdk, egress_path, str(ingress.get("site_name") or source_site))
+            if peer_site_name:
+                is_dc_peer = "dc" in peer_site_name.lower() or "hub" in peer_site_name.lower()
+                # Check if destination IP is public vs RFC1918 to distinguish DC Backhaul vs Private DC App
+                flow_dst = str(primary_flow.get("destination_ip") or dst_ip or "")
+                is_private_dst = (
+                    flow_dst.startswith("10.")
+                    or flow_dst.startswith("192.168.")
+                    or bool(re.match(r"^172\.(1[6-9]|2[0-9]|3[0-1])\.", flow_dst))
+                )
+                if is_dc_peer and not is_private_dst:
+                    forwarding_mode = "DC_BACKHAUL_INTERNET"
+                elif is_dc_peer:
+                    forwarding_mode = "DC_PRIVATE_APP"
+                else:
+                    forwarding_mode = "BRANCH_TO_BRANCH_VPN"
+
+                try:
+                    transit_hop = resolve_live_flow_cli(
+                        sdk,
+                        peer_site_name,
+                        dst_ip=str(primary_flow.get("destination_ip") or dst_ip or "") or None,
+                        src_ip=str(primary_flow.get("source_ip") or src_ip or "") or None,
+                        src_port=primary_flow.get("source_port") or src_port,
+                        dst_port=primary_flow.get("destination_port") or dst_port,
+                        protocol=primary_flow.get("protocol") or protocol,
+                        allow_relaxed_fallback=True,
+                    )
+                except Exception as e:
+                    transit_hop = {
+                        "success": False,
+                        "site_name": peer_site_name,
+                        "error": str(e),
+                        "flows": [],
+                    }
+            else:
+                forwarding_mode = "VPN_OVERLAY"
+        else:
+            forwarding_mode = "DIRECT_INTERNET_DIA"
+
+    return {
+        "success": True,
+        "duration_ms": int((time.monotonic() - t0) * 1000),
+        "forwarding_mode": forwarding_mode,
+        "peer_site_name": peer_site_name,
+        "ingress_ion": ingress,
+        "primary_flow": primary_flow,
+        "transit_ion": transit_hop,
+        "servicelinks": servicelinks,
     }
 
 
@@ -1519,6 +2069,8 @@ def _authenticate_sdk(credentials_path: str = "credentials.json", *, force_refre
             ):
                 sdk.controller = str(cached.get("controller") or sdk.controller)
                 sdk.tenant_id = cached.get("tenant_id")
+                sdk.jwt_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=_SASE_SESSION_TTL_S)
+                sdk._refresh_jwt = lambda: True
                 sdk._websocket_headers = dict(cached.get("ws_headers") or {})
                 sess = getattr(sdk, "_session", None)
                 if sess is not None and isinstance(cached.get("session_headers"), dict):
@@ -1543,6 +2095,7 @@ def _authenticate_sdk(credentials_path: str = "credentials.json", *, force_refre
             "tsg_id": str(creds.get("tsg_id")),
             "controller": getattr(sdk, "controller", "https://api.sase.paloaltonetworks.com"),
             "tenant_id": getattr(sdk, "tenant_id", None),
+            "jwt_expires_epoch": now_epoch + 900,
             "ws_headers": dict(getattr(sdk, "_websocket_headers", None) or {}),
             "session_headers": dict(sess.headers) if sess is not None and hasattr(sess, "headers") else {},
         }
@@ -1560,19 +2113,63 @@ def _authenticate_sdk(credentials_path: str = "credentials.json", *, force_refre
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Read-Only Prisma SD-WAN vION CLI via WebSocket Device Toolkit")
-    parser.add_argument("--device", required=True, help="vION element name or site name (e.g. 'BR1', 'br1-vion1', 'Branch-01-01')")
+    parser.add_argument("--device", default="", help="vION element name or site name (e.g. 'BR1', 'br1-vion1', 'Branch-01-01')")
     parser.add_argument("--command", default="", help="Read-only ION CLI command (e.g. 'dump vpn summary all')")
     parser.add_argument("--resolve-flow", action="store_true", help="Resolve active dataplane flow via inspect flow brief + topology lookup")
-    parser.add_argument("--dst-ip", default=None, help="Destination IPv4 filter for --resolve-flow")
-    parser.add_argument("--src-ip", default=None, help="Source IPv4 filter for --resolve-flow")
-    parser.add_argument("--src-port", type=int, default=None, help="Source port filter for --resolve-flow")
-    parser.add_argument("--dst-port", type=int, default=None, help="Destination port filter for --resolve-flow")
+    parser.add_argument("--trace-path", action="store_true", help="Execute end-to-end SD-WAN flow trace across ingress and transit/hub IONs")
+    parser.add_argument("--list-sites", action="store_true", help="List all Prisma SD-WAN sites and connected ION elements")
+    parser.add_argument("--dst-ip", default=None, help="Destination IPv4 filter for --resolve-flow / --trace-path")
+    parser.add_argument("--src-ip", default=None, help="Source IPv4 filter for --resolve-flow / --trace-path")
+    parser.add_argument("--src-port", type=int, default=None, help="Source port filter for --resolve-flow / --trace-path")
+    parser.add_argument("--dst-port", type=int, default=None, help="Destination port filter for --resolve-flow / --trace-path")
     parser.add_argument("--protocol", type=int, default=None, help="IP protocol number filter (e.g. 17 for UDP, 6 for TCP)")
     parser.add_argument("--credentials", default="credentials.json", help="Credentials file path")
     parser.add_argument("--json", action="store_true", help="Output JSON")
     parsed = parser.parse_args()
 
     try:
+        if parsed.list_sites:
+            sdk = _authenticate_sdk(parsed.credentials)
+            try:
+                res = list_tenant_sites_cli(sdk)
+            except Exception:
+                sdk = _authenticate_sdk(parsed.credentials, force_refresh=True)
+                res = list_tenant_sites_cli(sdk)
+            print(json.dumps(res, indent=2))
+            return
+
+        if not parsed.device:
+            raise IonCliError("bad_request", "--device is required unless --list-sites is specified.")
+
+        if parsed.trace_path:
+            sdk = _authenticate_sdk(parsed.credentials)
+            try:
+                res = trace_flow_path_cli(
+                    sdk,
+                    parsed.device,
+                    dst_ip=parsed.dst_ip,
+                    src_ip=parsed.src_ip,
+                    src_port=parsed.src_port,
+                    dst_port=parsed.dst_port,
+                    protocol=parsed.protocol,
+                )
+            except IonCliError as e:
+                if e.code in ("connect_failed", "unavailable", "toolkit_user_error"):
+                    sdk = _authenticate_sdk(parsed.credentials, force_refresh=True)
+                    res = trace_flow_path_cli(
+                        sdk,
+                        parsed.device,
+                        dst_ip=parsed.dst_ip,
+                        src_ip=parsed.src_ip,
+                        src_port=parsed.src_port,
+                        dst_port=parsed.dst_port,
+                        protocol=parsed.protocol,
+                    )
+                else:
+                    raise
+            print(json.dumps(res, indent=2))
+            return
+
         if parsed.resolve_flow:
             sdk = _authenticate_sdk(parsed.credentials)
             try:
@@ -1586,7 +2183,7 @@ def main() -> None:
                     protocol=parsed.protocol,
                 )
             except IonCliError as e:
-                if e.code in ("connect_failed", "unavailable"):
+                if e.code in ("connect_failed", "unavailable", "toolkit_user_error"):
                     sdk = _authenticate_sdk(parsed.credentials, force_refresh=True)
                     res = resolve_live_flow_cli(
                         sdk,
@@ -1603,14 +2200,14 @@ def main() -> None:
             return
 
         if not parsed.command:
-            raise IonCliError("bad_request", "Either --command or --resolve-flow is required.")
+            raise IonCliError("bad_request", "Either --command, --resolve-flow, --trace-path, or --list-sites is required.")
         # Validate command syntax first before authenticating to the controller
         validate_command(parsed.command)
         sdk = _authenticate_sdk(parsed.credentials)
         try:
             res = execute_ion_cli(sdk, parsed.device, parsed.command)
         except IonCliError as e:
-            if e.code in ("connect_failed", "unavailable"):
+            if e.code in ("connect_failed", "unavailable", "toolkit_user_error"):
                 sdk = _authenticate_sdk(parsed.credentials, force_refresh=True)
                 res = execute_ion_cli(sdk, parsed.device, parsed.command)
             else:

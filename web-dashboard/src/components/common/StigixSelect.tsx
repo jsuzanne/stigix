@@ -111,7 +111,20 @@ export function StigixSelect({
             }
         };
         const handleKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setOpen(false);
+            if (e.key === 'Escape') {
+                setOpen(false);
+                triggerRef.current?.focus();
+            } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && allOptions.length > 0) {
+                e.preventDefault();
+                const curIdx = allOptions.findIndex(o => String(o.value) === String(value));
+                const nextIdx = e.key === 'ArrowDown'
+                    ? (curIdx + 1) % allOptions.length
+                    : (curIdx - 1 + allOptions.length) % allOptions.length;
+                const nextOpt = allOptions[nextIdx];
+                if (nextOpt) {
+                    onChange(String(nextOpt.value));
+                }
+            }
         };
         const handleScrollOrResize = (e: Event) => {
             if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) {
@@ -166,6 +179,8 @@ export function StigixSelect({
             <button
                 key={String(opt.value)}
                 type="button"
+                role="option"
+                aria-selected={isSelected}
                 onClick={() => {
                     onChange(String(opt.value));
                     setOpen(false);
@@ -212,6 +227,8 @@ export function StigixSelect({
                 ref={triggerRef}
                 type="button"
                 disabled={disabled}
+                aria-haspopup="listbox"
+                aria-expanded={open}
                 onClick={handleToggle}
                 className={`w-full bg-card border ${sizePadding} text-text-primary flex items-center justify-between gap-2 transition-colors cursor-pointer disabled:opacity-50 ${
                     open ? accentBorderOpen : `border-border ${accentHover}`
@@ -225,7 +242,7 @@ export function StigixSelect({
                         {selectedOption ? selectedOption.label : placeholder}
                     </span>
                     {selectedOption?.badge && (
-                        <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border text-[10px] font-mono text-text-muted truncate">
+                        <span className={selectedOption.badgeClassName || 'px-1.5 py-0.5 rounded bg-card-secondary border border-border text-[10px] font-mono text-text-muted truncate'}>
                             {selectedOption.badge}
                         </span>
                     )}
@@ -239,6 +256,7 @@ export function StigixSelect({
             {open && coords && createPortal(
                 <div
                     ref={menuRef}
+                    role="listbox"
                     style={{
                         position: 'fixed',
                         top: coords.top,

@@ -296,7 +296,7 @@ def start_capture(interface: str = "any", bpf: str = "", duration: int = 30, max
     pcap_filename = f"{session_id}.pcap"
     pcap_path = os.path.join(CAPTURES_DIR, pcap_filename)
 
-    cmd = ["tcpdump", "-i", interface, "-U", "-s", str(snaplen), "-c", str(max_packets), "-w", pcap_path]
+    cmd = ["tcpdump", "--immediate-mode", "-n", "-i", interface, "-U", "-s", str(snaplen), "-c", str(max_packets), "-w", pcap_path]
     if bpf and bpf.strip():
         bpf_clean = bpf.strip()
         try:
@@ -306,7 +306,7 @@ def start_capture(interface: str = "any", bpf: str = "", duration: int = 30, max
 
         # Pre-validate BPF filter expression with tcpdump -d
         try:
-            val_res = subprocess.run(["tcpdump", "-i", interface, "-d"] + val_tokens, capture_output=True, text=True)
+            val_res = subprocess.run(["tcpdump", "-n", "-i", interface, "-d"] + val_tokens, capture_output=True, text=True)
             if val_res.returncode != 0:
                 err_clean = val_res.stderr.strip()
                 if any(k in err_clean.lower() for k in ["syntax error", "can't parse", "parse error", "illegal token", "unknown protocol"]):
@@ -329,6 +329,18 @@ def start_capture(interface: str = "any", bpf: str = "", duration: int = 30, max
         )
     except Exception as e:
         return {"error": f"Failed to start tcpdump: {str(e)}"}
+
+    # Wait up to 2.0s for tcpdump (-U) to bind PF_PACKET socket and write the 24-byte PCAP file header
+    wait_deadline = time.time() + 2.0
+    while time.time() < wait_deadline:
+        if proc.poll() is not None:
+            break
+        try:
+            if os.path.exists(pcap_path) and os.path.getsize(pcap_path) >= 24:
+                break
+        except Exception:
+            pass
+        time.sleep(0.03)
 
     session_data = {
         "active": True,
@@ -364,7 +376,13 @@ def stop_capture() -> Dict[str, Any]:
         if pid:
             try:
                 os.kill(pid, signal.SIGINT)
-                time.sleep(0.5)
+                stop_deadline = time.time() + 1.0
+                while time.time() < stop_deadline:
+                    try:
+                        os.kill(pid, 0)
+                        time.sleep(0.05)
+                    except OSError:
+                        break
                 try:
                     os.kill(pid, 0)
                     os.kill(pid, signal.SIGTERM)

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
+import { StigixSelect, type StigixSelectGroup, type StigixSelectOption } from './components/common/StigixSelect';
 import type { TargetDefinition } from './types/targets';
 
 interface PacketCaptureProps {
@@ -419,6 +420,26 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     const [showVirtualInterfaces, setShowVirtualInterfaces] = useState<boolean>(false);
     const dropdownBarRef = useRef<HTMLDivElement>(null);
 
+    // ── E2E Flow & Path Trace (NWPI) State ──
+    const [captureMode, setCaptureMode] = useState<'local' | 'trace'>('local');
+    const [traceSites, setTraceSites] = useState<Array<{
+        site_id: string;
+        site_name: string;
+        role: string;
+        connected: boolean;
+        elements: Array<{ id: string; name: string; connected: boolean; role: string; software_version: string }>;
+    }>>([]);
+    const [detectedLocalSite, setDetectedLocalSite] = useState<string>(localSiteName || '');
+    const [traceSourceSite, setTraceSourceSite] = useState<string>(localSiteName || 'BR8');
+    const [traceSourceMode, setTraceSourceMode] = useState<'auto' | 'ion_only'>('auto');
+    const [traceSrcIp, setTraceSrcIp] = useState<string>('');
+    const [traceDestination, setTraceDestination] = useState<string>('192.168.212.100');
+    const [traceDstPort, setTraceDstPort] = useState<number>(8098);
+    const [traceProtocol, setTraceProtocol] = useState<'tcp' | 'udp' | 'icmp'>('tcp');
+    const [traceGenerateProbe, setTraceGenerateProbe] = useState<boolean>(true);
+    const [tracingFlow, setTracingFlow] = useState<boolean>(false);
+    const [traceResult, setTraceResult] = useState<any>(null);
+
     // Draggable Column Widths for Virtual Packet Table
     const DEFAULT_COL_WIDTHS = useMemo(() => ({
         no: 56,
@@ -489,8 +510,17 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 setOpenDropdown(null);
             }
         };
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setOpenDropdown(null);
+            }
+        };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleEscape);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape);
+        };
     }, [openDropdown]);
 
     const tableEndRef = useRef<HTMLDivElement>(null);
@@ -501,7 +531,112 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         fetchPresets();
         fetchTargets();
         checkActiveStatus();
+        fetchTraceSites();
     }, [activePeerId]);
+
+    const fetchTraceSites = async (force = false) => {
+        try {
+            const res = await gFetch(`/api/capture/trace-sites${force ? '?refresh=1' : ''}`, {
+                credentials: 'include',
+                headers: authHeaders
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.local_site_name) {
+                    setDetectedLocalSite(data.local_site_name);
+                    setTraceSourceSite(prev => prev || data.local_site_name);
+                }
+                if (Array.isArray(data.sites)) {
+                    setTraceSites(data.sites);
+                    if (data.local_site_name && data.sites.some((s: any) => s.site_name.toUpperCase() === data.local_site_name.toUpperCase())) {
+                        const match = data.sites.find((s: any) => s.site_name.toUpperCase() === data.local_site_name.toUpperCase());
+                        if (match) setTraceSourceSite(match.site_name);
+                    } else if (data.sites.length > 0 && !traceSourceSite) {
+                        setTraceSourceSite(data.sites[0].site_name);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load trace sites', e);
+        }
+    };
+
+    const handleRunFlowTrace = async (overrideParams?: {
+        destination?: string;
+        dstPort?: number;
+        protocol?: 'tcp' | 'udp' | 'icmp';
+        srcIp?: string;
+        sourceSite?: string;
+    }) => {
+        if (tracingFlow) return;
+        const effDst = (overrideParams?.destination ?? traceDestination).trim();
+        const effPort = overrideParams?.dstPort ?? traceDstPort;
+        const effProto = overrideParams?.protocol ?? traceProtocol;
+        const effSrcIp = (overrideParams?.srcIp ?? traceSrcIp).trim();
+        const effSite = (overrideParams?.sourceSite ?? traceSourceSite).trim() || detectedLocalSite || localSiteName || 'BR8';
+
+        if (!effDst && !effSrcIp) {
+            toast.error('Enter a destination IP/Domain or a Source IP to trace');
+            return;
+        }
+
+        setTracingFlow(true);
+        const toastId = 'e2e-flow-trace';
+        toast.loading(`Tracing flow from ${effSite} → ${effDst || 'active flows'} across SD-WAN fabric...`, { id: toastId });
+
+        try {
+            const res = await gFetch('/api/capture/trace-flow', {
+                method: 'POST',
+                credentials: 'include',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    sourceSite: effSite,
+                    sourceMode: traceSourceMode,
+                    srcIp: effSrcIp,
+                    destination: effDst,
+                    dstPort: effPort,
+                    protocol: effProto,
+                    generateProbe: traceGenerateProbe,
+                    interface: selectedInterface
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.success === false) {
+                throw new Error(data.error || `Trace failed (HTTP ${res.status})`);
+            }
+            setTraceResult(data);
+
+            // If local PCAP packets were captured during the trace, load them directly into the 3-Pane Wireshark Dissector!
+            if (data.pcap && Array.isArray(data.pcap.packets)) {
+                setPackets(data.pcap.packets);
+                setTotalPackets(data.pcap.total_packets || data.pcap.packets.length);
+                setActivePcapFile(data.pcap.filename || '');
+                setFileSizeBytes(data.pcap.file_size_bytes || 0);
+                setDurationSeconds(data.pcap.duration_seconds || 0);
+                if (data.pcap.packets.length > 0) {
+                    setSelectedPacketNo(data.pcap.packets[0].no);
+                    setExpandedLayers({
+                        'Frame': true,
+                        'Internet Protocol Version 4': true,
+                        'Transmission Control Protocol': true,
+                        'User Datagram Protocol': true
+                    });
+                }
+            }
+
+            const appBadge = data.verdict?.app_id ? ` [App-ID: ${data.verdict.app_id}]` : '';
+            const pathBadge = data.verdict?.egress_path ? ` via ${data.verdict.egress_path}` : '';
+            if (data.verdict?.status === 'NO_MATCHING_FLOW') {
+                toast(`Trace completed on ${effSite}: No matching active flow in vION table`, { icon: '⚠️', id: toastId });
+            } else {
+                toast.success(`Trace complete!${appBadge}${pathBadge}`, { id: toastId });
+            }
+        } catch (e: any) {
+            toast.error(`Flow Trace error: ${e.message}`, { id: toastId });
+        } finally {
+            setTracingFlow(false);
+        }
+    };
 
     const fetchInterfaces = async () => {
         try {
@@ -1156,6 +1291,35 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
                             <h2 className="text-lg font-black text-text-primary tracking-tight whitespace-nowrap">Packet Capture</h2>
+
+                            {/* Mode Switcher: Local PCAP vs E2E Flow & Path Trace (NWPI) */}
+                            <div className="inline-flex items-center bg-card-secondary border border-border rounded-xl p-0.5 text-[11px] font-black">
+                                <button
+                                    type="button"
+                                    onClick={() => setCaptureMode('local')}
+                                    className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        captureMode === 'local'
+                                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                                            : 'text-text-muted hover:text-text-primary border border-transparent'
+                                    }`}
+                                >
+                                    <Radio size={12} />
+                                    <span>Local PCAP</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCaptureMode('trace')}
+                                    className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        captureMode === 'trace'
+                                            ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
+                                            : 'text-text-muted hover:text-text-primary border border-transparent'
+                                    }`}
+                                >
+                                    <Sparkles size={12} />
+                                    <span>E2E Flow &amp; Path Trace (NWPI)</span>
+                                </button>
+                            </div>
+
                             {capturing ? (
                                 <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 animate-pulse whitespace-nowrap">
                                     <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
@@ -1189,7 +1353,25 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
 
                     {/* Action Buttons */}
                     <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-                        {capturing ? (
+                        {captureMode === 'trace' ? (
+                            <button
+                                onClick={() => handleRunFlowTrace()}
+                                disabled={tracingFlow}
+                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-indigo-900/40 cursor-pointer"
+                            >
+                                {tracingFlow ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin" />
+                                        Tracing Path...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles size={14} />
+                                        Run E2E Path Trace
+                                    </>
+                                )}
+                            </button>
+                        ) : capturing ? (
                             <button
                                 onClick={handleStopCapture}
                                 className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-rose-900/40 cursor-pointer"
@@ -1245,7 +1427,292 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     </div>
                 </div>
 
-                {/* Configuration Controls Bar - Ultra Compact 1-Row Grid */}
+                {/* Configuration Controls Bar - Mode Aware */}
+                {captureMode === 'trace' ? (
+                    <div className="mt-4 pt-3.5 border-t border-border/60 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                            {/* Source SD-WAN Site Selector */}
+                            <div className="lg:col-span-3 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Source SD-WAN Site</label>
+                                    {(() => {
+                                        const effLocal = detectedLocalSite || localSiteName || 'BR8';
+                                        const isLocal = traceSourceMode !== 'ion_only' && traceSourceSite.toUpperCase() === effLocal.toUpperCase();
+                                        return (
+                                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border ${
+                                                isLocal
+                                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                            }`}>
+                                                {isLocal ? 'Stigix PCAP + ION CLI' : 'ION CLI Only (Agentless)'}
+                                            </span>
+                                        );
+                                    })()}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    {(() => {
+                                        const effLocal = detectedLocalSite || localSiteName || 'BR8';
+                                        const buildSiteOption = (s: {
+                                            site_id: string;
+                                            site_name: string;
+                                            role: string;
+                                            connected: boolean;
+                                            elements: Array<{ id: string; name: string; connected: boolean; role: string; software_version: string }>;
+                                        }): StigixSelectOption => {
+                                            const isLocal = s.site_name.toUpperCase() === effLocal.toUpperCase();
+                                            const elNames = s.elements.map((e) => e.name).filter(Boolean);
+                                            const hasDistinctEls =
+                                                elNames.length > 1 ||
+                                                (elNames.length === 1 && elNames[0].toUpperCase() !== s.site_name.toUpperCase());
+                                            const swVer = s.elements[0]?.software_version ? `vION ${s.elements[0].software_version}` : '';
+
+                                            let sublabel: string | undefined;
+                                            if (isLocal) {
+                                                const ionTarget = hasDistinctEls ? elNames.join(', ') : s.site_name;
+                                                sublabel = `ION: ${ionTarget} • ${s.connected ? 'Online' : 'Offline'}${swVer ? ` (${swVer})` : ''}`;
+                                            } else if (hasDistinctEls) {
+                                                sublabel = `${elNames.join(', ')}${swVer ? ` • ${swVer}` : ''}`;
+                                            } else if (swVer) {
+                                                sublabel = `${s.role === 'HUB' ? 'Hub' : 'Branch'} • ${swVer}`;
+                                            }
+
+                                            const badge = isLocal
+                                                ? 'Local Stigix'
+                                                : s.connected
+                                                ? 'ION Online'
+                                                : 'Offline';
+
+                                            const badgeClassName = isLocal
+                                                ? 'px-1.5 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-mono font-bold text-emerald-400'
+                                                : s.connected
+                                                ? 'px-1.5 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-[10px] font-mono font-bold text-indigo-300'
+                                                : 'px-1.5 py-0.5 rounded-md bg-slate-500/15 border border-slate-500/30 text-[10px] font-mono text-text-muted';
+
+                                            const dotClass = isLocal && s.connected
+                                                ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
+                                                : s.connected
+                                                ? 'bg-indigo-400 shadow-[0_0_6px_rgba(129,140,248,0.5)]'
+                                                : 'bg-slate-500';
+
+                                            return {
+                                                value: s.site_name,
+                                                label: s.site_name,
+                                                sublabel,
+                                                badge,
+                                                badgeClassName,
+                                                icon: <span className={`w-2 h-2 rounded-full shrink-0 ${dotClass}`} />
+                                            };
+                                        };
+
+                                        const fallbackSites = [
+                                            { site_id: 'local', site_name: effLocal, role: 'SPOKE', connected: true, elements: [{ id: 'local', name: effLocal, connected: true, role: 'SPOKE', software_version: '' }] },
+                                            { site_id: 'br5', site_name: 'BR5', role: 'SPOKE', connected: true, elements: [{ id: 'br5', name: 'BR5', connected: true, role: 'SPOKE', software_version: '' }] },
+                                            { site_id: 'br1', site_name: 'BR1', role: 'SPOKE', connected: true, elements: [{ id: 'br1', name: 'BR1', connected: true, role: 'SPOKE', software_version: '' }] },
+                                            { site_id: 'dc1', site_name: 'DC1', role: 'HUB', connected: true, elements: [{ id: 'dc1-r1', name: 'DC1-R1', connected: true, role: 'HUB', software_version: '' }, { id: 'dc1-r2', name: 'DC1-R2', connected: true, role: 'HUB', software_version: '' }] },
+                                            { site_id: 'dc2', site_name: 'DC2', role: 'HUB', connected: true, elements: [{ id: 'dc2-r1', name: 'DC2-R1', connected: true, role: 'HUB', software_version: '' }, { id: 'dc2-r2', name: 'DC2-R2', connected: false, role: 'HUB', software_version: '' }] }
+                                        ];
+
+                                        const sourceList = traceSites.length > 0 ? traceSites : fallbackSites;
+                                        const localGroup = sourceList.filter((s) => s.site_name.toUpperCase() === effLocal.toUpperCase()).map(buildSiteOption);
+                                        const hubGroup = sourceList.filter((s) => s.site_name.toUpperCase() !== effLocal.toUpperCase() && s.role === 'HUB').map(buildSiteOption);
+                                        const spokeGroup = sourceList.filter((s) => s.site_name.toUpperCase() !== effLocal.toUpperCase() && s.role !== 'HUB').map(buildSiteOption);
+
+                                        const siteGroups: StigixSelectGroup[] = [];
+                                        if (localGroup.length > 0) siteGroups.push({ label: '★ Local Stigix Site', options: localGroup });
+                                        if (spokeGroup.length > 0) siteGroups.push({ label: 'Branch Spokes', options: spokeGroup });
+                                        if (hubGroup.length > 0) siteGroups.push({ label: 'Data Center Hubs', options: hubGroup });
+
+                                        return (
+                                            <StigixSelect
+                                                value={traceSourceSite}
+                                                onChange={(val) => setTraceSourceSite(val)}
+                                                groups={siteGroups}
+                                                disabled={tracingFlow}
+                                                accent="indigo"
+                                                menuMinWidth={300}
+                                                className="flex-1 min-w-0"
+                                                triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
+                                            />
+                                        );
+                                    })()}
+                                    <button
+                                        type="button"
+                                        onClick={() => fetchTraceSites(true)}
+                                        title="Refresh Prisma SD-WAN tenant sites"
+                                        className="p-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-text-muted hover:text-text-primary h-9 cursor-pointer shrink-0"
+                                    >
+                                        <RefreshCw size={13} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Source Client IP (Optional) */}
+                            <div className="lg:col-span-2 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Source IP (Optional)</label>
+                                    <span className="text-[9px] text-text-muted font-mono">LAN Host</span>
+                                </div>
+                                <input
+                                    type="text"
+                                    value={traceSrcIp}
+                                    onChange={(e) => setTraceSrcIp(e.target.value)}
+                                    disabled={tracingFlow}
+                                    placeholder="Auto (any LAN host, e.g. 192.168.219.1)"
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-indigo-500 h-9"
+                                />
+                            </div>
+
+                            {/* Destination IP or Domain/FQDN */}
+                            <div className="lg:col-span-4 space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Destination IP or Domain (SaaS / DC App)</label>
+                                    <span className="text-[9px] text-indigo-400 font-bold">Auto DNS + Next-Hop</span>
+                                </div>
+                                <input
+                                    type="text"
+                                    value={traceDestination}
+                                    onChange={(e) => setTraceDestination(e.target.value)}
+                                    disabled={tracingFlow}
+                                    placeholder="e.g. 192.168.212.100, login.microsoftonline.com, 1.1.1.1"
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-indigo-500 h-9"
+                                />
+                            </div>
+
+                            {/* Protocol & Port */}
+                            <div className="lg:col-span-2 grid grid-cols-2 gap-1.5">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Protocol</label>
+                                    <StigixSelect
+                                        value={traceProtocol}
+                                        onChange={(val) => setTraceProtocol(val as 'tcp' | 'udp' | 'icmp')}
+                                        disabled={tracingFlow}
+                                        accent="indigo"
+                                        menuMinWidth={190}
+                                        triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
+                                        options={[
+                                            { value: 'tcp', label: 'TCP', sublabel: 'Proto 6 • 3-Way / TLS', badge: 'L4' },
+                                            { value: 'udp', label: 'UDP', sublabel: 'Proto 17 • Datagram', badge: 'L4' },
+                                            { value: 'icmp', label: 'ICMP', sublabel: 'Proto 1 • Echo Ping', badge: 'L3' }
+                                        ]}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Dst Port</label>
+                                    <input
+                                        type="number"
+                                        value={traceProtocol === 'icmp' ? 0 : traceDstPort}
+                                        onChange={(e) => setTraceDstPort(parseInt(e.target.value, 10) || 0)}
+                                        disabled={tracingFlow || traceProtocol === 'icmp'}
+                                        placeholder="443"
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-indigo-500 h-9 disabled:opacity-40"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Collection Mode Toggle */}
+                            <div className="lg:col-span-1 space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Mode</label>
+                                <button
+                                    type="button"
+                                    disabled={tracingFlow}
+                                    onClick={() => {
+                                        if (traceSourceMode === 'auto') {
+                                            setTraceSourceMode('ion_only');
+                                        } else {
+                                            setTraceSourceMode('auto');
+                                        }
+                                    }}
+                                    title="Switch between Full Stigix Probe + PCAP + ION CLI vs Agentless ION-Only Flow Inspection"
+                                    className={`w-full rounded-xl px-2 py-1.5 text-[10px] font-black uppercase tracking-wider border h-9 transition-all cursor-pointer ${
+                                        traceSourceMode === 'ion_only'
+                                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                            : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                                    }`}
+                                >
+                                    {traceSourceMode === 'ion_only' ? 'ION-Only' : 'Auto+PCAP'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Quick Scenario Pills (Private DC App, SaaS O365 Backhaul, Prisma Access / DIA, Agentless Client) */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+                            <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                                <span className="font-black uppercase tracking-wider text-text-muted mr-1">Quick Targets:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTraceDestination('192.168.212.100');
+                                        setTraceDstPort(8098);
+                                        setTraceProtocol('tcp');
+                                        setTraceSrcIp('');
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-indigo-500/15 border border-border hover:border-indigo-500/40 text-text-secondary hover:text-indigo-300 font-mono transition-colors cursor-pointer"
+                                >
+                                    🏢 DC1 Private App (192.168.212.100:8098)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTraceDestination('192.168.203.100');
+                                        setTraceDstPort(8085);
+                                        setTraceProtocol('tcp');
+                                        setTraceSrcIp('');
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-indigo-500/15 border border-border hover:border-indigo-500/40 text-text-secondary hover:text-indigo-300 font-mono transition-colors cursor-pointer"
+                                >
+                                    🏢 OnPrem App 8085 (192.168.203.100:8085)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTraceDestination('40.99.155.50');
+                                        setTraceDstPort(443);
+                                        setTraceProtocol('tcp');
+                                        setTraceSrcIp('');
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-indigo-500/15 border border-border hover:border-indigo-500/40 text-text-secondary hover:text-indigo-300 font-mono transition-colors cursor-pointer"
+                                >
+                                    ☁️ O365 Backhaul via DC2 (40.99.155.50:443)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTraceDestination('login.microsoftonline.com');
+                                        setTraceDstPort(443);
+                                        setTraceProtocol('tcp');
+                                        setTraceSrcIp('');
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-indigo-500/15 border border-border hover:border-indigo-500/40 text-text-secondary hover:text-indigo-300 font-mono transition-colors cursor-pointer"
+                                >
+                                    🌐 Microsoft 365 FQDN (login.microsoftonline.com:443)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTraceSourceSite('BR5');
+                                        setTraceDestination('172.217.20.46');
+                                        setTraceDstPort(443);
+                                        setTraceProtocol('tcp');
+                                        setTraceSrcIp('');
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-card-secondary hover:bg-amber-500/15 border border-border hover:border-amber-500/40 text-text-secondary hover:text-amber-300 font-mono transition-colors cursor-pointer"
+                                >
+                                    📡 Remote Branch BR5 DIA (172.217.20.46:443)
+                                </button>
+                            </div>
+
+                            <label className="flex items-center gap-1.5 text-[10px] font-bold text-text-muted cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={traceGenerateProbe}
+                                    onChange={(e) => setTraceGenerateProbe(e.target.checked)}
+                                    className="rounded border-border text-indigo-500 focus:ring-0"
+                                />
+                                <span>Send live synthetic probe when on local Stigix site</span>
+                            </label>
+                        </div>
+                    </div>
+                ) : (
                 <div ref={dropdownBarRef} className="mt-4 pt-3.5 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
                     {/* Interface Custom Selector */}
                     {(() => {
@@ -1409,15 +1876,32 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
 
                     {/* Presets Custom Dropdown */}
                     {(() => {
-                        const activeBuiltIn = presets.find(p => p.id === selectedPreset);
-                        const activeCustom = customBpfPresets.find(cp => cp.id === selectedPreset);
-                        const activePresetLabel = activeBuiltIn
-                            ? activeBuiltIn.name
-                            : activeCustom
-                            ? activeCustom.name
-                            : selectedPreset === 'custom'
-                            ? 'Custom BPF Expression'
-                            : 'All Traffic';
+                        const presetGroups: StigixSelectGroup[] = [
+                            {
+                                label: '⚡ Built-in Presets',
+                                options: presets.map(p => ({
+                                    value: p.id,
+                                    label: p.name,
+                                    sublabel: p.bpf || 'Capture all interface traffic'
+                                }))
+                            }
+                        ];
+                        if (customBpfPresets.length > 0) {
+                            presetGroups.push({
+                                label: '⭐ Custom BPF Filters',
+                                options: customBpfPresets.map(cp => ({
+                                    value: cp.id,
+                                    label: cp.name,
+                                    sublabel: cp.bpf
+                                }))
+                            });
+                        }
+                        if (selectedPreset === 'custom') {
+                            presetGroups[0].options = [
+                                ...presetGroups[0].options,
+                                { value: 'custom', label: 'Custom BPF Expression', sublabel: bpfFilter || 'User-defined filter' }
+                            ];
+                        }
 
                         return (
                             <div className="lg:col-span-3 space-y-1 relative">
@@ -1436,83 +1920,15 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         </button>
                                     )}
                                 </div>
-                                <button
-                                    type="button"
+                                <StigixSelect
+                                    value={selectedPreset}
+                                    onChange={(val) => handlePresetSelect(val)}
+                                    groups={presetGroups}
                                     disabled={capturing}
-                                    onClick={() => setOpenDropdown(prev => prev === 'preset' ? null : 'preset')}
-                                    className={`w-full bg-card-secondary border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-2 h-9 transition-all cursor-pointer disabled:opacity-50 ${
-                                        openDropdown === 'preset' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
-                                    }`}
-                                >
-                                    <span className="truncate font-bold">{activePresetLabel}</span>
-                                    <ChevronDown size={13} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'preset' ? 'rotate-180 text-cyan-400' : ''}`} />
-                                </button>
-
-                                {openDropdown === 'preset' && (
-                                    <div className="absolute left-0 top-full mt-1.5 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 p-2 space-y-2 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
-                                        <div className="space-y-0.5">
-                                            <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-cyan-400">
-                                                ⚡ Built-in Presets
-                                            </div>
-                                            {presets.map(p => {
-                                                const isSel = selectedPreset === p.id;
-                                                return (
-                                                    <button
-                                                        key={p.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            handlePresetSelect(p.id);
-                                                            setOpenDropdown(null);
-                                                        }}
-                                                        className={`w-full px-3 py-2 text-left rounded-xl flex items-center justify-between gap-2 transition-all cursor-pointer ${
-                                                            isSel
-                                                                ? 'bg-cyan-500/15 text-text-primary border border-cyan-500/30'
-                                                                : 'hover:bg-card-secondary text-text-secondary border border-transparent'
-                                                        }`}
-                                                    >
-                                                        <div className="min-w-0">
-                                                            <div className="text-xs font-bold text-text-primary truncate">{p.name}</div>
-                                                            {p.bpf && <div className="text-[10px] font-mono text-text-muted truncate">{p.bpf}</div>}
-                                                        </div>
-                                                        {isSel && <Check size={12} className="text-cyan-400 shrink-0" />}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {customBpfPresets.length > 0 && (
-                                            <div className="space-y-0.5 pt-1.5 border-t border-border/60">
-                                                <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-amber-400">
-                                                    ⭐ Custom BPF Filters
-                                                </div>
-                                                {customBpfPresets.map(cp => {
-                                                    const isSel = selectedPreset === cp.id;
-                                                    return (
-                                                        <button
-                                                            key={cp.id}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                handlePresetSelect(cp.id);
-                                                                setOpenDropdown(null);
-                                                            }}
-                                                            className={`w-full px-3 py-2 text-left rounded-xl flex items-center justify-between gap-2 transition-all cursor-pointer ${
-                                                                isSel
-                                                                    ? 'bg-cyan-500/15 text-text-primary border border-cyan-500/30'
-                                                                    : 'hover:bg-card-secondary text-text-secondary border border-transparent'
-                                                            }`}
-                                                        >
-                                                            <div className="min-w-0">
-                                                                <div className="text-xs font-bold text-text-primary truncate">{cp.name}</div>
-                                                                <div className="text-[10px] font-mono text-text-muted truncate">{cp.bpf}</div>
-                                                            </div>
-                                                            {isSel && <Check size={12} className="text-cyan-400 shrink-0" />}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                    accent="cyan"
+                                    menuMinWidth={320}
+                                    triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
+                                />
                             </div>
                         );
                     })()}
@@ -1570,105 +1986,344 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     </div>
 
                     {/* Duration Limit */}
-                    {(() => {
-                        const durationOptions = [
-                            { value: 10, label: '10s' },
-                            { value: 30, label: '30s (Default)' },
-                            { value: 60, label: '60s' },
-                            { value: 120, label: '120s' },
-                            { value: 300, label: '300s (Max)' }
-                        ];
-                        return (
-                            <div className="lg:col-span-1 space-y-1 relative">
-                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Duration</label>
-                                <button
-                                    type="button"
-                                    disabled={capturing}
-                                    onClick={() => setOpenDropdown(prev => prev === 'duration' ? null : 'duration')}
-                                    className={`w-full bg-card-secondary border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-1 h-9 transition-all cursor-pointer disabled:opacity-50 ${
-                                        openDropdown === 'duration' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
-                                    }`}
-                                >
-                                    <span className="font-bold truncate">{durationSec}s</span>
-                                    <ChevronDown size={12} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'duration' ? 'rotate-180 text-cyan-400' : ''}`} />
-                                </button>
-                                {openDropdown === 'duration' && (
-                                    <div className="absolute right-0 top-full mt-1.5 w-40 bg-card border border-border rounded-2xl shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
-                                        {durationOptions.map(opt => (
-                                            <button
-                                                key={opt.value}
-                                                type="button"
-                                                onClick={() => {
-                                                    setDurationSec(opt.value);
-                                                    setOpenDropdown(null);
-                                                }}
-                                                className={`w-full px-3 py-1.5 text-left rounded-xl text-xs font-mono flex items-center justify-between transition-all cursor-pointer ${
-                                                    durationSec === opt.value
-                                                        ? 'bg-cyan-500/15 text-text-primary font-black border border-cyan-500/30'
-                                                        : 'hover:bg-card-secondary text-text-secondary border border-transparent'
-                                                }`}
-                                            >
-                                                <span>{opt.label}</span>
-                                                {durationSec === opt.value && <Check size={11} className="text-cyan-400" />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })()}
+                    <div className="lg:col-span-1 space-y-1 relative">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Duration</label>
+                        <StigixSelect
+                            value={durationSec}
+                            onChange={(val) => setDurationSec(Number(val))}
+                            disabled={capturing}
+                            accent="cyan"
+                            menuMinWidth={160}
+                            triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
+                            options={[
+                                { value: 10, label: '10s', sublabel: 'Quick burst' },
+                                { value: 30, label: '30s', badge: 'Default' },
+                                { value: 60, label: '60s', sublabel: '1 minute' },
+                                { value: 120, label: '120s', sublabel: '2 minutes' },
+                                { value: 300, label: '300s', badge: 'Max' }
+                            ]}
+                        />
+                    </div>
 
                     {/* Packet Limit */}
-                    {(() => {
-                        const limitOptions = [
-                            { value: 500, label: '500 pkts', short: '500' },
-                            { value: 2000, label: '2,000 pkts', short: '2,000' },
-                            { value: 5000, label: '5,000 pkts', short: '5,000' },
-                            { value: 10000, label: '10,000 pkts', short: '10,000' },
-                            { value: 100000, label: 'No limit (Time only)', short: 'Max' }
-                        ];
-                        const currentLimit = limitOptions.find(o => o.value === maxPackets) || limitOptions[1];
-                        return (
-                            <div className="lg:col-span-1 space-y-1 relative">
-                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Packet Limit</label>
-                                <button
-                                    type="button"
-                                    disabled={capturing}
-                                    onClick={() => setOpenDropdown(prev => prev === 'limit' ? null : 'limit')}
-                                    className={`w-full bg-card-secondary border rounded-xl px-2.5 py-1.5 text-xs text-text-primary font-mono flex items-center justify-between gap-1 h-9 transition-all cursor-pointer disabled:opacity-50 ${
-                                        openDropdown === 'limit' ? 'border-cyan-500 ring-2 ring-cyan-500/15' : 'border-border hover:border-cyan-500/40'
-                                    }`}
-                                >
-                                    <span className="font-bold truncate">{currentLimit.short} pkts</span>
-                                    <ChevronDown size={12} className={`text-text-muted shrink-0 transition-transform ${openDropdown === 'limit' ? 'rotate-180 text-cyan-400' : ''}`} />
-                                </button>
-                                {openDropdown === 'limit' && (
-                                    <div className="absolute right-0 top-full mt-1.5 w-48 bg-card border border-border rounded-2xl shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
-                                        {limitOptions.map(opt => (
-                                            <button
-                                                key={opt.value}
-                                                type="button"
-                                                onClick={() => {
-                                                    setMaxPackets(opt.value);
-                                                    setOpenDropdown(null);
-                                                }}
-                                                className={`w-full px-3 py-1.5 text-left rounded-xl text-xs font-mono flex items-center justify-between transition-all cursor-pointer ${
-                                                    maxPackets === opt.value
-                                                        ? 'bg-cyan-500/15 text-text-primary font-black border border-cyan-500/30'
-                                                        : 'hover:bg-card-secondary text-text-secondary border border-transparent'
-                                                }`}
-                                            >
-                                                <span>{opt.label}</span>
-                                                {maxPackets === opt.value && <Check size={11} className="text-cyan-400" />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })()}
+                    <div className="lg:col-span-1 space-y-1 relative">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Packet Limit</label>
+                        <StigixSelect
+                            value={maxPackets}
+                            onChange={(val) => setMaxPackets(Number(val))}
+                            disabled={capturing}
+                            accent="cyan"
+                            menuMinWidth={190}
+                            triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
+                            options={[
+                                { value: 500, label: '500 pkts' },
+                                { value: 2000, label: '2,000 pkts', badge: 'Default' },
+                                { value: 5000, label: '5,000 pkts' },
+                                { value: 10000, label: '10,000 pkts' },
+                                { value: 100000, label: 'Max pkts', sublabel: 'Time-bounded only' }
+                            ]}
+                        />
+                    </div>
                 </div>
+                )}
             </div>
+
+            {/* ── E2E FLOW & PATH TRACE PIPELINE (NWPI VIEW) ── */}
+            {captureMode === 'trace' && (tracingFlow || traceResult) && (
+                <div className="bg-card border border-indigo-500/30 rounded-2xl p-4 shadow-sm space-y-4 animate-in fade-in duration-200">
+                    {tracingFlow ? (
+                        <div className="py-10 text-center space-y-3">
+                            <Loader2 size={28} className="animate-spin mx-auto text-indigo-400" />
+                            <div className="text-xs font-black text-text-primary uppercase tracking-wider">
+                                Executing End-to-End SD-WAN Flow &amp; Path Trace...
+                            </div>
+                            <p className="text-[11px] text-text-muted font-mono">
+                                {traceSourceMode !== 'ion_only' && traceSourceSite.toUpperCase() === (detectedLocalSite || localSiteName || 'BR8').toUpperCase()
+                                    ? `1. Recording local PCAP (${selectedInterface}) + synthetic ${traceProtocol.toUpperCase()} probe → 2. Querying ${traceSourceSite} ION WebSocket CLI (inspect flow brief) → 3. Chaining Next-Hop DC/Hub ION...`
+                                    : `Querying ${traceSourceSite} ION WebSocket CLI (inspect flow brief) → Chaining Next-Hop DC/Hub ION or ServiceLink...`}
+                            </p>
+                        </div>
+                    ) : traceResult ? (
+                        <>
+                            {/* Verdict & App-ID Summary Banner */}
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-border/60">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${
+                                        traceResult.verdict?.status === 'VERIFIED_E2E'
+                                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                            : traceResult.verdict?.status === 'FLOW_ACTIVE'
+                                            ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                            : traceResult.verdict?.status === 'BLOCKED' || traceResult.verdict?.status === 'DNS_ERROR'
+                                            ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                            : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                    }`}>
+                                        {traceResult.verdict?.status === 'VERIFIED_E2E' || traceResult.verdict?.status === 'FLOW_ACTIVE' ? (
+                                            <CheckCircle2 size={13} />
+                                        ) : (
+                                            <AlertCircle size={13} />
+                                        )}
+                                        <span>{traceResult.verdict?.status?.replace(/_/g, ' ') || 'TRACE COMPLETE'}</span>
+                                    </span>
+
+                                    {traceResult.verdict?.forwarding_mode && (
+                                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                                            {traceResult.verdict.forwarding_mode.replace(/_/g, ' ')}
+                                        </span>
+                                    )}
+
+                                    {traceResult.verdict?.app_id && (
+                                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                            <Cpu size={11} />
+                                            App-ID: {traceResult.verdict.app_id}
+                                        </span>
+                                    )}
+
+                                    {traceResult.verdict?.sec_action && (
+                                        <span className={`px-2 py-1 rounded-lg text-[10px] font-mono font-black border ${
+                                            String(traceResult.verdict.sec_action).toUpperCase() === 'ALLOW'
+                                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                                : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                        }`}>
+                                            ZBFW: {traceResult.verdict.sec_action}
+                                        </span>
+                                    )}
+
+                                    {traceResult.verdict?.egress_path && (
+                                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-card-secondary text-cyan-300 border border-border">
+                                            Path: {traceResult.verdict.egress_path}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-3 text-[10px] font-mono text-text-muted">
+                                    {traceResult.verdict?.net_policy && (
+                                        <span>Path Pol: <strong className="text-text-primary">{traceResult.verdict.net_policy}</strong></span>
+                                    )}
+                                    {traceResult.verdict?.pri_policy && (
+                                        <span>QoS Pol: <strong className="text-text-primary">{traceResult.verdict.pri_policy}</strong></span>
+                                    )}
+                                    {traceResult.verdict?.sec_policy && (
+                                        <span>Sec Rule: <strong className="text-text-primary">{traceResult.verdict.sec_policy}</strong></span>
+                                    )}
+                                    <span>({(traceResult.duration_ms / 1000).toFixed(1)}s)</span>
+                                </div>
+                            </div>
+
+                            {/* 4-Hop Visual End-to-End Pipeline */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                {(traceResult.hops || []).map((hop: any, idx: number) => {
+                                    const st = String(hop.status || '').toUpperCase();
+                                    const borderClass =
+                                        st === 'OBSERVED' || st === 'FORWARDED'
+                                            ? 'border-emerald-500/40 bg-emerald-500/5'
+                                            : st === 'BLOCKED'
+                                            ? 'border-rose-500/40 bg-rose-500/5'
+                                            : st === 'NOT_OBSERVED'
+                                            ? 'border-amber-500/40 bg-amber-500/5'
+                                            : 'border-border bg-card-secondary/50';
+                                    const badgeClass =
+                                        st === 'OBSERVED' || st === 'FORWARDED'
+                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                            : st === 'BLOCKED'
+                                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                            : st === 'NOT_OBSERVED'
+                                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                            : 'bg-slate-500/20 text-slate-300 border-slate-500/30';
+
+                                    return (
+                                        <div key={hop.id || idx} className={`border rounded-xl p-3 space-y-2 relative ${borderClass}`}>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">
+                                                    Hop {idx + 1} • {hop.role?.replace(/_/g, ' ')}
+                                                </span>
+                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${badgeClass}`}>
+                                                    {st}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-black text-text-primary truncate" title={hop.title}>
+                                                    {hop.title}
+                                                </div>
+                                                <div className="text-[10px] font-mono text-text-muted truncate" title={hop.subtitle}>
+                                                    {hop.subtitle}
+                                                </div>
+                                            </div>
+                                            {hop.badge && (
+                                                <div className="text-[10px] font-mono font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-2 py-1 truncate">
+                                                    {hop.badge}
+                                                </div>
+                                            )}
+                                            {hop.error && (
+                                                <div className="text-[10px] font-mono text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-2 py-1">
+                                                    {hop.error}
+                                                </div>
+                                            )}
+                                            {/* Hop-specific details */}
+                                            <div className="text-[10px] font-mono text-text-secondary space-y-0.5 pt-1 border-t border-border/40">
+                                                {hop.role === 'SOURCE_STIGIX' && hop.metrics && (
+                                                    <>
+                                                        <div>Probe: <span className="text-text-primary">{hop.metrics.probe_detail}</span></div>
+                                                        {hop.metrics.pcap_file && (
+                                                            <div>PCAP: <span className="text-cyan-300">{hop.metrics.pcap_file}</span> ({hop.metrics.total_packets} pkts)</div>
+                                                        )}
+                                                    </>
+                                                )}
+                                                {hop.role === 'SOURCE_CLIENT_AGENTLESS' && hop.metrics && (
+                                                    <>
+                                                        <div>Source IP: <span className="text-text-primary">{hop.metrics.source_ip}</span></div>
+                                                        <div>Mode: <span className="text-amber-300">{hop.metrics.mode}</span></div>
+                                                    </>
+                                                )}
+                                                {hop.role === 'INGRESS_ION' && hop.metrics && (
+                                                    <>
+                                                        {hop.metrics.egress_path && (
+                                                            <div>Egress: <span className="text-cyan-300 font-bold">{hop.metrics.egress_path}</span></div>
+                                                        )}
+                                                        {hop.metrics.raw_path_type && (
+                                                            <div>Flow Path: <span className="text-text-primary">{hop.metrics.raw_path_type}</span></div>
+                                                        )}
+                                                        {hop.metrics.net_policy && (
+                                                            <div>Policies: <span className="text-text-primary">{hop.metrics.net_policy} / {hop.metrics.pri_policy}</span></div>
+                                                        )}
+                                                        <div>Active Table: <span className="text-text-primary">{hop.metrics.matched_flows_count ?? 0} matched / {hop.metrics.total_table_flows ?? 0} total</span></div>
+                                                    </>
+                                                )}
+                                                {hop.role === 'TRANSIT_ION' && hop.metrics && (
+                                                    <>
+                                                        {hop.metrics.tunnel && (
+                                                            <div>Tunnel: <span className="text-cyan-300">{hop.metrics.tunnel}</span></div>
+                                                        )}
+                                                        {Array.isArray(hop.metrics.ha_elements_checked) && hop.metrics.ha_elements_checked.length > 0 && (
+                                                            <div>
+                                                                HA Checked:{' '}
+                                                                {hop.metrics.ha_elements_checked.map((h: any) => `${h.element} (${h.matched_flows}/${h.total_flows})`).join(', ')}
+                                                            </div>
+                                                        )}
+                                                        {hop.metrics.note && (
+                                                            <div className="text-[9px] text-text-muted italic">{hop.metrics.note}</div>
+                                                        )}
+                                                    </>
+                                                )}
+                                                {hop.role === 'TRANSIT_SERVICELINK' && hop.metrics && (
+                                                    <>
+                                                        <div>Tunnel: <span className="text-cyan-300">{hop.metrics.egress_path}</span></div>
+                                                        {Array.isArray(hop.metrics.servicelinks) && hop.metrics.servicelinks.slice(0, 2).map((sl: any, sIdx: number) => (
+                                                            <div key={sIdx} className="truncate">
+                                                                {sl.device} ({sl.name}): <span className={sl.status === 'up' ? 'text-emerald-400 font-bold' : 'text-rose-400'}>{sl.status}/{sl.ext_state}</span> → {sl.peer}
+                                                            </div>
+                                                        ))}
+                                                    </>
+                                                )}
+                                                {hop.role === 'TRANSIT_DIA' && hop.metrics && (
+                                                    <>
+                                                        <div>WAN Circuit: <span className="text-cyan-300 font-bold">{hop.metrics.circuit}</span></div>
+                                                        <div>Forwarding: <span className="text-text-primary">{hop.metrics.raw_path_type}</span></div>
+                                                    </>
+                                                )}
+                                                {hop.role === 'DESTINATION' && hop.metrics && (
+                                                    <>
+                                                        <div>Resolved IP: <span className="text-text-primary font-bold">{hop.metrics.resolved_ip || '-'}</span></div>
+                                                        {hop.metrics.dns_resolution_ms !== null && hop.metrics.dns_resolution_ms !== undefined && (
+                                                            <div>DNS Lookup: <span className="text-emerald-400">{hop.metrics.dns_resolution_ms}ms</span></div>
+                                                        )}
+                                                        {hop.metrics.dns_error && (
+                                                            <div className="text-rose-400">{hop.metrics.dns_error}</div>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Matching Dataplane Flows Table (Ingress ION & Transit Hub ION) */}
+                            {((traceResult.ingress_flows && traceResult.ingress_flows.length > 0) ||
+                              (traceResult.transit_flows && traceResult.transit_flows.length > 0)) && (
+                                <div className="border border-border/60 rounded-xl overflow-hidden bg-card-secondary/30">
+                                    <div className="px-3 py-2 bg-card-secondary border-b border-border/60 flex items-center justify-between">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-text-primary flex items-center gap-1.5">
+                                            <Terminal size={12} className="text-indigo-400" />
+                                            vION Dataplane Flow Records (inspect flow brief) — Click any flow to filter PCAP below
+                                        </span>
+                                        <span className="text-[10px] font-mono text-text-muted">
+                                            {(traceResult.ingress_flows?.length || 0)} Ingress / {(traceResult.transit_flows?.length || 0)} Transit Hub
+                                        </span>
+                                    </div>
+                                    <div className="max-h-44 overflow-y-auto overflow-x-auto font-mono text-[11px]">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-card-secondary/80 text-[9px] uppercase text-text-muted border-b border-border/40">
+                                                <tr>
+                                                    <th className="py-1.5 px-2.5">Hop / Element</th>
+                                                    <th className="py-1.5 px-2.5">Source</th>
+                                                    <th className="py-1.5 px-2.5">Destination</th>
+                                                    <th className="py-1.5 px-2.5">Proto</th>
+                                                    <th className="py-1.5 px-2.5">App-ID</th>
+                                                    <th className="py-1.5 px-2.5">Path Policy</th>
+                                                    <th className="py-1.5 px-2.5">QoS Policy</th>
+                                                    <th className="py-1.5 px-2.5">Security Rule</th>
+                                                    <th className="py-1.5 px-2.5">Action</th>
+                                                    <th className="py-1.5 px-2.5">Egress / Tunnel Path</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/20">
+                                                {(traceResult.ingress_flows || []).slice(0, 8).map((fl: any, i: number) => (
+                                                    <tr
+                                                        key={`ing-${i}`}
+                                                        onClick={() => setDisplayFilter(fl.destination_ip || '')}
+                                                        className="hover:bg-indigo-500/10 cursor-pointer transition-colors"
+                                                    >
+                                                        <td className="py-1 px-2.5 font-bold text-cyan-400">
+                                                            Ingress ({traceResult.hops?.[1]?.metrics?.element || traceResult.query?.source_site})
+                                                        </td>
+                                                        <td className="py-1 px-2.5 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
+                                                        <td className="py-1 px-2.5 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
+                                                        <td className="py-1 px-2.5 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
+                                                        <td className="py-1 px-2.5 font-bold text-purple-300">{fl.app_id}</td>
+                                                        <td className="py-1 px-2.5 text-text-secondary">{fl.net_policy || '-'}</td>
+                                                        <td className="py-1 px-2.5 text-text-secondary">{fl.pri_policy || '-'}</td>
+                                                        <td className="py-1 px-2.5 text-text-secondary">{fl.sec_policy || '-'}</td>
+                                                        <td className="py-1 px-2.5">
+                                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                                                String(fl.sec_action).toUpperCase() === 'ALLOW'
+                                                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                                                    : 'bg-rose-500/20 text-rose-300'
+                                                            }`}>
+                                                                {fl.sec_action}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-1 px-2.5 text-cyan-300">{fl.egress_path} ({fl.raw_path_type})</td>
+                                                    </tr>
+                                                ))}
+                                                {(traceResult.transit_flows || []).slice(0, 5).map((fl: any, i: number) => (
+                                                    <tr
+                                                        key={`tr-${i}`}
+                                                        onClick={() => setDisplayFilter(fl.destination_ip || '')}
+                                                        className="hover:bg-emerald-500/10 cursor-pointer transition-colors bg-emerald-500/5"
+                                                    >
+                                                        <td className="py-1 px-2.5 font-bold text-emerald-400">
+                                                            Transit Hub ({traceResult.hops?.[2]?.metrics?.element || traceResult.verdict?.peer_site_name})
+                                                        </td>
+                                                        <td className="py-1 px-2.5 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
+                                                        <td className="py-1 px-2.5 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
+                                                        <td className="py-1 px-2.5 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
+                                                        <td className="py-1 px-2.5 text-text-muted italic">{fl.app_id} (Ingress Enforced)</td>
+                                                        <td className="py-1 px-2.5 text-text-muted">{fl.net_policy || '-'}</td>
+                                                        <td className="py-1 px-2.5 text-text-muted">{fl.pri_policy || '-'}</td>
+                                                        <td className="py-1 px-2.5 text-text-muted">{fl.sec_policy || '-'}</td>
+                                                        <td className="py-1 px-2.5 text-text-muted">{fl.sec_action}</td>
+                                                        <td className="py-1 px-2.5 text-emerald-300 font-bold">{fl.raw_path_type} (WANPATH {fl.wanpath_id})</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    ) : null}
+                </div>
+            )}
 
             {/* Display Search & Filter Bar */}
             <div className="bg-card border border-border px-4 py-2.5 rounded-2xl flex items-center justify-between gap-4">
@@ -1922,9 +2577,42 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </h3>
                             </div>
                             {activePacket && (
-                                <span className={`text-[9px] font-black px-2 py-0.5 rounded border ${getProtoColorClass(activePacket.protocol, activePacket.info)}`}>
-                                    {activePacket.protocol} • {activePacket.length} bytes
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const dstIp = cleanHost(activePacket.destination);
+                                            const srcIp = cleanHost(activePacket.source);
+                                            const protoLower = activePacket.protocol.toLowerCase();
+                                            const mappedProto: 'tcp' | 'udp' | 'icmp' =
+                                                protoLower === 'udp' || protoLower === 'dns' || protoLower === 'rtp'
+                                                    ? 'udp'
+                                                    : protoLower === 'icmp'
+                                                    ? 'icmp'
+                                                    : 'tcp';
+                                            const port = activePacket.dport || activePacket.sport || 443;
+                                            setCaptureMode('trace');
+                                            setTraceDestination(dstIp);
+                                            setTraceSrcIp(srcIp);
+                                            setTraceDstPort(port);
+                                            setTraceProtocol(mappedProto);
+                                            handleRunFlowTrace({
+                                                destination: dstIp,
+                                                srcIp,
+                                                dstPort: port,
+                                                protocol: mappedProto
+                                            });
+                                        }}
+                                        title="Trace this packet's 5-tuple across Branch & DC IONs (NWPI E2E Flow Trace)"
+                                        className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 transition-colors cursor-pointer"
+                                    >
+                                        <Sparkles size={10} />
+                                        Trace Flow E2E
+                                    </button>
+                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded border ${getProtoColorClass(activePacket.protocol, activePacket.info)}`}>
+                                        {activePacket.protocol} • {activePacket.length} bytes
+                                    </span>
+                                </div>
                             )}
                         </div>
 
