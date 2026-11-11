@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.9] - 2026-11-11
+
+### Changed & Enhanced
+- **Interactive Path Timeline, Real-Time Step Progression & Tabbed Evidence UX for E2E Flow & Path Trace (`web-dashboard/src/PacketCapture.tsx`, `web-dashboard/packet-capture-routes.ts`, `engines/sdwan_ion_cli.py`)**:
+  - Replaced the 4 simultaneous large HOP cards with a compact, interactive **Horizontal Path Timeline** (`Stigix Source → Ingress ION → Transit Hub / Egress → Destination`) paired with a single expandable **Selected Point Detail Panel** that auto-selects the first anomalous hop (or Ingress ION when healthy).
+  - Added real-time step-by-step diagnostic progression (`GET /api/capture/trace-flow/progress` + `STIGIX_TRACE_PROGRESS` milestones from `sdwan_ion_cli.py`), validating **Hop 1 (Local PCAP + Probe)** at ~`2.4s`, **Hop 2 (Ingress ION CLI)** at ~`9s`, and **Hop 3 / Hop 4 (Transit Hub ION & Destination)** upon completion without artificial timers.
+  - Added explicit **Analyzed Flow 5-Tuple Identity** (`192.168.219.1:42288 → 192.168.212.100:8098 · TCP`) and 4-tier correlation ranking (`EXACT_PCAP_5TUPLE`, `SESSION_PROBE_FLOW`, `SAME_HOST_FLOW`, `ASSOCIATED_DST_FLOW`) to distinguish the exact probe flow captured in the PCAP from associated flows to the same destination.
+  - Added a 3-part **Diagnostic Synthesis Banner** (Connectivity Result, SD-WAN Path Visibility, and Root-Cause / Methodological Scope) and explicit **Evidence Type** badges (`Local PCAP + Active Probe`, `vION Flow Table`, `vION Flow Table (HA)`, `Source Probe · No Remote Capture`) with solid vs dashed/broken path connectors.
+  - Replaced the vertically stacked vION Flow and PCAP tables with a **Tabbed Evidence Workspace** (`Captured Packets` | `vION Flow Records` | `Collection & Limits`).
+
+### Fixed & Hardened
+- **Unidirectional Flow Detection (`TX > 0 / 0 RX`), Source Port Reuse & 1-Shot HA Hub Targeting (`engines/sdwan_ion_cli.py`, `web-dashboard/packet-capture-routes.ts`)**:
+  - Added explicit `UNIDIRECTIONAL_NO_REPLY` verdict and `UNREACHABLE` Hop 4 diagnosis when forward packets (`SYN` / UDP / ICMP) leave the source probe and arrive at the Hub ION (`vpn_to_core`), but `0 RX` return packets come back due to a downstream firewall drop (e.g., `vyoslandc`) or missing return route.
+  - Reused the initial probe source port on unanswered TCP/TLS `SYN` keepalive pulses (with automatic fallback on `EADDRINUSE`) and passed the PCAP-detected source IP (`--src-ip`) to `sdwan_ion_cli.py` when `Source IP` is left on `Auto`.
+  - Added `_prime_ha_element_from_wanpath()` in `engines/sdwan_ion_cli.py` to resolve the exact Hub HA router (`DC1-R1` vs `DC1-R2`, `DC2-R1` vs `DC2-R2`) from the cached site topology `wanpath_id`, cutting HA hub trace latency in half.
+
 ## [3.2.8] - 2026-11-11
 
 ### Added

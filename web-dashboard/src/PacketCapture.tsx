@@ -438,7 +438,13 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     const [traceProtocol, setTraceProtocol] = useState<'tcp' | 'udp' | 'icmp'>('tcp');
     const [traceGenerateProbe, setTraceGenerateProbe] = useState<boolean>(true);
     const [tracingFlow, setTracingFlow] = useState<boolean>(false);
+    const [traceProgress, setTraceProgress] = useState<any>(null);
     const [traceResult, setTraceResult] = useState<any>(null);
+    const [selectedHopId, setSelectedHopId] = useState<string>('hop_ingress_ion');
+    const [traceEvidenceTab, setTraceEvidenceTab] = useState<'packets' | 'flows' | 'limits'>('packets');
+    const [selectedTraceFlow, setSelectedTraceFlow] = useState<any | null>(null);
+    const [showOnlyExactFlows, setShowOnlyExactFlows] = useState<boolean>(false);
+    const activeTraceIdRef = useRef<string>('');
 
     // Draggable Column Widths for Virtual Packet Table
     const DEFAULT_COL_WIDTHS = useMemo(() => ({
@@ -561,6 +567,36 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         }
     };
 
+    // Poll real-time hop-by-hop progress while E2E Flow Trace is running
+    useEffect(() => {
+        if (!tracingFlow) return;
+        let cancelled = false;
+        const pollProgress = async () => {
+            if (cancelled) return;
+            try {
+                const res = await gFetch('/api/capture/trace-flow/progress', {
+                    credentials: 'include',
+                    headers: authHeaders
+                });
+                if (!cancelled && res.ok) {
+                    const prog = await res.json();
+                    if (prog && prog.active && (!activeTraceIdRef.current || prog.trace_id === activeTraceIdRef.current)) {
+                        setTraceProgress(prog);
+                        const runningHop = (prog.hops || []).find((h: any) => h.status === 'RUNNING');
+                        if (runningHop?.id) {
+                            setSelectedHopId(runningHop.id);
+                        }
+                    }
+                }
+            } catch {}
+        };
+        const intervalId = setInterval(pollProgress, 750);
+        return () => {
+            cancelled = true;
+            clearInterval(intervalId);
+        };
+    }, [tracingFlow, gFetch, authHeaders]);
+
     const handleRunFlowTrace = async (overrideParams?: {
         destination?: string;
         dstPort?: number;
@@ -580,6 +616,68 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             return;
         }
 
+        const currentTraceId = `trace_${Date.now()}`;
+        activeTraceIdRef.current = currentTraceId;
+        const effLocal = detectedLocalSite || localSiteName || 'BR8';
+        const isLocalTrace = traceSourceMode !== 'ion_only' && effSite.toUpperCase() === effLocal.toUpperCase();
+        const dstPortLabelInit = effProto === 'icmp' ? 'ICMP' : `${effProto.toUpperCase()}/${effPort || '*'}`;
+
+        setSelectedTraceFlow(null);
+        setDisplayFilter('');
+        setSelectedHopId(isLocalTrace ? 'hop_source' : 'hop_ingress_ion');
+        setTraceProgress({
+            active: true,
+            trace_id: currentTraceId,
+            phase: isLocalTrace ? 'LOCAL_CAPTURE_AND_PROBE' : 'INGRESS_ION_CLI',
+            phase_label: isLocalTrace
+                ? `Recording local PCAP & dispatching synthetic ${effProto.toUpperCase()} probe from ${effSite}...`
+                : `Querying ${effSite} vION flow table via WebSocket CLI...`,
+            flow_identity: {
+                probe_5tuple: `${effSrcIp || 'Auto Source'} → ${effDst}${effPort && effProto !== 'icmp' ? `:${effPort}` : ''} · ${effProto.toUpperCase()}`
+            },
+            hops: [
+                {
+                    id: 'hop_source',
+                    role: isLocalTrace ? 'SOURCE_STIGIX' : 'SOURCE_CLIENT_AGENTLESS',
+                    role_label: isLocalTrace ? 'Source Probe' : 'Site Client (Agentless)',
+                    title: isLocalTrace ? `Stigix ${effSite}` : `Client (${effSite})`,
+                    subtitle: effSrcIp || (isLocalTrace ? 'Capturing local NIC...' : 'Agentless Mode'),
+                    status: isLocalTrace ? 'RUNNING' : 'PASSIVE',
+                    badge: isLocalTrace ? 'Capturing PCAP + Probe...' : 'No Local Probe',
+                    evidence_type: isLocalTrace ? 'Local PCAP + Active Probe' : 'Agentless (No Local Probe)'
+                },
+                {
+                    id: 'hop_ingress_ion',
+                    role: 'INGRESS_ION',
+                    role_label: 'Ingress ION',
+                    title: `ION ${effSite}`,
+                    subtitle: 'Waiting for probe generation',
+                    status: isLocalTrace ? 'PENDING' : 'RUNNING',
+                    badge: isLocalTrace ? 'Pending' : 'Inspecting Flow Table...',
+                    evidence_type: 'vION Flow Table'
+                },
+                {
+                    id: 'hop_transit',
+                    role: 'TRANSIT_ION',
+                    role_label: 'Transit / Egress Path',
+                    title: 'Transit Hub / Egress',
+                    subtitle: 'Pending ingress routing decision',
+                    status: 'PENDING',
+                    badge: 'Pending',
+                    evidence_type: 'SD-WAN Control & Dataplane'
+                },
+                {
+                    id: 'hop_destination',
+                    role: 'DESTINATION',
+                    role_label: `Destination ${dstPortLabelInit}`,
+                    title: effDst || 'Destination',
+                    subtitle: effDst,
+                    status: 'PENDING',
+                    badge: 'Pending',
+                    evidence_type: 'Source Probe · No Remote Capture'
+                }
+            ]
+        });
         setTracingFlow(true);
         const toastId = 'e2e-flow-trace';
         toast.loading(`Tracing flow from ${effSite} → ${effDst || 'active flows'} across SD-WAN fabric...`, { id: toastId });
@@ -590,6 +688,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 credentials: 'include',
                 headers: authHeaders,
                 body: JSON.stringify({
+                    traceId: currentTraceId,
                     sourceSite: effSite,
                     sourceMode: traceSourceMode,
                     srcIp: effSrcIp,
@@ -601,10 +700,27 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 })
             });
             const data = await res.json();
+            if (activeTraceIdRef.current !== currentTraceId) {
+                return;
+            }
             if (!res.ok || data.success === false) {
                 throw new Error(data.error || `Trace failed (HTTP ${res.status})`);
             }
             setTraceResult(data);
+            setTraceProgress(null);
+
+            // Smart auto-selection of the most relevant hop for the detail panel
+            const hopsList: any[] = Array.isArray(data.hops) ? data.hops : [];
+            const anomalyHop = hopsList.find((h) =>
+                ['BLOCKED', 'UNREACHABLE', 'UNAVAILABLE', 'NOT_OBSERVED'].includes(String(h.status || '').toUpperCase())
+            );
+            if (anomalyHop?.id) {
+                setSelectedHopId(anomalyHop.id);
+            } else if (hopsList.some((h) => h.id === 'hop_ingress_ion')) {
+                setSelectedHopId('hop_ingress_ion');
+            } else if (hopsList[0]?.id) {
+                setSelectedHopId(hopsList[0].id);
+            }
 
             // If local PCAP packets were captured during the trace, load them directly into the 3-Pane Wireshark Dissector!
             if (data.pcap && Array.isArray(data.pcap.packets)) {
@@ -622,6 +738,9 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                         'User Datagram Protocol': true
                     });
                 }
+                setTraceEvidenceTab('packets');
+            } else {
+                setTraceEvidenceTab('flows');
             }
 
             const appBadge = data.verdict?.app_id ? ` [App-ID: ${data.verdict.app_id}]` : '';
@@ -632,9 +751,13 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 toast.success(`Trace complete!${appBadge}${pathBadge}`, { id: toastId });
             }
         } catch (e: any) {
-            toast.error(`Flow Trace error: ${e.message}`, { id: toastId });
+            if (activeTraceIdRef.current === currentTraceId) {
+                toast.error(`Flow Trace error: ${e.message}`, { id: toastId });
+            }
         } finally {
-            setTracingFlow(false);
+            if (activeTraceIdRef.current === currentTraceId) {
+                setTracingFlow(false);
+            }
         }
     };
 
@@ -2028,304 +2151,864 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 )}
             </div>
 
-            {/* ── E2E FLOW & PATH TRACE PIPELINE (NWPI VIEW) ── */}
-            {captureMode === 'trace' && (tracingFlow || traceResult) && (
-                <div className="bg-card border border-indigo-500/30 rounded-2xl p-4 shadow-sm space-y-4 animate-in fade-in duration-200">
-                    {tracingFlow ? (
-                        <div className="py-10 text-center space-y-3">
-                            <Loader2 size={28} className="animate-spin mx-auto text-indigo-400" />
-                            <div className="text-xs font-black text-text-primary uppercase tracking-wider">
-                                Executing End-to-End SD-WAN Flow &amp; Path Trace...
-                            </div>
-                            <p className="text-[11px] text-text-muted font-mono">
-                                {traceSourceMode !== 'ion_only' && traceSourceSite.toUpperCase() === (detectedLocalSite || localSiteName || 'BR8').toUpperCase()
-                                    ? `1. Recording local PCAP (${selectedInterface}) + synthetic ${traceProtocol.toUpperCase()} probe → 2. Querying ${traceSourceSite} ION WebSocket CLI (inspect flow brief) → 3. Chaining Next-Hop DC/Hub ION...`
-                                    : `Querying ${traceSourceSite} ION WebSocket CLI (inspect flow brief) → Chaining Next-Hop DC/Hub ION or ServiceLink...`}
-                            </p>
-                        </div>
-                    ) : traceResult ? (
-                        <>
-                            {/* Verdict & App-ID Summary Banner */}
-                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-border/60">
-                                <div className="flex items-center gap-2.5 flex-wrap">
-                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${
-                                        traceResult.verdict?.status === 'VERIFIED_E2E'
-                                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                            : traceResult.verdict?.status === 'FLOW_ACTIVE'
-                                            ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
-                                            : traceResult.verdict?.status === 'BLOCKED' || traceResult.verdict?.status === 'DNS_ERROR'
-                                            ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                                            : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                    }`}>
-                                        {traceResult.verdict?.status === 'VERIFIED_E2E' || traceResult.verdict?.status === 'FLOW_ACTIVE' ? (
-                                            <CheckCircle2 size={13} />
-                                        ) : (
-                                            <AlertCircle size={13} />
-                                        )}
-                                        <span>{traceResult.verdict?.status?.replace(/_/g, ' ') || 'TRACE COMPLETE'}</span>
+            {/* ── E2E FLOW & PATH TRACE PIPELINE (NWPI COMPACT TIMELINE & EVIDENCE VIEW) ── */}
+            {captureMode === 'trace' && (tracingFlow || traceResult) && (() => {
+                const activeHops: any[] = tracingFlow
+                    ? (traceProgress?.hops || [])
+                    : (traceResult?.hops || []);
+                const selectedHop =
+                    activeHops.find((h: any) => h.id === selectedHopId) ||
+                    activeHops.find((h: any) => h.id === 'hop_ingress_ion') ||
+                    activeHops[0] ||
+                    null;
+
+                const flowIdObj = tracingFlow
+                    ? traceProgress?.flow_identity
+                    : traceResult?.flow_identity;
+                const synthesisObj = !tracingFlow ? traceResult?.synthesis : null;
+                const verdictObj = !tracingFlow ? traceResult?.verdict : null;
+
+                const ingressFlowsAll: any[] = Array.isArray(traceResult?.ingress_flows) ? traceResult.ingress_flows : [];
+                const transitFlowsAll: any[] = Array.isArray(traceResult?.transit_flows) ? traceResult.transit_flows : [];
+                const totalIonFlows = ingressFlowsAll.length + transitFlowsAll.length;
+                const exactIonFlowsCount =
+                    ingressFlowsAll.filter((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW').length +
+                    transitFlowsAll.filter((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW').length;
+
+                const getNodeTheme = (statusRaw: string) => {
+                    const st = String(statusRaw || '').toUpperCase();
+                    if (st === 'RUNNING') {
+                        return {
+                            card: 'border-indigo-500/60 bg-indigo-500/10 shadow-[0_0_15px_rgba(99,102,241,0.15)]',
+                            badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+                            dot: 'bg-indigo-400',
+                            icon: <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />,
+                            label: 'ANALYZING'
+                        };
+                    }
+                    if (st === 'OBSERVED') {
+                        return {
+                            card: 'border-emerald-500/40 bg-emerald-500/5 hover:border-emerald-500/70',
+                            badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+                            dot: 'bg-emerald-400',
+                            icon: <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />,
+                            label: 'OBSERVED'
+                        };
+                    }
+                    if (st === 'FORWARDED') {
+                        return {
+                            card: 'border-cyan-500/40 bg-cyan-500/5 hover:border-cyan-500/70',
+                            badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+                            dot: 'bg-cyan-400',
+                            icon: <CheckCircle2 size={14} className="text-cyan-400 shrink-0" />,
+                            label: 'FORWARDED'
+                        };
+                    }
+                    if (st === 'BLOCKED' || st === 'UNREACHABLE') {
+                        return {
+                            card: 'border-rose-500/50 bg-rose-500/10 hover:border-rose-500/80',
+                            badge: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+                            dot: 'bg-rose-400',
+                            icon: <AlertCircle size={14} className="text-rose-400 shrink-0" />,
+                            label: st
+                        };
+                    }
+                    if (st === 'NOT_OBSERVED' || st === 'UNAVAILABLE') {
+                        return {
+                            card: 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/70',
+                            badge: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+                            dot: 'bg-amber-400',
+                            icon: <AlertCircle size={14} className="text-amber-400 shrink-0" />,
+                            label: st === 'NOT_OBSERVED' ? 'NO MATCH' : 'CLI ERROR'
+                        };
+                    }
+                    if (st === 'PASSIVE') {
+                        return {
+                            card: 'border-slate-500/40 bg-card-secondary/60 hover:border-slate-400/60',
+                            badge: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
+                            dot: 'bg-slate-400',
+                            icon: <Info size={14} className="text-slate-400 shrink-0" />,
+                            label: 'AGENTLESS'
+                        };
+                    }
+                    return {
+                        card: 'border-border/60 bg-card-secondary/30 opacity-75',
+                        badge: 'bg-card-secondary text-text-muted border-border',
+                        dot: 'bg-slate-500',
+                        icon: <Clock size={14} className="text-text-muted shrink-0" />,
+                        label: 'PENDING'
+                    };
+                };
+
+                const handleSelectIonFlowRow = (fl: any, hopOrigin: 'ingress' | 'transit') => {
+                    setSelectedTraceFlow({ ...fl, hopOrigin });
+                    const cPort = fl.client_port || fl.source_port;
+                    const pcapPorts: number[] = Array.isArray(flowIdObj?.pcap_ports) ? flowIdObj.pcap_ports : [];
+                    if (cPort && pcapPorts.includes(Number(cPort))) {
+                        setDisplayFilter(String(cPort));
+                    } else if (fl.destination_ip) {
+                        setDisplayFilter(String(fl.destination_ip));
+                    }
+                };
+
+                return (
+                    <div className="space-y-3 animate-in fade-in duration-200">
+                        {/* ── SECTION B: DIAGNOSTIC SYNTHESIS & ANALYZED FLOW IDENTITY ── */}
+                        <div className="bg-card border border-indigo-500/30 rounded-2xl p-4 shadow-sm space-y-3">
+                            {/* Top Row: Flow 5-Tuple Identity + Match Scope + SD-WAN Triad */}
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-3 border-b border-border/60">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                        Analyzed Flow:
+                                    </span>
+                                    <span className="px-2.5 py-1 rounded-lg bg-card-secondary border border-indigo-500/30 font-mono text-xs font-black text-text-primary flex items-center gap-1.5">
+                                        <Zap size={12} className="text-indigo-400 shrink-0" />
+                                        <span>{flowIdObj?.probe_5tuple || `${traceSrcIp || 'Auto'} → ${traceDestination}:${traceDstPort} · ${traceProtocol.toUpperCase()}`}</span>
                                     </span>
 
-                                    {traceResult.verdict?.forwarding_mode && (
-                                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                                            {traceResult.verdict.forwarding_mode.replace(/_/g, ' ')}
+                                    {/* Precision / Match Scope Pill */}
+                                    {tracingFlow ? (
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5">
+                                            <Loader2 size={11} className="animate-spin" />
+                                            <span>{traceProgress?.phase_label || 'Collecting dataplane evidence...'}</span>
                                         </span>
-                                    )}
+                                    ) : flowIdObj?.primary_match_scope === 'EXACT_PCAP_5TUPLE' ? (
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                            <CheckCircle2 size={11} />
+                                            <span>Exact 5-Tuple Match (PCAP ↔ ION)</span>
+                                        </span>
+                                    ) : flowIdObj?.primary_match_scope === 'SESSION_PROBE_FLOW' ? (
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                                            <CheckCircle2 size={11} />
+                                            <span>Session Probe 5-Tuple Match</span>
+                                        </span>
+                                    ) : flowIdObj?.primary_match_scope ? (
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                            <Info size={11} />
+                                            <span>{flowIdObj.primary_match_label || 'Host / Destination Match'}</span>
+                                        </span>
+                                    ) : null}
 
-                                    {traceResult.verdict?.app_id && (
-                                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                                            <Cpu size={11} />
-                                            App-ID: {traceResult.verdict.app_id}
-                                        </span>
-                                    )}
-
-                                    {traceResult.verdict?.sec_action && (
-                                        <span className={`px-2 py-1 rounded-lg text-[10px] font-mono font-black border ${
-                                            String(traceResult.verdict.sec_action).toUpperCase() === 'ALLOW'
-                                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                                : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                                        }`}>
-                                            ZBFW: {traceResult.verdict.sec_action}
-                                        </span>
-                                    )}
-
-                                    {traceResult.verdict?.egress_path && (
-                                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-card-secondary text-cyan-300 border border-border">
-                                            Path: {traceResult.verdict.egress_path}
-                                        </span>
+                                    {(flowIdObj?.associated_flows_count || 0) > 0 && !tracingFlow && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setTraceEvidenceTab('flows')}
+                                            className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-colors cursor-pointer"
+                                            title="Other flows to the same destination with different ephemeral ports"
+                                        >
+                                            +{flowIdObj.associated_flows_count} associated flow{flowIdObj.associated_flows_count > 1 ? 's' : ''}
+                                        </button>
                                     )}
                                 </div>
 
-                                <div className="flex items-center gap-3 text-[10px] font-mono text-text-muted">
-                                    {traceResult.verdict?.net_policy && (
-                                        <span>Path Pol: <strong className="text-text-primary">{traceResult.verdict.net_policy}</strong></span>
-                                    )}
-                                    {traceResult.verdict?.pri_policy && (
-                                        <span>QoS Pol: <strong className="text-text-primary">{traceResult.verdict.pri_policy}</strong></span>
-                                    )}
-                                    {traceResult.verdict?.sec_policy && (
-                                        <span>Sec Rule: <strong className="text-text-primary">{traceResult.verdict.sec_policy}</strong></span>
-                                    )}
-                                    <span>({(traceResult.duration_ms / 1000).toFixed(1)}s)</span>
-                                </div>
-                            </div>
-
-                            {/* 4-Hop Visual End-to-End Pipeline */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                                {(traceResult.hops || []).map((hop: any, idx: number) => {
-                                    const st = String(hop.status || '').toUpperCase();
-                                    const borderClass =
-                                        st === 'OBSERVED' || st === 'FORWARDED'
-                                            ? 'border-emerald-500/40 bg-emerald-500/5'
-                                            : st === 'BLOCKED'
-                                            ? 'border-rose-500/40 bg-rose-500/5'
-                                            : st === 'NOT_OBSERVED'
-                                            ? 'border-amber-500/40 bg-amber-500/5'
-                                            : 'border-border bg-card-secondary/50';
-                                    const badgeClass =
-                                        st === 'OBSERVED' || st === 'FORWARDED'
-                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                                            : st === 'BLOCKED'
-                                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                                            : st === 'NOT_OBSERVED'
-                                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                                            : 'bg-slate-500/20 text-slate-300 border-slate-500/30';
-
-                                    return (
-                                        <div key={hop.id || idx} className={`border rounded-xl p-3 space-y-2 relative ${borderClass}`}>
-                                            <div className="flex items-center justify-between gap-2">
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-text-muted">
-                                                    Hop {idx + 1} • {hop.role?.replace(/_/g, ' ')}
-                                                </span>
-                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${badgeClass}`}>
-                                                    {st}
-                                                </span>
-                                            </div>
-                                            <div>
-                                                <div className="text-xs font-black text-text-primary truncate" title={hop.title}>
-                                                    {hop.title}
-                                                </div>
-                                                <div className="text-[10px] font-mono text-text-muted truncate" title={hop.subtitle}>
-                                                    {hop.subtitle}
-                                                </div>
-                                            </div>
-                                            {hop.badge && (
-                                                <div className="text-[10px] font-mono font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-2 py-1 truncate">
-                                                    {hop.badge}
-                                                </div>
-                                            )}
-                                            {hop.error && (
-                                                <div className="text-[10px] font-mono text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-2 py-1">
-                                                    {hop.error}
-                                                </div>
-                                            )}
-                                            {/* Hop-specific details */}
-                                            <div className="text-[10px] font-mono text-text-secondary space-y-0.5 pt-1 border-t border-border/40">
-                                                {hop.role === 'SOURCE_STIGIX' && hop.metrics && (
-                                                    <>
-                                                        <div>Probe: <span className="text-text-primary">{hop.metrics.probe_detail}</span></div>
-                                                        {hop.metrics.pcap_file && (
-                                                            <div>PCAP: <span className="text-cyan-300">{hop.metrics.pcap_file}</span> ({hop.metrics.total_packets} pkts)</div>
-                                                        )}
-                                                    </>
-                                                )}
-                                                {hop.role === 'SOURCE_CLIENT_AGENTLESS' && hop.metrics && (
-                                                    <>
-                                                        <div>Source IP: <span className="text-text-primary">{hop.metrics.source_ip}</span></div>
-                                                        <div>Mode: <span className="text-amber-300">{hop.metrics.mode}</span></div>
-                                                    </>
-                                                )}
-                                                {hop.role === 'INGRESS_ION' && hop.metrics && (
-                                                    <>
-                                                        {hop.metrics.egress_path && (
-                                                            <div>Egress: <span className="text-cyan-300 font-bold">{hop.metrics.egress_path}</span></div>
-                                                        )}
-                                                        {hop.metrics.raw_path_type && (
-                                                            <div>Flow Path: <span className="text-text-primary">{hop.metrics.raw_path_type}</span></div>
-                                                        )}
-                                                        {hop.metrics.net_policy && (
-                                                            <div>Policies: <span className="text-text-primary">{hop.metrics.net_policy} / {hop.metrics.pri_policy}</span></div>
-                                                        )}
-                                                        <div>Active Table: <span className="text-text-primary">{hop.metrics.matched_flows_count ?? 0} matched / {hop.metrics.total_table_flows ?? 0} total</span></div>
-                                                    </>
-                                                )}
-                                                {hop.role === 'TRANSIT_ION' && hop.metrics && (
-                                                    <>
-                                                        {hop.metrics.tunnel && (
-                                                            <div>Tunnel: <span className="text-cyan-300">{hop.metrics.tunnel}</span></div>
-                                                        )}
-                                                        {Array.isArray(hop.metrics.ha_elements_checked) && hop.metrics.ha_elements_checked.length > 0 && (
-                                                            <div>
-                                                                HA Checked:{' '}
-                                                                {hop.metrics.ha_elements_checked.map((h: any) => `${h.element} (${h.matched_flows}/${h.total_flows})`).join(', ')}
-                                                            </div>
-                                                        )}
-                                                        {hop.metrics.note && (
-                                                            <div className="text-[9px] text-text-muted italic">{hop.metrics.note}</div>
-                                                        )}
-                                                    </>
-                                                )}
-                                                {hop.role === 'TRANSIT_SERVICELINK' && hop.metrics && (
-                                                    <>
-                                                        <div>Tunnel: <span className="text-cyan-300">{hop.metrics.egress_path}</span></div>
-                                                        {Array.isArray(hop.metrics.servicelinks) && hop.metrics.servicelinks.slice(0, 2).map((sl: any, sIdx: number) => (
-                                                            <div key={sIdx} className="truncate">
-                                                                {sl.device} ({sl.name}): <span className={sl.status === 'up' ? 'text-emerald-400 font-bold' : 'text-rose-400'}>{sl.status}/{sl.ext_state}</span> → {sl.peer}
-                                                            </div>
-                                                        ))}
-                                                    </>
-                                                )}
-                                                {hop.role === 'TRANSIT_DIA' && hop.metrics && (
-                                                    <>
-                                                        <div>WAN Circuit: <span className="text-cyan-300 font-bold">{hop.metrics.circuit}</span></div>
-                                                        <div>Forwarding: <span className="text-text-primary">{hop.metrics.raw_path_type}</span></div>
-                                                    </>
-                                                )}
-                                                {hop.role === 'DESTINATION' && hop.metrics && (
-                                                    <>
-                                                        <div>Resolved IP: <span className="text-text-primary font-bold">{hop.metrics.resolved_ip || '-'}</span></div>
-                                                        {hop.metrics.dns_resolution_ms !== null && hop.metrics.dns_resolution_ms !== undefined && (
-                                                            <div>DNS Lookup: <span className="text-emerald-400">{hop.metrics.dns_resolution_ms}ms</span></div>
-                                                        )}
-                                                        {hop.metrics.dns_error && (
-                                                            <div className="text-rose-400">{hop.metrics.dns_error}</div>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Matching Dataplane Flows Table (Ingress ION & Transit Hub ION) */}
-                            {((traceResult.ingress_flows && traceResult.ingress_flows.length > 0) ||
-                              (traceResult.transit_flows && traceResult.transit_flows.length > 0)) && (
-                                <div className="border border-border/60 rounded-xl overflow-hidden bg-card-secondary/30">
-                                    <div className="px-3 py-2 bg-card-secondary border-b border-border/60 flex items-center justify-between">
-                                        <span className="text-[10px] font-black uppercase tracking-wider text-text-primary flex items-center gap-1.5">
-                                            <Terminal size={12} className="text-indigo-400" />
-                                            vION Dataplane Flow Records (inspect flow brief) — Click any flow to filter PCAP below
-                                        </span>
-                                        <span className="text-[10px] font-mono text-text-muted">
-                                            {(traceResult.ingress_flows?.length || 0)} Ingress / {(traceResult.transit_flows?.length || 0)} Transit Hub
-                                        </span>
+                                {/* Right side: SD-WAN Classification Triad Badges */}
+                                {!tracingFlow && verdictObj && (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        {verdictObj.app_id && (
+                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                                <Cpu size={11} />
+                                                <span>App-ID: {verdictObj.app_id}</span>
+                                            </span>
+                                        )}
+                                        {verdictObj.sec_action && (
+                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-mono font-black border ${
+                                                String(verdictObj.sec_action).toUpperCase() === 'ALLOW'
+                                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                                    : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                            }`}>
+                                                ZBFW: {verdictObj.sec_action}
+                                            </span>
+                                        )}
+                                        {verdictObj.egress_path && (
+                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                                                {verdictObj.egress_path}
+                                            </span>
+                                        )}
+                                        {traceResult?.duration_ms && (
+                                            <span className="text-[10px] font-mono text-text-muted">
+                                                ({(traceResult.duration_ms / 1000).toFixed(1)}s)
+                                            </span>
+                                        )}
                                     </div>
-                                    <div className="max-h-44 overflow-y-auto overflow-x-auto font-mono text-[11px]">
-                                        <table className="w-full text-left border-collapse">
-                                            <thead className="bg-card-secondary/80 text-[9px] uppercase text-text-muted border-b border-border/40">
-                                                <tr>
-                                                    <th className="py-1.5 px-2.5">Hop / Element</th>
-                                                    <th className="py-1.5 px-2.5">Source</th>
-                                                    <th className="py-1.5 px-2.5">Destination</th>
-                                                    <th className="py-1.5 px-2.5">Proto</th>
-                                                    <th className="py-1.5 px-2.5">App-ID</th>
-                                                    <th className="py-1.5 px-2.5">Path Policy</th>
-                                                    <th className="py-1.5 px-2.5">QoS Policy</th>
-                                                    <th className="py-1.5 px-2.5">Security Rule</th>
-                                                    <th className="py-1.5 px-2.5">Action</th>
-                                                    <th className="py-1.5 px-2.5">Egress / Tunnel Path</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-border/20">
-                                                {(traceResult.ingress_flows || []).slice(0, 8).map((fl: any, i: number) => (
-                                                    <tr
-                                                        key={`ing-${i}`}
-                                                        onClick={() => setDisplayFilter(fl.destination_ip || '')}
-                                                        className="hover:bg-indigo-500/10 cursor-pointer transition-colors"
-                                                    >
-                                                        <td className="py-1 px-2.5 font-bold text-cyan-400">
-                                                            Ingress ({traceResult.hops?.[1]?.metrics?.element || traceResult.query?.source_site})
-                                                        </td>
-                                                        <td className="py-1 px-2.5 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
-                                                        <td className="py-1 px-2.5 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
-                                                        <td className="py-1 px-2.5 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
-                                                        <td className="py-1 px-2.5 font-bold text-purple-300">{fl.app_id}</td>
-                                                        <td className="py-1 px-2.5 text-text-secondary">{fl.net_policy || '-'}</td>
-                                                        <td className="py-1 px-2.5 text-text-secondary">{fl.pri_policy || '-'}</td>
-                                                        <td className="py-1 px-2.5 text-text-secondary">{fl.sec_policy || '-'}</td>
-                                                        <td className="py-1 px-2.5">
-                                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
-                                                                String(fl.sec_action).toUpperCase() === 'ALLOW'
-                                                                    ? 'bg-emerald-500/20 text-emerald-300'
-                                                                    : 'bg-rose-500/20 text-rose-300'
-                                                            }`}>
-                                                                {fl.sec_action}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-1 px-2.5 text-cyan-300">{fl.egress_path} ({fl.raw_path_type})</td>
-                                                    </tr>
-                                                ))}
-                                                {(traceResult.transit_flows || []).slice(0, 5).map((fl: any, i: number) => (
-                                                    <tr
-                                                        key={`tr-${i}`}
-                                                        onClick={() => setDisplayFilter(fl.destination_ip || '')}
-                                                        className="hover:bg-emerald-500/10 cursor-pointer transition-colors bg-emerald-500/5"
-                                                    >
-                                                        <td className="py-1 px-2.5 font-bold text-emerald-400">
-                                                            Transit Hub ({traceResult.hops?.[2]?.metrics?.element || traceResult.verdict?.peer_site_name})
-                                                        </td>
-                                                        <td className="py-1 px-2.5 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
-                                                        <td className="py-1 px-2.5 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
-                                                        <td className="py-1 px-2.5 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
-                                                        <td className="py-1 px-2.5 text-text-muted italic">{fl.app_id} (Ingress Enforced)</td>
-                                                        <td className="py-1 px-2.5 text-text-muted">{fl.net_policy || '-'}</td>
-                                                        <td className="py-1 px-2.5 text-text-muted">{fl.pri_policy || '-'}</td>
-                                                        <td className="py-1 px-2.5 text-text-muted">{fl.sec_policy || '-'}</td>
-                                                        <td className="py-1 px-2.5 text-text-muted">{fl.sec_action}</td>
-                                                        <td className="py-1 px-2.5 text-emerald-300 font-bold">{fl.raw_path_type} (WANPATH {fl.wanpath_id})</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                )}
+                            </div>
+
+                            {/* Diagnostic Synthesis Sentences (Test Result + Path Visibility + Scope/Diagnosis) */}
+                            {!tracingFlow && synthesisObj && (
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start text-xs">
+                                    <div className="lg:col-span-7 space-y-1">
+                                        <div className="flex items-start gap-2">
+                                            <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border shrink-0 ${
+                                                verdictObj?.status === 'VERIFIED_E2E'
+                                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                                    : verdictObj?.status === 'FLOW_ACTIVE'
+                                                    ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                                                    : verdictObj?.status === 'BLOCKED' || verdictObj?.status === 'DNS_ERROR' || verdictObj?.status === 'UNIDIRECTIONAL_NO_REPLY' || verdictObj?.status === 'UNREACHABLE'
+                                                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                                    : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                            }`}>
+                                                {verdictObj?.status?.replace(/_/g, ' ') || 'DIAGNOSTIC'}
+                                            </span>
+                                            <p className="font-bold text-text-primary leading-snug">
+                                                {synthesisObj.connectivity_headline}
+                                            </p>
+                                        </div>
+                                        <p className="text-[11px] text-text-secondary pl-1 leading-relaxed">
+                                            {synthesisObj.visibility_headline}
+                                        </p>
+                                    </div>
+
+                                    <div className={`lg:col-span-5 rounded-xl p-2.5 border text-[11px] leading-relaxed ${
+                                        verdictObj?.status === 'UNIDIRECTIONAL_NO_REPLY' || verdictObj?.status === 'UNREACHABLE' || verdictObj?.status === 'BLOCKED'
+                                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                                            : 'bg-card-secondary/70 border-border/60 text-text-muted'
+                                    }`}>
+                                        <div className="text-[9px] font-black uppercase tracking-wider mb-0.5 flex items-center gap-1 opacity-80">
+                                            <Info size={11} />
+                                            <span>
+                                                {verdictObj?.status === 'UNIDIRECTIONAL_NO_REPLY'
+                                                    ? 'Root-Cause & Return Path Analysis'
+                                                    : 'Diagnostic Scope & Boundary'}
+                                            </span>
+                                        </div>
+                                        <div>{synthesisObj.limit_or_diagnosis}</div>
                                     </div>
                                 </div>
                             )}
-                        </>
-                    ) : null}
-                </div>
-            )}
 
-            {/* Display Search & Filter Bar */}
+                            {/* Active Associated Flow Override Banner (if user clicked another flow in the table) */}
+                            {selectedTraceFlow && (
+                                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-[11px]">
+                                    <div className="flex items-center gap-2 flex-wrap font-mono">
+                                        <span className="font-black uppercase text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                                            Selected Flow Filter
+                                        </span>
+                                        <span className="text-text-primary font-bold">
+                                            {selectedTraceFlow.source_ip}:{selectedTraceFlow.source_port} → {selectedTraceFlow.destination_ip}:{selectedTraceFlow.destination_port}
+                                        </span>
+                                        <span className="text-text-muted">
+                                            ({selectedTraceFlow.match_label || selectedTraceFlow.match_scope})
+                                        </span>
+                                        {selectedTraceFlow.match_scope !== 'EXACT_PCAP_5TUPLE' && (
+                                            <span className="text-amber-300 text-[10px]">
+                                                • Note: This flow used port :{selectedTraceFlow.client_port || selectedTraceFlow.source_port} outside the initial 3s PCAP snapshot.
+                                            </span>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedTraceFlow(null);
+                                            setDisplayFilter('');
+                                        }}
+                                        className="px-2 py-0.5 rounded-lg bg-card hover:bg-card-hover border border-border text-[10px] font-bold text-text-secondary hover:text-text-primary cursor-pointer shrink-0"
+                                    >
+                                        Reset to Probe Flow
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* ── SECTION C: COMPACT HORIZONTAL INTERACTIVE PATH TIMELINE ── */}
+                            <div className="pt-1">
+                                <div className="flex flex-col lg:flex-row lg:items-stretch gap-2 lg:gap-0">
+                                    {activeHops.map((hop: any, idx: number) => {
+                                        const theme = getNodeTheme(hop.status);
+                                        const isSelected = selectedHop?.id === hop.id;
+                                        const nextHop = activeHops[idx + 1] || null;
+                                        const nextSt = String(nextHop?.status || '').toUpperCase();
+
+                                        // Determine connector style to next hop
+                                        const isSolidLink =
+                                            nextSt === 'OBSERVED' ||
+                                            (idx === 0 && (String(hop.status).toUpperCase() === 'OBSERVED' || String(hop.status).toUpperCase() === 'PASSIVE'));
+                                        const isBrokenLink = nextSt === 'UNREACHABLE' || nextSt === 'BLOCKED';
+
+                                        // Connector label between Hop 2 (Ingress ION) and Hop 3 (Transit), or Hop 3 and Hop 4
+                                        let connectorPill: string | null = null;
+                                        if (idx === 1) {
+                                            connectorPill =
+                                                hop.metrics?.egress_path ||
+                                                hop.secondary_info?.replace(/^App-ID:.*$/, '') ||
+                                                verdictObj?.egress_path ||
+                                                null;
+                                        } else if (idx === activeHops.length - 2 && isBrokenLink) {
+                                            connectorPill = '0 RX Return';
+                                        }
+
+                                        return (
+                                            <React.Fragment key={hop.id || idx}>
+                                                {/* Compact Timeline Node Card */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedHopId(hop.id)}
+                                                    className={`flex-1 min-w-0 text-left rounded-xl p-3 border transition-all duration-200 cursor-pointer flex flex-col justify-between gap-2 relative ${
+                                                        theme.card
+                                                    } ${
+                                                        isSelected
+                                                            ? 'ring-2 ring-indigo-400/70 shadow-md'
+                                                            : ' opacity-95 hover:opacity-100'
+                                                    }`}
+                                                >
+                                                    <div className="space-y-1.5">
+                                                        {/* 1. Role & Status Badge */}
+                                                        <div className="flex items-center justify-between gap-1.5">
+                                                            <span className="text-[9px] font-black uppercase tracking-wider text-text-muted truncate">
+                                                                {idx + 1}. {hop.role_label || hop.role?.replace(/_/g, ' ')}
+                                                            </span>
+                                                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase border flex items-center gap-1 shrink-0 ${theme.badge}`}>
+                                                                {theme.icon}
+                                                                <span>{theme.label}</span>
+                                                            </span>
+                                                        </div>
+
+                                                        {/* 2. Equipment / Destination Name */}
+                                                        <div className="text-xs font-black text-text-primary truncate" title={hop.title}>
+                                                            {hop.title}
+                                                        </div>
+
+                                                        {/* 3. Short Result */}
+                                                        <div className="text-[11px] font-mono font-bold text-indigo-200 truncate" title={hop.badge}>
+                                                            {hop.badge || hop.subtitle}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="pt-1.5 border-t border-border/40 flex items-center justify-between gap-1.5 text-[9px] font-mono">
+                                                        {/* 4. Evidence Type */}
+                                                        <span className="px-1.5 py-0.5 rounded bg-card-secondary/90 border border-border/60 text-text-muted truncate" title={hop.evidence_type}>
+                                                            {hop.evidence_type || 'Telemetry'}
+                                                        </span>
+
+                                                        {/* 5. Secondary Useful Info (Max 1) */}
+                                                        {hop.secondary_info && (
+                                                            <span className="text-cyan-300 font-bold truncate" title={hop.secondary_info}>
+                                                                {hop.secondary_info}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </button>
+
+                                                {/* Horizontal Connector between Hops on Desktop */}
+                                                {nextHop && (
+                                                    <div className="hidden lg:flex flex-col items-center justify-center px-1.5 shrink-0 min-w-[68px] max-w-[130px]">
+                                                        {connectorPill && (
+                                                            <span className={`mb-1 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold truncate max-w-[125px] border ${
+                                                                isBrokenLink
+                                                                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                                                    : 'bg-card-secondary text-cyan-300 border-border'
+                                                            }`} title={connectorPill}>
+                                                                {connectorPill}
+                                                            </span>
+                                                        )}
+                                                        <div className="w-full flex items-center">
+                                                            <div className={`flex-1 h-0.5 ${
+                                                                isBrokenLink
+                                                                    ? 'border-t-2 border-dashed border-rose-500/70'
+                                                                    : isSolidLink
+                                                                    ? 'bg-emerald-500/60'
+                                                                    : 'border-t-2 border-dashed border-slate-500/60'
+                                                            }`} />
+                                                            <ArrowRight size={13} className={`-ml-1 shrink-0 ${
+                                                                isBrokenLink
+                                                                    ? 'text-rose-400'
+                                                                    : isSolidLink
+                                                                    ? 'text-emerald-400'
+                                                                    : 'text-slate-500'
+                                                            }`} />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* ── SECTION D: SELECTED POINT DETAIL PANEL ── */}
+                            {selectedHop && (
+                                <div className="mt-2 pt-3 border-t border-border/60 bg-card-secondary/35 rounded-xl p-3.5 border border-border/50 space-y-2.5">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                                Selected Point Detail
+                                            </span>
+                                            <span className="text-xs font-black text-text-primary">
+                                                {selectedHop.title}
+                                            </span>
+                                            <span className="text-[11px] font-mono text-text-muted">
+                                                ({selectedHop.subtitle})
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-mono">
+                                            <span className="text-text-muted">
+                                                Evidence: <strong className="text-text-primary">{selectedHop.evidence_type || 'Dataplane'}</strong>
+                                            </span>
+                                            {selectedHop.role === 'SOURCE_STIGIX' && traceResult?.pcap && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTraceEvidenceTab('packets')}
+                                                    className="px-2 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 font-bold cursor-pointer"
+                                                >
+                                                    View PCAP ({traceResult.pcap.total_packets} frames)
+                                                </button>
+                                            )}
+                                            {(selectedHop.role === 'INGRESS_ION' || selectedHop.role === 'TRANSIT_ION') && totalIonFlows > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTraceEvidenceTab('flows')}
+                                                    className="px-2 py-0.5 rounded bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 font-bold cursor-pointer"
+                                                >
+                                                    View vION Flows ({totalIonFlows})
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {selectedHop.error && (
+                                        <div className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs font-mono text-rose-300">
+                                            {selectedHop.error}
+                                        </div>
+                                    )}
+
+                                    {/* Hop-specific detailed metrics grid */}
+                                    {selectedHop.metrics && Object.keys(selectedHop.metrics).length > 0 ? (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-[11px] font-mono">
+                                            {selectedHop.role === 'SOURCE_STIGIX' && (
+                                                <>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Synthetic Probe Result</div>
+                                                        <div className="font-bold text-text-primary mt-0.5">{selectedHop.metrics.probe_detail || '-'}</div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Captured Packets (TX / RX)</div>
+                                                        <div className="font-bold text-cyan-300 mt-0.5">
+                                                            {selectedHop.metrics.tx_packets ?? 0} TX / {selectedHop.metrics.rx_packets ?? 0} RX ({selectedHop.metrics.flow_packets ?? 0} flow frames)
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">TCP Handshake Flags</div>
+                                                        <div className="font-bold text-text-primary mt-0.5">
+                                                            SYN-ACK: <span className={selectedHop.metrics.syn_ack_seen ? 'text-emerald-400' : 'text-amber-400'}>{selectedHop.metrics.syn_ack_seen ? 'Observed' : 'Not Seen'}</span>
+                                                            {' • '}
+                                                            RST: <span className={selectedHop.metrics.rst_seen ? 'text-rose-400' : 'text-text-muted'}>{selectedHop.metrics.rst_seen ? 'Observed' : 'None'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Local Socket &amp; PCAP File</div>
+                                                        <div className="font-bold text-text-primary mt-0.5 truncate" title={selectedHop.metrics.pcap_file || ''}>
+                                                            Port :{selectedHop.metrics.local_port || '-'} • {selectedHop.metrics.pcap_file || 'No PCAP'}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {selectedHop.role === 'SOURCE_CLIENT_AGENTLESS' && (
+                                                <>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Client Source IP</div>
+                                                        <div className="font-bold text-text-primary mt-0.5">{selectedHop.metrics.source_ip}</div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Client Source Port</div>
+                                                        <div className="font-bold text-cyan-300 mt-0.5">{selectedHop.metrics.source_port || 'Any'}</div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                        <div className="text-[9px] uppercase text-text-muted">Collection Mode</div>
+                                                        <div className="font-bold text-amber-300 mt-0.5">{selectedHop.metrics.mode}</div>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {selectedHop.role === 'INGRESS_ION' && (
+                                                <>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Application &amp; ZBFW</div>
+                                                        <div className="font-bold text-purple-300 mt-0.5">
+                                                            App-ID: {selectedHop.metrics.app_id || 'None'} • ZBFW: {selectedHop.metrics.sec_action || '-'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Enforced Policies (Path / QoS / Sec)</div>
+                                                        <div className="font-bold text-text-primary mt-0.5 truncate" title={`${selectedHop.metrics.net_policy || '-'} / ${selectedHop.metrics.pri_policy || '-'} / ${selectedHop.metrics.sec_policy || '-'}`}>
+                                                            {selectedHop.metrics.net_policy || '-'} / {selectedHop.metrics.pri_policy || '-'} / {selectedHop.metrics.sec_policy || '-'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Selected Egress WAN Path</div>
+                                                        <div className="font-bold text-cyan-300 mt-0.5">
+                                                            {selectedHop.metrics.egress_path || '-'} ({selectedHop.metrics.raw_path_type || '-'})
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Flow Table Correlation</div>
+                                                        <div className="font-bold text-text-primary mt-0.5">
+                                                            {selectedHop.metrics.matched_flows_count ?? 0} matched / {selectedHop.metrics.total_table_flows ?? 0} active ({selectedHop.metrics.match_label || 'Scanned'})
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {selectedHop.role === 'TRANSIT_ION' && (
+                                                <>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Overlay Tunnel Arrival</div>
+                                                        <div className="font-bold text-cyan-300 mt-0.5">
+                                                            {selectedHop.metrics.tunnel || '-'} ({selectedHop.metrics.raw_path_type || 'Not Observed'})
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Hub HA Elements Checked</div>
+                                                        <div className="font-bold text-text-primary mt-0.5">
+                                                            {Array.isArray(selectedHop.metrics.ha_elements_checked) && selectedHop.metrics.ha_elements_checked.length > 0
+                                                                ? selectedHop.metrics.ha_elements_checked.map((h: any) => `${h.element}: ${h.matched_flows}/${h.total_flows}`).join(' • ')
+                                                                : (selectedHop.metrics.element || '-')}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                        <div className="text-[9px] uppercase text-text-muted">Hub Dataplane Observation Note</div>
+                                                        <div className="text-text-secondary mt-0.5 text-[10px]">
+                                                            {selectedHop.metrics.note || 'Hub ION inspects vpn_to_core transit sessions across the HA pair.'}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {selectedHop.role === 'TRANSIT_SERVICELINK' && (
+                                                <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-4">
+                                                    <div className="text-[9px] uppercase text-text-muted">ServiceLink Tunnel Status (dump servicelink summary all)</div>
+                                                    <div className="font-bold text-text-primary mt-1 flex flex-wrap gap-2">
+                                                        {Array.isArray(selectedHop.metrics.servicelinks) && selectedHop.metrics.servicelinks.length > 0
+                                                            ? selectedHop.metrics.servicelinks.map((sl: any, sIdx: number) => (
+                                                                <span key={sIdx} className="px-2 py-0.5 rounded bg-card-secondary border border-border">
+                                                                    {sl.device} ({sl.name}): <span className={sl.status === 'up' ? 'text-emerald-400' : 'text-rose-400'}>{sl.status}/{sl.ext_state}</span> → {sl.peer}
+                                                                </span>
+                                                            ))
+                                                            : <span>Tunnel: {selectedHop.metrics.egress_path}</span>}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {selectedHop.role === 'TRANSIT_DIA' && (
+                                                <>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                        <div className="text-[9px] uppercase text-text-muted">Direct Internet Breakout Circuit</div>
+                                                        <div className="font-bold text-cyan-300 mt-0.5">{selectedHop.metrics.circuit || 'Direct WAN'}</div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                        <div className="text-[9px] uppercase text-text-muted">Forwarding Mode</div>
+                                                        <div className="font-bold text-text-primary mt-0.5">{selectedHop.metrics.raw_path_type || 'direct'} (WANPATH {selectedHop.metrics.wanpath_id || '-'})</div>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {selectedHop.role === 'DESTINATION' && (
+                                                <>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Target &amp; Resolved IP</div>
+                                                        <div className="font-bold text-text-primary mt-0.5">
+                                                            {selectedHop.metrics.destination_input || '-'} → {selectedHop.metrics.resolved_ip || '-'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                        <div className="text-[9px] uppercase text-text-muted">Protocol / Service Port</div>
+                                                        <div className="font-bold text-cyan-300 mt-0.5">
+                                                            {selectedHop.metrics.protocol}/{selectedHop.metrics.port || '*'}
+                                                            {selectedHop.metrics.dns_resolution_ms !== null && selectedHop.metrics.dns_resolution_ms !== undefined
+                                                                ? ` (DNS: ${selectedHop.metrics.dns_resolution_ms}ms)`
+                                                                : ''}
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                        <div className="text-[9px] uppercase text-text-muted">Instrumentation &amp; Proof Boundary</div>
+                                                        <div className="text-text-secondary mt-0.5 text-[10px]">
+                                                            {selectedHop.metrics.unidirectional_diagnosis ||
+                                                                'Uninstrumented remote endpoint (no Stigix capture agent on destination). Reachability is verified via return traffic received by the source probe.'}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="text-[11px] font-mono text-text-muted italic">
+                                            {tracingFlow ? 'Waiting for live telemetry collection on this hop...' : 'No additional metrics recorded for this hop.'}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ── SECTION E: TABBED EVIDENCE WORKSPACE ── */}
+                        {!tracingFlow && traceResult && (
+                            <div className="bg-card border border-border rounded-2xl p-3 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="inline-flex items-center bg-card-secondary border border-border rounded-xl p-1 gap-1 flex-wrap">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTraceEvidenceTab('packets')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                            traceEvidenceTab === 'packets'
+                                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                                                : 'text-text-muted hover:text-text-primary border border-transparent'
+                                        }`}
+                                    >
+                                        <Binary size={13} />
+                                        <span>Captured Packets</span>
+                                        <span className="px-1.5 py-0.2 rounded bg-card text-[10px] font-mono">
+                                            {filteredPackets.length}/{totalPackets}
+                                        </span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setTraceEvidenceTab('flows')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                            traceEvidenceTab === 'flows'
+                                                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
+                                                : 'text-text-muted hover:text-text-primary border border-transparent'
+                                        }`}
+                                    >
+                                        <Terminal size={13} />
+                                        <span>vION Flow Records</span>
+                                        <span className="px-1.5 py-0.2 rounded bg-card text-[10px] font-mono">
+                                            {totalIonFlows}
+                                        </span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setTraceEvidenceTab('limits')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                            traceEvidenceTab === 'limits'
+                                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm'
+                                                : 'text-text-muted hover:text-text-primary border border-transparent'
+                                        }`}
+                                    >
+                                        <Info size={13} />
+                                        <span>Collection &amp; Limits</span>
+                                    </button>
+                                </div>
+
+                                <div className="text-[10px] font-mono text-text-muted flex items-center gap-2">
+                                    {traceEvidenceTab === 'packets' && traceResult.pcap?.filename && (
+                                        <span>PCAP: <strong className="text-cyan-300">{traceResult.pcap.filename}</strong> (BPF: <code className="text-text-primary">{traceResult.query?.bpf_used || 'all'}</code>)</span>
+                                    )}
+                                    {traceEvidenceTab === 'flows' && (
+                                        <span>
+                                            <strong className="text-emerald-300">{exactIonFlowsCount}</strong> exact probe match / <strong className="text-text-primary">{totalIonFlows}</strong> total records
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB 2 CONTENT: vION FLOW RECORDS */}
+                        {!tracingFlow && traceResult && traceEvidenceTab === 'flows' && (
+                            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                                <div className="px-4 py-2.5 bg-card-secondary border-b border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <Terminal size={14} className="text-indigo-400" />
+                                        <span className="text-xs font-black uppercase tracking-wider text-text-primary">
+                                            vION Dataplane Flow Records (inspect flow brief)
+                                        </span>
+                                        <span className="text-[10px] text-text-muted font-mono">
+                                            — Click a row to synchronize packet filter
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowOnlyExactFlows((prev) => !prev)}
+                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border cursor-pointer transition-colors ${
+                                                showOnlyExactFlows
+                                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                                    : 'bg-card text-text-muted hover:text-text-primary border-border'
+                                            }`}
+                                        >
+                                            {showOnlyExactFlows ? 'Showing Probe 5-Tuple Only' : `Show All Flows (${totalIonFlows})`}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {totalIonFlows === 0 ? (
+                                    <div className="py-12 text-center text-text-muted space-y-1 font-mono text-xs">
+                                        <div>No matching dataplane flows returned by vION CLI.</div>
+                                        <div className="text-[10px] opacity-70">Check the "Collection &amp; Limits" tab for CLI command details.</div>
+                                    </div>
+                                ) : (
+                                    <div className="max-h-80 overflow-y-auto overflow-x-auto font-mono text-[11px]">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="sticky top-0 bg-card-secondary/95 backdrop-blur text-[9px] uppercase text-text-muted border-b border-border/40 z-10">
+                                                <tr>
+                                                    <th className="py-2 px-3">Correlation Scope</th>
+                                                    <th className="py-2 px-3">Hop / Element</th>
+                                                    <th className="py-2 px-3">Source</th>
+                                                    <th className="py-2 px-3">Destination</th>
+                                                    <th className="py-2 px-3">Proto</th>
+                                                    <th className="py-2 px-3">App-ID</th>
+                                                    <th className="py-2 px-3">Path Policy</th>
+                                                    <th className="py-2 px-3">QoS Policy</th>
+                                                    <th className="py-2 px-3">Security Rule</th>
+                                                    <th className="py-2 px-3">Action</th>
+                                                    <th className="py-2 px-3">Egress / Tunnel Path</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/20">
+                                                {ingressFlowsAll
+                                                    .filter((fl) => !showOnlyExactFlows || fl.match_scope === 'EXACT_PCAP_5TUPLE' || fl.match_scope === 'SESSION_PROBE_FLOW')
+                                                    .map((fl: any, i: number) => {
+                                                        const isExact = fl.match_scope === 'EXACT_PCAP_5TUPLE';
+                                                        const isSession = fl.match_scope === 'SESSION_PROBE_FLOW';
+                                                        const isRowSelected =
+                                                            selectedTraceFlow &&
+                                                            selectedTraceFlow.hopOrigin === 'ingress' &&
+                                                            selectedTraceFlow.source_port === fl.source_port &&
+                                                            selectedTraceFlow.destination_port === fl.destination_port;
+                                                        return (
+                                                            <tr
+                                                                key={`ing-${i}`}
+                                                                onClick={() => handleSelectIonFlowRow(fl, 'ingress')}
+                                                                className={`cursor-pointer transition-colors ${
+                                                                    isRowSelected
+                                                                        ? 'bg-indigo-500/20 border-l-4 border-l-indigo-400'
+                                                                        : isExact
+                                                                        ? 'bg-emerald-500/5 hover:bg-indigo-500/10'
+                                                                        : 'hover:bg-indigo-500/10'
+                                                                }`}
+                                                            >
+                                                                <td className="py-1.5 px-3">
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                                                        isExact
+                                                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                                                            : isSession
+                                                                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                                                                            : 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                                                                    }`}>
+                                                                        {isExact ? '★ Exact Probe 5-Tuple' : isSession ? 'Probe Keepalive' : 'Associated Flow'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-1.5 px-3 font-bold text-cyan-400">
+                                                                    Ingress ({traceResult.hops?.[1]?.metrics?.element || traceResult.query?.source_site})
+                                                                </td>
+                                                                <td className="py-1.5 px-3 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
+                                                                <td className="py-1.5 px-3 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
+                                                                <td className="py-1.5 px-3 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
+                                                                <td className="py-1.5 px-3 font-bold text-purple-300">{fl.app_id}</td>
+                                                                <td className="py-1.5 px-3 text-text-secondary">{fl.net_policy || '-'}</td>
+                                                                <td className="py-1.5 px-3 text-text-secondary">{fl.pri_policy || '-'}</td>
+                                                                <td className="py-1.5 px-3 text-text-secondary">{fl.sec_policy || '-'}</td>
+                                                                <td className="py-1.5 px-3">
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                                                        String(fl.sec_action).toUpperCase() === 'ALLOW'
+                                                                            ? 'bg-emerald-500/20 text-emerald-300'
+                                                                            : 'bg-rose-500/20 text-rose-300'
+                                                                    }`}>
+                                                                        {fl.sec_action}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-1.5 px-3 text-cyan-300">{fl.egress_path} ({fl.raw_path_type})</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                {transitFlowsAll
+                                                    .filter((fl) => !showOnlyExactFlows || fl.match_scope === 'EXACT_PCAP_5TUPLE' || fl.match_scope === 'SESSION_PROBE_FLOW')
+                                                    .map((fl: any, i: number) => {
+                                                        const isExact = fl.match_scope === 'EXACT_PCAP_5TUPLE';
+                                                        const isSession = fl.match_scope === 'SESSION_PROBE_FLOW';
+                                                        return (
+                                                            <tr
+                                                                key={`tr-${i}`}
+                                                                onClick={() => handleSelectIonFlowRow(fl, 'transit')}
+                                                                className="hover:bg-emerald-500/10 cursor-pointer transition-colors bg-emerald-500/5"
+                                                            >
+                                                                <td className="py-1.5 px-3">
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                                                        isExact
+                                                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                                                            : isSession
+                                                                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                                                                            : 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                                                                    }`}>
+                                                                        {isExact ? '★ Exact Probe 5-Tuple' : isSession ? 'Probe Keepalive' : 'Associated Flow'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-1.5 px-3 font-bold text-emerald-400">
+                                                                    Transit Hub ({traceResult.hops?.[2]?.metrics?.element || traceResult.verdict?.peer_site_name})
+                                                                </td>
+                                                                <td className="py-1.5 px-3 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
+                                                                <td className="py-1.5 px-3 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
+                                                                <td className="py-1.5 px-3 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
+                                                                <td className="py-1.5 px-3 text-text-muted italic">{fl.app_id} (Ingress Enforced)</td>
+                                                                <td className="py-1.5 px-3 text-text-muted">{fl.net_policy || '-'}</td>
+                                                                <td className="py-1.5 px-3 text-text-muted">{fl.pri_policy || '-'}</td>
+                                                                <td className="py-1.5 px-3 text-text-muted">{fl.sec_policy || '-'}</td>
+                                                                <td className="py-1.5 px-3 text-text-muted">{fl.sec_action}</td>
+                                                                <td className="py-1.5 px-3 text-emerald-300 font-bold">{fl.raw_path_type} (WANPATH {fl.wanpath_id})</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB 3 CONTENT: COLLECTION AUDIT & DIAGNOSTIC LIMITS */}
+                        {!tracingFlow && traceResult && traceEvidenceTab === 'limits' && (
+                            <div className="bg-card border border-border rounded-2xl p-4 shadow-sm grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs font-mono">
+                                <div className="p-3 rounded-xl bg-card-secondary/50 border border-border/60 space-y-2">
+                                    <div className="text-[10px] font-black uppercase tracking-wider text-indigo-300">
+                                        1. Search Criteria vs Probe Identity
+                                    </div>
+                                    <div className="space-y-1 text-[11px]">
+                                        <div>Source Site: <strong className="text-text-primary">{traceResult.query?.source_site}</strong> ({traceResult.query?.source_mode})</div>
+                                        <div>Input Source IP: <strong className="text-text-primary">{traceResult.query?.src_ip_input || 'Auto (Detected from Probe)'}</strong></div>
+                                        <div>Actual Probe 5-Tuple: <strong className="text-cyan-300">{flowIdObj?.probe_5tuple}</strong></div>
+                                        <div>PCAP Snapshot Ports: <strong className="text-text-primary">{(flowIdObj?.pcap_ports || []).join(', ') || 'None'}</strong></div>
+                                        <div>Kernel BPF Filter: <code className="text-emerald-300">{traceResult.query?.bpf_used || 'N/A (Agentless)'}</code></div>
+                                    </div>
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-card-secondary/50 border border-border/60 space-y-2">
+                                    <div className="text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                                        2. vION WebSocket CLI Collection Audit
+                                    </div>
+                                    <div className="space-y-1 text-[11px]">
+                                        <div>
+                                            Ingress ION ({traceResult.hops?.[1]?.metrics?.element || traceResult.query?.source_site}):{' '}
+                                            <code className="text-text-primary">{traceResult.hops?.[1]?.metrics?.command || 'inspect flow brief'}</code>
+                                            {traceResult.hops?.[1]?.metrics?.duration_ms ? ` (${traceResult.hops[1].metrics.duration_ms}ms)` : ''}
+                                        </div>
+                                        {traceResult.hops?.[2]?.role === 'TRANSIT_ION' && (
+                                            <div>
+                                                Transit Hub ({traceResult.hops?.[2]?.metrics?.element || traceResult.verdict?.peer_site_name}):{' '}
+                                                <code className="text-text-primary">{traceResult.hops?.[2]?.metrics?.command || 'inspect flow brief'}</code>
+                                                {traceResult.hops?.[2]?.metrics?.duration_ms ? ` (${traceResult.hops[2].metrics.duration_ms}ms)` : ''}
+                                            </div>
+                                        )}
+                                        <div>
+                                            Total Trace Duration: <strong className="text-text-primary">{(traceResult.duration_ms / 1000).toFixed(2)}s</strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-card-secondary/50 border border-border/60 space-y-2 font-sans">
+                                    <div className="text-[10px] font-black uppercase tracking-wider text-amber-300 font-mono">
+                                        3. Methodological Scope &amp; Limits
+                                    </div>
+                                    <ul className="space-y-1 text-[11px] text-text-secondary list-disc pl-4">
+                                        <li><strong>Destination Node:</strong> External/remote targets do not run a Stigix probe; reachability is inferred from return frames captured at the source.</li>
+                                        <li><strong>Hub Policy Columns:</strong> Prisma SD-WAN enforces App-ID, Path, QoS, and ZBFW at the ingress Branch ION; Hub IONs display overlay transit state (<code className="font-mono text-cyan-300">vpn_to_core</code>).</li>
+                                        <li><strong>PCAP Window vs CLI Keepalive:</strong> Local PCAP records the initial ~3s probe handshake, while Stigix pulses keepalive probes during CLI collection so embryonic flows do not expire.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
+
+            {/* Display Search & Filter Bar + 3-Pane Wireshark Inspector (Always visible in Local PCAP mode, or in Trace mode when 'Captured Packets' tab is selected) */}
+            {(captureMode === 'local' || (captureMode === 'trace' && traceResult && traceEvidenceTab === 'packets') || (captureMode === 'trace' && !tracingFlow && !traceResult)) && (
+            <>
             <div className="bg-card border border-border px-4 py-2.5 rounded-2xl flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2 flex-1">
                     <Filter size={14} className="text-text-muted shrink-0" />
@@ -2706,6 +3389,8 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     </div>
                 </div>
             </div>
+            </>
+            )}
 
             {/* Save Custom BPF Preset Modal */}
             {showSavePresetModal && (

@@ -1699,6 +1699,12 @@ def resolve_live_flow_cli(
             non_probe = [r for r in filtered if str(r.get("app_id") or "").lower() != "cloudgenix-probe"]
             if non_probe:
                 filtered = non_probe
+            non_self = [r for r in filtered if str(r.get("sec_policy") or "").strip().lower() != "self-zone"]
+            if non_self:
+                filtered = non_self
+            valid_path = [r for r in filtered if str(r.get("raw_path_type") or "").strip().lower() != "unknown_flow_path"]
+            if valid_path:
+                filtered = valid_path
             exact_dst = [r for r in filtered if r.get("destination_ip") == dst_ip]
             if exact_dst:
                 filtered = exact_dst
@@ -1930,6 +1936,53 @@ def _extract_peer_site_from_egress(sdk: Any, egress_path: str, current_site_name
     return None
 
 
+def _prime_ha_element_from_wanpath(sdk: Any, source_site_id: str, wanpath_id: str, peer_site_name: str) -> None:
+    """Use the cached site topology link for `wanpath_id` to prime `TARGET_CACHE_FILE` with the
+    exact remote HA element (`DC1-R1` vs `DC1-R2`, `DC2-R1` vs `DC2-R2`) that terminates this VPN tunnel."""
+    wid = str(wanpath_id or "").strip()
+    if not source_site_id or not wid or not peer_site_name:
+        return
+    topo_cache_file = f"/tmp/stigix_site_topo_{source_site_id}.json"
+    if not os.path.exists(topo_cache_file):
+        return
+    try:
+        with open(topo_cache_file, "r", encoding="utf-8") as f:
+            cached = json.load(f) or {}
+        link = (cached.get("links") or {}).get(wid)
+        if not isinstance(link, dict):
+            return
+        cand_el_ids = {
+            str(link.get("target_site_id") or "").strip(),
+            str(link.get("source_site_id") or "").strip(),
+        } - {""}
+        if not cand_el_ids:
+            return
+        _, elements = _load_tenant_inventory(sdk)
+        for el in elements:
+            eid = str(el.get("id") or "").strip()
+            if eid in cand_el_ids and bool(el.get("connected", True)):
+                q_key = _normalize_site_token(peer_site_name) or peer_site_name.lower()
+                ename_norm = _normalize_site_token(str(el.get("name") or ""))
+                if ename_norm == q_key or str(el.get("name") or "").lower().startswith(peer_site_name.lower()):
+                    cache_doc = {}
+                    if os.path.exists(TARGET_CACHE_FILE):
+                        try:
+                            with open(TARGET_CACHE_FILE, "r", encoding="utf-8") as cf:
+                                cache_doc = json.load(cf) or {}
+                        except Exception:
+                            cache_doc = {}
+                    cache_doc[q_key] = {
+                        "element": el,
+                        "site_name": peer_site_name,
+                        "ts": datetime.now(timezone.utc).timestamp(),
+                    }
+                    with open(TARGET_CACHE_FILE, "w", encoding="utf-8") as cf:
+                        json.dump(cache_doc, cf)
+                    return
+    except Exception:
+        pass
+
+
 def trace_flow_path_cli(
     sdk: Any,
     source_site: str,
@@ -1979,6 +2032,31 @@ def trace_flow_path_cli(
         if p_type == "ServiceLink" or "servicelink" in raw_path or "zscaler" in egress_path.lower() or "prisma" in egress_path.lower() or "zscaler" in net_pol or "prisma" in net_pol:
             forwarding_mode = "SERVICELINK_SSE"
             try:
+                sys.stderr.write(
+                    "STIGIX_TRACE_PROGRESS:"
+                    + json.dumps(
+                        {
+                            "phase": "SERVICELINK_CLI",
+                            "forwarding_mode": forwarding_mode,
+                            "peer_site_name": "ServiceLink SSE",
+                            "ingress_ion": {
+                                "element": ingress.get("element"),
+                                "site_name": ingress.get("site_name"),
+                                "software_version": ingress.get("software_version"),
+                                "total_table_flows": ingress.get("total_table_flows"),
+                                "matched_flows_count": len(ingress_flows),
+                                "duration_ms": ingress.get("duration_ms"),
+                            },
+                            "primary_flow": primary_flow,
+                        },
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                )
+                sys.stderr.flush()
+            except Exception:
+                pass
+            try:
                 sl_res = execute_ion_cli(sdk, str(ingress.get("element") or source_site), "dump servicelink summary all")
                 servicelinks = parse_servicelink_summary(sl_res.get("output") or "")
             except Exception:
@@ -2002,6 +2080,37 @@ def trace_flow_path_cli(
                     forwarding_mode = "BRANCH_TO_BRANCH_VPN"
 
                 try:
+                    _prime_ha_element_from_wanpath(
+                        sdk,
+                        str(ingress.get("site_id") or ""),
+                        str(primary_flow.get("wanpath_id") or ""),
+                        peer_site_name,
+                    )
+                    try:
+                        sys.stderr.write(
+                            "STIGIX_TRACE_PROGRESS:"
+                            + json.dumps(
+                                {
+                                    "phase": "TRANSIT_ION_CLI",
+                                    "forwarding_mode": forwarding_mode,
+                                    "peer_site_name": peer_site_name,
+                                    "ingress_ion": {
+                                        "element": ingress.get("element"),
+                                        "site_name": ingress.get("site_name"),
+                                        "software_version": ingress.get("software_version"),
+                                        "total_table_flows": ingress.get("total_table_flows"),
+                                        "matched_flows_count": len(ingress_flows),
+                                        "duration_ms": ingress.get("duration_ms"),
+                                    },
+                                    "primary_flow": primary_flow,
+                                },
+                                separators=(",", ":"),
+                            )
+                            + "\n"
+                        )
+                        sys.stderr.flush()
+                    except Exception:
+                        pass
                     transit_hop = resolve_live_flow_cli(
                         sdk,
                         peer_site_name,
