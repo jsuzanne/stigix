@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.6] - 2026-11-11
+
+### Changed
+- **Simplified Voice SD-WAN Path UI (`web-dashboard/src/Voice.tsx`)**:
+  - Removed the redundant `SD-WAN Path` column and duplicate `Inspect All Paths` button from the **Stigix Voice Targets & QoS Telemetry** table so site names (`DC1-Ubuntu`, `BR2-Ubuntu`, etc.) and the `QUALITY` header never wrap or truncate.
+  - Removed the per-card `Inspect Path` / `Refresh Path` buttons inside **Live Streams**, keeping a single **`Inspect Paths` / `Refresh Paths`** button in the **Live Streams** header that resolves all active `:6100` voice streams in one vION CLI query and displays the full-width path badge beneath each active call card.
+
 ## [3.2.5] - 2026-11-11
 
 ### Added

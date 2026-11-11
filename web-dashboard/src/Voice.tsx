@@ -146,7 +146,7 @@ export default function Voice(props: VoiceProps) {
     // ── New manual row form ──
     const [newRow, setNewRow] = useState({ host: '', port: '6100' });
 
-    // ── On-demand Live SD-WAN Path per active CALL-* and persistent per target (host / host:port) ──
+    // ── On-demand Live SD-WAN Path (single button in Live Streams header, cached per target) ──
     const [callLivePaths, setCallLivePaths] = useState<Record<string, {
         loading: boolean;
         egress_path?: string;
@@ -162,148 +162,6 @@ export default function Voice(props: VoiceProps) {
         error?: string;
     }>>({});
     const [inspectAllLoading, setInspectAllLoading] = useState(false);
-
-    const handleCheckCallLivePath = async (call: VoiceCall) => {
-        if (!call?.call_id || !call?.target) return;
-        const callId = call.call_id;
-        const targetKey = String(call.target);
-        const [dstIp, portStr] = targetKey.split(':');
-        const dstPort = parseInt(portStr || '6100', 10) || 6100;
-        const srcPortStr = deriveSourcePort(callId);
-        const sourcePort = (config?.source_port_mode || 'call_id') === 'call_id' && srcPortStr !== '?'
-            ? parseInt(srcPortStr, 10)
-            : undefined;
-
-        setCallLivePaths(prev => ({
-            ...prev,
-            [callId]: { ...prev[callId], loading: true, error: undefined }
-        }));
-        setTargetLivePaths(prev => ({
-            ...prev,
-            [dstIp]: { ...prev[dstIp], loading: true, error: undefined },
-            [targetKey]: { ...prev[targetKey], loading: true, error: undefined }
-        }));
-
-        try {
-            const res = await gFetch('/api/convergence/live-path', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    testId: callId,
-                    sourcePort,
-                    dstIp,
-                    dstPort,
-                    protocol: 17
-                })
-            });
-            const data = await res.json();
-            if (res.ok && data.success && data.found) {
-                const resolved = {
-                    loading: false,
-                    egress_path: data.egress_path,
-                    path_type: data.path_type,
-                    app_id: data.flow?.app_id || null
-                };
-                setCallLivePaths(prev => ({
-                    ...prev,
-                    [callId]: resolved
-                }));
-                setTargetLivePaths(prev => ({
-                    ...prev,
-                    [dstIp]: resolved,
-                    [targetKey]: resolved
-                }));
-            } else {
-                const errState = {
-                    loading: false,
-                    error: data.message || data.error || 'Flow not found'
-                };
-                setCallLivePaths(prev => ({
-                    ...prev,
-                    [callId]: errState
-                }));
-                setTargetLivePaths(prev => ({
-                    ...prev,
-                    [dstIp]: { ...prev[dstIp], loading: false },
-                    [targetKey]: { ...prev[targetKey], loading: false }
-                }));
-            }
-        } catch (err: any) {
-            setCallLivePaths(prev => ({
-                ...prev,
-                [callId]: {
-                    loading: false,
-                    error: err.message || 'Path lookup failed'
-                }
-            }));
-            setTargetLivePaths(prev => ({
-                ...prev,
-                [dstIp]: { ...prev[dstIp], loading: false },
-                [targetKey]: { ...prev[targetKey], loading: false }
-            }));
-        }
-    };
-
-    const handleCheckTargetPath = async (host: string, port: number) => {
-        if (!host) return;
-        const targetKey = `${host}:${port || 6100}`;
-        setTargetLivePaths(prev => ({
-            ...prev,
-            [host]: { ...prev[host], loading: true, error: undefined },
-            [targetKey]: { ...prev[targetKey], loading: true, error: undefined }
-        }));
-        try {
-            const res = await gFetch('/api/convergence/live-path', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    dstIp: host,
-                    dstPort: Number(port || 6100),
-                    protocol: 17
-                })
-            });
-            const data = await res.json();
-            if (res.ok && data.success && data.found) {
-                const resolved = {
-                    loading: false,
-                    egress_path: data.egress_path,
-                    path_type: data.path_type || null,
-                    app_id: data.flow?.app_id || null
-                };
-                setTargetLivePaths(prev => ({
-                    ...prev,
-                    [host]: resolved,
-                    [targetKey]: resolved
-                }));
-            } else {
-                const errState = {
-                    loading: false,
-                    error: data.message || data.error || 'Flow not found'
-                };
-                setTargetLivePaths(prev => ({
-                    ...prev,
-                    [host]: errState,
-                    [targetKey]: errState
-                }));
-            }
-        } catch (err: any) {
-            const errState = {
-                loading: false,
-                error: err.message || 'Path lookup failed'
-            };
-            setTargetLivePaths(prev => ({
-                ...prev,
-                [host]: errState,
-                [targetKey]: errState
-            }));
-        }
-    };
 
     const handleInspectAllVoicePaths = async () => {
         setInspectAllLoading(true);
@@ -1166,7 +1024,7 @@ export default function Voice(props: VoiceProps) {
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all cursor-pointer disabled:opacity-40"
                             >
                                 {inspectAllLoading ? <RotateCw size={9} className="animate-spin" /> : <Search size={9} />}
-                                <span>Inspect All Paths</span>
+                                <span>{Object.keys(targetLivePaths).length > 0 ? 'Refresh Paths' : 'Inspect Paths'}</span>
                             </button>
                             <span className={cn(
                                 'text-[10px] font-black px-2 py-0.5 rounded-full',
@@ -1225,16 +1083,6 @@ export default function Voice(props: VoiceProps) {
                                                     <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-blink-slow" />
                                                     <span className="text-[9px] text-green-500 font-black tracking-tight">Live</span>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleCheckCallLivePath(call)}
-                                                    disabled={lp?.loading}
-                                                    title="On-demand SD-WAN path lookup via vION WebSocket CLI (with Flow API fallback)"
-                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all cursor-pointer disabled:opacity-50"
-                                                >
-                                                    {lp?.loading ? <RotateCw size={9} className="animate-spin" /> : <Search size={9} />}
-                                                    <span>{lp?.egress_path ? 'Refresh Path' : 'Inspect Path'}</span>
-                                                </button>
                                             </div>
                                         </div>
                                         {lp?.egress_path && (
@@ -1293,29 +1141,17 @@ export default function Voice(props: VoiceProps) {
                                     )}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2 self-start sm:self-auto">
-                                <button
-                                    type="button"
-                                    onClick={handleInspectAllVoicePaths}
-                                    disabled={inspectAllLoading}
-                                    title="Query vION CLI once to resolve the active SD-WAN path for all voice targets"
-                                    className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center gap-1.5 cursor-pointer bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border-blue-500/30 disabled:opacity-50"
-                                >
-                                    {inspectAllLoading ? <RotateCw size={11} className="animate-spin" /> : <Search size={11} />}
-                                    <span>Inspect All Paths</span>
-                                </button>
-                                <button
-                                    onClick={() => setShowAddManual(v => !v)}
-                                    className={cn(
-                                        "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center gap-1.5 cursor-pointer",
-                                        showAddManual
-                                            ? "bg-blue-600/15 text-blue-500 border-blue-500/40"
-                                            : "bg-card-secondary/50 hover:bg-card-secondary text-text-secondary hover:text-text-primary border-border"
-                                    )}
-                                >
-                                    <Plus size={12} /> Custom Target
-                                </button>
-                            </div>
+                            <button
+                                onClick={() => setShowAddManual(v => !v)}
+                                className={cn(
+                                    "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer",
+                                    showAddManual
+                                        ? "bg-blue-600/15 text-blue-500 border-blue-500/40"
+                                        : "bg-card-secondary/50 hover:bg-card-secondary text-text-secondary hover:text-text-primary border-border"
+                                )}
+                            >
+                                <Plus size={12} /> Custom Target
+                            </button>
                         </div>
 
                         {/* Collapsible Manual Target Bar */}
@@ -1375,7 +1211,6 @@ export default function Voice(props: VoiceProps) {
                                         <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Avg MOS</th>
                                         <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Loss</th>
                                         <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">RTT / Jitter</th>
-                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">SD-WAN Path</th>
                                         <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-right">Quality</th>
                                         <th className="pb-3 px-2 w-8" />
                                     </tr>
@@ -1498,50 +1333,6 @@ export default function Voice(props: VoiceProps) {
                                                     )}
                                                 </td>
 
-                                                {/* Persistent SD-WAN Path per Target */}
-                                                <td className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45")}>
-                                                    {(() => {
-                                                        const tPath = targetLivePaths[targetKey] || targetLivePaths[row.host];
-                                                        if (tPath?.loading) {
-                                                            return (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30">
-                                                                    <RotateCw size={9} className="animate-spin" />
-                                                                    <span>Querying...</span>
-                                                                </span>
-                                                            );
-                                                        }
-                                                        if (tPath?.egress_path) {
-                                                            return (
-                                                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-[10px] font-mono max-w-[230px]">
-                                                                    <ArrowRightLeft size={9} className="text-emerald-400 shrink-0" />
-                                                                    <span className="font-bold text-emerald-300 truncate" title={tPath.egress_path}>
-                                                                        {tPath.egress_path}
-                                                                    </span>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleCheckTargetPath(row.host, Number(row.port || 6100))}
-                                                                        title="Refresh SD-WAN path for this target"
-                                                                        className="text-emerald-400/70 hover:text-emerald-300 ml-0.5 shrink-0 cursor-pointer"
-                                                                    >
-                                                                        <RotateCw size={9} />
-                                                                    </button>
-                                                                </div>
-                                                            );
-                                                        }
-                                                        return (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleCheckTargetPath(row.host, Number(row.port || 6100))}
-                                                                title="Inspect active SD-WAN path for this voice target"
-                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-bold bg-card-secondary/60 hover:bg-blue-500/15 text-text-muted hover:text-blue-400 border border-border hover:border-blue-500/30 transition-all cursor-pointer"
-                                                            >
-                                                                <Search size={9} />
-                                                                <span>Inspect</span>
-                                                            </button>
-                                                        );
-                                                    })()}
-                                                </td>
-
                                                 {/* Quality badge + radar modal trigger */}
                                                 <td
                                                     onClick={() => stat && setSelectedStat(stat)}
@@ -1582,7 +1373,7 @@ export default function Voice(props: VoiceProps) {
                                     {/* Empty state */}
                                     {targetRows.length === 0 && !loading && (
                                         <tr>
-                                            <td colSpan={10} className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
+                                            <td colSpan={9} className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
                                                 No voice-capable Stigix targets — click "+ Custom Target" above or enable Voice capability in Targets
                                             </td>
                                         </tr>
