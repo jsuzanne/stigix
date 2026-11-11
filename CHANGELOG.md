@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.7] - 2026-11-11
+
+### Fixed
+- **Instant Bottom-Positioning When Opening AI Copilot (`web-dashboard/src/Copilot.tsx`)**:
+  - Fixed a race condition where `isInitialSessionLoadRef` was cleared on initial mount while `messages` was still empty (`[]`), causing the subsequent `/api/copilot/sessions/:id` response to trigger a smooth-scroll animation (`behavior: 'smooth'`) from the very top of the transcript all the way down.
+  - Switched initial session positioning to `useLayoutEffect` (before browser paint) and kept `isInitialSessionLoadRef` active until `messages.length > 0`, so opening the Copilot drawer or switching sessions displays the bottom of the latest conversation immediately without any scrolling animation.
+
 ## [3.2.6] - 2026-11-11
 
 ### Changed

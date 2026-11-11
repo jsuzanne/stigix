@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
     Bot,
     Send,
@@ -145,6 +145,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const isInitialSessionLoadRef = useRef(true);
+    const [isHistoryReady, setIsHistoryReady] = useState(false);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -157,29 +158,30 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
         fetchSessions();
     }, [token]);
 
-    // Auto-scroll to bottom of chat
-    useEffect(() => {
-        if (!chatEndRef.current) return;
+    // Auto-scroll to bottom of chat synchronously before paint on session load
+    useLayoutEffect(() => {
+        const container = chatContainerRef.current;
+        if (!container) return;
 
         if (isInitialSessionLoadRef.current) {
-            // Instantly display bottom of conversation (no full scroll from top)
-            if (chatContainerRef.current) {
-                chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-            }
-            chatEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
-
-            const timer = setTimeout(() => {
+            if (messages.length === 0) return;
+            // Jump directly to bottom before the browser paints — zero visible scrolling from top
+            container.scrollTop = container.scrollHeight;
+            const raf = requestAnimationFrame(() => {
                 if (chatContainerRef.current) {
                     chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
                 }
-                chatEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
                 isInitialSessionLoadRef.current = false;
-            }, 60);
-
-            return () => clearTimeout(timer);
+                setIsHistoryReady(true);
+            });
+            return () => cancelAnimationFrame(raf);
         } else {
-            // Live conversation: smooth scroll on new message or auto while streaming
-            chatEndRef.current.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth', block: 'end' });
+            // Live conversation: instant scroll while streaming, smooth scroll on newly sent message
+            if (isStreaming) {
+                container.scrollTop = container.scrollHeight;
+            } else {
+                chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }
         }
     }, [messages, isStreaming]);
 
@@ -241,6 +243,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
 
     const selectSession = async (sessionId: string) => {
         isInitialSessionLoadRef.current = true;
+        setIsHistoryReady(false);
         setCurrentSessionId(sessionId);
         try {
             const res = await fetch(`/api/copilot/sessions/${sessionId}`, { headers: authHeaders });
@@ -258,11 +261,13 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
             }
         } catch (e: any) {
             console.error('Failed to load session:', e);
+            setIsHistoryReady(true);
         }
     };
 
     const createNewSession = async () => {
         isInitialSessionLoadRef.current = true;
+        setIsHistoryReady(true);
         try {
             const res = await fetch('/api/copilot/sessions', {
                 method: 'POST',
@@ -840,7 +845,12 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                 </div>
 
                 {/* Chat Feed */}
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
+                <div
+                    ref={chatContainerRef}
+                    className={`flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar transition-opacity duration-75 ${
+                        !isHistoryReady && messages.length > 0 ? 'opacity-0' : 'opacity-100'
+                    }`}
+                >
                     {/* Missing Key Warning Banner */}
                     {!config?.hasKey && (
                         <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex items-start justify-between gap-4">
