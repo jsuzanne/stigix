@@ -1385,6 +1385,10 @@ def resolve_live_flow_cli(
         has_dport = bool(dst_port and int(dst_port) > 0)
         if not has_sport and not has_dport:
             return False
+        # Only stop early when querying a single destination IP; in batch mode (no dst_ip)
+        # we want the full flow table so all active destination targets are collected.
+        if not dst_ip:
+            return False
         rows = parse_inspect_flow_brief(partial_text)
         for r in rows:
             if not str(r.get("wanpath_id") or "").isdigit():
@@ -1405,33 +1409,47 @@ def resolve_live_flow_cli(
     # Filter locally by dst_ip, src_ip, protocol, src_port, dst_port (handles vION 6.5 bare fallback & NAT)
     filtered = all_rows
     if dst_ip:
-        dst_matches = [r for r in filtered if r.get("destination_ip") == dst_ip]
-        if dst_matches:
-            filtered = dst_matches
+        filtered = [r for r in filtered if r.get("destination_ip") == dst_ip]
     if src_ip:
         src_matches = [r for r in filtered if r.get("source_ip") == src_ip]
         if src_matches:
             filtered = src_matches
     if protocol and int(protocol) > 0:
-        proto_matches = [r for r in filtered if str(r.get("protocol")) == str(int(protocol))]
-        if proto_matches:
-            filtered = proto_matches
+        filtered = [r for r in filtered if str(r.get("protocol")) == str(int(protocol))]
 
-    if src_port and int(src_port) > 0:
-        port_matches = [
-            r for r in filtered
-            if str(r.get("source_port")) == str(int(src_port)) or str(r.get("destination_port")) == str(int(src_port))
-        ]
-        if port_matches:
-            filtered = port_matches
-
-    if dst_port and int(dst_port) > 0:
-        dport_matches = [
-            r for r in filtered
-            if str(r.get("destination_port")) == str(int(dst_port)) or str(r.get("source_port")) == str(int(dst_port))
-        ]
-        if dport_matches:
+    has_sport = bool(src_port and int(src_port) > 0)
+    has_dport = bool(dst_port and int(dst_port) > 0)
+    if has_sport or has_dport:
+        sport_matches = (
+            [
+                r for r in filtered
+                if str(r.get("source_port")) == str(int(src_port)) or str(r.get("destination_port")) == str(int(src_port))
+            ]
+            if has_sport
+            else []
+        )
+        dport_matches = (
+            [
+                r for r in filtered
+                if str(r.get("destination_port")) == str(int(dst_port)) or str(r.get("source_port")) == str(int(dst_port))
+            ]
+            if has_dport
+            else []
+        )
+        if sport_matches:
+            filtered = sport_matches
+            if has_dport:
+                both = [
+                    r for r in filtered
+                    if str(r.get("destination_port")) == str(int(dst_port)) or str(r.get("source_port")) == str(int(dst_port))
+                ]
+                if both:
+                    filtered = both
+        elif dport_matches:
             filtered = dport_matches
+        else:
+            # Strict port enforcement: never fall back to unrelated ports on the same destination IP
+            filtered = []
 
     parsed_rows = filtered
 

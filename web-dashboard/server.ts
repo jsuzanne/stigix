@@ -504,7 +504,7 @@ const MAX_CONCURRENT_GETFLOW = 2;
  * Fire-and-forget safe: never throws, always resolves.
  */
 async function runGetflow(
-    siteNameOrOpts: string | { siteName?: string; sourcePort?: number; srcIp?: string; dstIp?: string; protocol?: number; minutes?: number; hours?: number },
+    siteNameOrOpts: string | { siteName?: string; sourcePort?: number; dstPort?: number; srcIp?: string; dstIp?: string; protocol?: number; minutes?: number; hours?: number },
     legacySourcePort?: number,
     legacyDstIp?: string,
     legacyMinutes: number = 15
@@ -550,8 +550,12 @@ async function runGetflow(
             if (opts.siteName) {
                 args.push('--site-name', opts.siteName);
             }
+            const proto = Number(opts.protocol || 17);
             if (opts.sourcePort && opts.sourcePort > 0) {
-                args.push('--udp-src-port', String(opts.sourcePort));
+                args.push(proto === 6 ? '--tcp-src-port' : '--udp-src-port', String(opts.sourcePort));
+            }
+            if (opts.dstPort && opts.dstPort > 0) {
+                args.push(proto === 6 ? '--tcp-dst-port' : '--udp-dst-port', String(opts.dstPort));
             }
             if (opts.srcIp) {
                 args.push('--src-ip', opts.srcIp);
@@ -644,10 +648,12 @@ async function runLiveFlowCli(
                 scriptPath,
                 '--device', siteName,
                 '--resolve-flow',
-                '--dst-ip', String(dstIp),
                 '--protocol', String(protocol),
                 '--json'
             ];
+            if (dstIp && String(dstIp).trim()) {
+                args.push('--dst-ip', String(dstIp).trim());
+            }
             if (sourcePort && Number(sourcePort) > 0) {
                 args.push('--src-port', String(sourcePort));
             }
@@ -667,7 +673,8 @@ async function runLiveFlowCli(
                 }
             }
             const t0 = Date.now();
-            log('ION-CLI', `⚡ [LIVE-FLOW] Executing on ${siteName}: "inspect flow brief dstv4=${dstIp}" (proto=${protocol}${sourcePort ? `, src_port=${sourcePort}` : ''}${dstPort ? `, dst_port=${dstPort}` : ''})`);
+            const cliCmdDesc = dstIp ? `inspect flow brief dstv4=${dstIp}` : 'inspect flow brief';
+            log('ION-CLI', `⚡ [LIVE-FLOW] Executing on ${siteName}: "${cliCmdDesc}" (proto=${protocol}${sourcePort ? `, src_port=${sourcePort}` : ''}${dstPort ? `, dst_port=${dstPort}` : ''})`);
             const proc = spawn(PYTHON_PATH, args, {
                 cwd: path.join(PROJECT_ROOT, 'engines'),
                 timeout: 25_000,
@@ -686,7 +693,7 @@ async function runLiveFlowCli(
                     if (parsed?.success) {
                         log(
                             'ION-CLI',
-                            `✅ [LIVE-FLOW] ${parsed.element || siteName}${parsed.software_version ? ` (vION ${parsed.software_version})` : ''} command="${parsed.command || `inspect flow brief dstv4=${dstIp}`}" completed in ${parsed.duration_ms ?? elapsedMs}ms -> ${parsed.flows?.length || 0} matching flow(s)`
+                            `✅ [LIVE-FLOW] ${parsed.element || siteName}${parsed.software_version ? ` (vION ${parsed.software_version})` : ''} command="${parsed.command || cliCmdDesc}" completed in ${parsed.duration_ms ?? elapsedMs}ms -> ${parsed.flows?.length || 0} matching flow(s)`
                         );
                     } else {
                         log('ION-CLI', `⚠️ [LIVE-FLOW] ${siteName} failed after ${elapsedMs}ms: ${parsed?.error || 'unknown error'}`, 'warn');
@@ -8526,8 +8533,8 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
             else if (String(testId).includes('XFR-')) dstPort = 9000;
         }
 
-        if (!dstIp || (!sourcePort && !dstPort)) {
-            return res.status(400).json({ success: false, error: 'Missing dstIp or port filter (sourcePort / dstPort)' });
+        if (!sourcePort && !dstPort) {
+            return res.status(400).json({ success: false, error: 'Missing port filter (sourcePort or dstPort)' });
         }
 
         const siteInfo = siteManager.getSiteInfo();
@@ -8537,6 +8544,69 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
             return res.status(400).json({
                 success: false,
                 error: 'No local site name detected. Ensure Prisma SD-WAN credentials and site mapping are configured.'
+            });
+        }
+
+        // Batch mode (when dstIp is omitted, e.g., Global Voice Path Inspection across all active :6100 targets)
+        if (!dstIp) {
+            log('CONV', `Querying batch live paths for ${siteName} (proto=${protoNum}, dstPort=${dstPort || 'any'}) via vION WebSocket CLI`);
+            const cliResult = await runLiveFlowCli(siteName, Number(sourcePort || 0), '', protoNum, dstPort || undefined);
+            const flowsByDst: Record<string, {
+                egress_path: string;
+                path_type: string | null;
+                app_id: string | null;
+                source_port: number | null;
+                destination_port: number | null;
+                destination_ip: string;
+            }> = {};
+            const flowsBySrcPort: Record<string, {
+                egress_path: string;
+                path_type: string | null;
+                app_id: string | null;
+                destination_ip: string;
+            }> = {};
+
+            if (cliResult?.flows && Array.isArray(cliResult.flows)) {
+                for (const fl of cliResult.flows) {
+                    const fDstIp = String(fl.destination_ip || '').trim();
+                    const rawPath = fl.egress_path || fl.path_type || '';
+                    const egressPath = rawPath.replace(/ to /g, ' → ');
+                    if (!egressPath) continue;
+                    const entry = {
+                        egress_path: egressPath,
+                        path_type: fl.path_type || null,
+                        app_id: fl.app_id || null,
+                        source_port: fl.source_port ? Number(fl.source_port) : null,
+                        destination_port: fl.destination_port ? Number(fl.destination_port) : null,
+                        destination_ip: fDstIp
+                    };
+                    if (fDstIp && !flowsByDst[fDstIp]) {
+                        flowsByDst[fDstIp] = entry;
+                    }
+                    if (fl.source_port) {
+                        flowsBySrcPort[String(fl.source_port)] = {
+                            egress_path: egressPath,
+                            path_type: fl.path_type || null,
+                            app_id: fl.app_id || null,
+                            destination_ip: fDstIp
+                        };
+                    }
+                }
+            }
+
+            const nowIso = cliResult?.query_time || new Date().toISOString();
+            const foundCount = Object.keys(flowsByDst).length;
+            return res.json({
+                success: true,
+                found: foundCount > 0,
+                batch: true,
+                source: 'ion_cli_websocket',
+                site_name: siteName,
+                flows_by_dst: flowsByDst,
+                flows_by_src_port: flowsBySrcPort,
+                flows_count: cliResult?.flows?.length || 0,
+                targets_resolved: foundCount,
+                timestamp: nowIso
             });
         }
 
@@ -8592,8 +8662,15 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
             });
         }
 
-        // 2. Fallback to Prisma SD-WAN Flow Browser API (getflow.py)
-        const result = await runGetflow(siteName, Number(sourcePort), String(dstIp));
+        // 2. Fallback to Prisma SD-WAN Flow Browser API (getflow.py) with exact protocol & dstPort
+        const result = await runGetflow({
+            siteName,
+            sourcePort: sourcePort ? Number(sourcePort) : undefined,
+            dstPort: dstPort ? Number(dstPort) : undefined,
+            dstIp: String(dstIp),
+            protocol: protoNum,
+            minutes: 15
+        });
 
         if (result?.flows && result.flows.length > 0) {
             const primaryFlow = result.flows[0];

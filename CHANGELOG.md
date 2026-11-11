@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.5] - 2026-11-11
+
+### Added
+- **Global & Persistent Per-Target SD-WAN Path Inspection in Voice (`web-dashboard/src/Voice.tsx`, `web-dashboard/server.ts`)**:
+  - Added an **`Inspect All Paths`** button in the **Live Streams** and **Stigix Voice Targets & QoS Telemetry** headers that queries `inspect flow brief` once via vION WebSocket CLI (`dstPort=6100, protocol=17`) and resolves the active SD-WAN egress path for all active voice targets in a single call.
+  - Added a persistent **`SD-WAN Path`** column (with individual `Inspect` / `Refresh` action) in the **Stigix Voice Targets & QoS Telemetry** table so the resolved path for each target (`DC1-Ubuntu`, `BR2-Ubuntu`, `DC2-Ubuntu`, `StigixCloud`) remains visible even as 30s `CALL-*` streams rotate.
+
+### Fixed
+- **Strict Port & Protocol Filtering in Live Flow Resolution (`engines/sdwan_ion_cli.py`, `web-dashboard/server.ts`)**:
+  - Fixed `resolve_live_flow_cli` so that when `src_port` or `dst_port` is specified (e.g., Speedtest `:9000` or Voice `:6100`) and no active flow matches that port on the vION (such as after a Speedtest has completed), it returns `flows: []` instead of falling back to unrelated flows toward the same IP (e.g., background Custom App `STX_Onprem8085-131103` on port `8085`).
+  - Updated the `runGetflow` Flow Browser API fallback in `POST /api/convergence/live-path` to pass `--tcp-dst-port` / `--udp-dst-port` and `--protocol` so completed Speedtest (`XFR-*`) flows on port `:9000` are accurately retrieved from the controller API.
+
 ## [3.2.4] - 2026-11-11
 
 ### Added

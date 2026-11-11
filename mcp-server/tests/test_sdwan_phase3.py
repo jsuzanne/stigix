@@ -293,3 +293,50 @@ def test_cross_version_fallbacks_and_regex_flow_parser():
     assert rows[1]["source_port"] == 30455
     assert rows[1]["wanpath_id"] == "1762789923250022645"
 
+
+def test_resolve_live_flow_cli_strict_port_filter(monkeypatch):
+    """Ensure resolve_live_flow_cli never returns an unrelated port (e.g. 8085) when port 9000 is requested."""
+    import sdwan_ion_cli
+
+    def _fake_exec(sdk, device_or_site, cmd, **kwargs):
+        return {
+            "success": True,
+            "site_id": "site-1",
+            "site": "BR8",
+            "element": "br8-vion1",
+            "software_version": "6.5.2-b9",
+            "command": cmd,
+            "duration_ms": 1100,
+            "read_at": "2026-11-11T08:48:00Z",
+            "output": (
+                "Global 192.168.208.100 192.168.203.100 54120 8085 6 2026-11-11 08:47:10 "
+                "STX_Onprem8085-131103 All-Traffic All-Traffic Allow ALLOW 1762789921682021645 lan_to_public_vpn\n"
+            ),
+        }
+
+    monkeypatch.setattr(sdwan_ion_cli, "execute_ion_cli", _fake_exec)
+    monkeypatch.setattr(sdwan_ion_cli, "resolve_wanpath_id", lambda *a, **kw: ("VPN: BR8-INET1 to DC1-INET1", "VPN"))
+
+    # Requesting dst_port=9000 when only port 8085 is active must return 0 flows (not 8085!)
+    res_9000 = sdwan_ion_cli.resolve_live_flow_cli(
+        None,
+        "BR8",
+        dst_ip="192.168.203.100",
+        dst_port=9000,
+        protocol=6,
+    )
+    assert res_9000["flows"] == []
+
+    # Requesting dst_port=8085 must return the 8085 flow
+    res_8085 = sdwan_ion_cli.resolve_live_flow_cli(
+        None,
+        "BR8",
+        dst_ip="192.168.203.100",
+        dst_port=8085,
+        protocol=6,
+    )
+    assert len(res_8085["flows"]) == 1
+    assert res_8085["flows"][0]["destination_port"] == 8085
+    assert res_8085["flows"][0]["app_id"] == "STX_Onprem8085-131103"
+
+
