@@ -300,8 +300,11 @@ def parse_ping_output(text: str) -> dict:
     if m_pkt:
         tx, rx, loss = int(m_pkt.group(1)), int(m_pkt.group(2)), float(m_pkt.group(3))
         summary["transmitted"] = tx
+        summary["packets_transmitted"] = tx
         summary["received"] = rx
+        summary["packets_received"] = rx
         summary["loss_pct"] = loss
+        summary["packet_loss_pct"] = loss
         summary["reachable"] = rx > 0
     m_rtt = re.search(r"(?:rtt|round-trip)\s+min/avg/max/(?:mdev|stddev)\s*=\s*(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)", clean)
     if m_rtt:
@@ -309,6 +312,76 @@ def parse_ping_output(text: str) -> dict:
         summary["rtt_avg_ms"] = float(m_rtt.group(2))
         summary["rtt_max_ms"] = float(m_rtt.group(3))
     return summary
+
+
+def synthesize_show_interfaces_from_config(host: str, api_key: str, timeout_s: int = 20, verify: bool = False) -> tuple[str, list[dict]]:
+    """Fallback when VyOS HTTPS `/show interfaces` crashes with `PermissionError: failed to run command: stty size`.
+    Reconstructs the standard `show interfaces` table and structured rows from `/retrieve` + per-interface `/show`.
+    """
+    cfg = vyos_https_retrieve_config(host, api_key, timeout_s=timeout_s, verify=verify)
+    ifaces_cfg = cfg.get("interfaces", {}) if isinstance(cfg, dict) else {}
+    lines = [
+        "Codes: S - State, L - Link, u - Up, D - Down, A - Admin Down",
+        f"{'Interface':<16} {'IP Address':<33} {'S/L':<4} {'Description'}",
+        f"{'---------':<16} {'----------':<33} {'---':<4} {'-----------'}",
+    ]
+    rows: list[dict] = []
+    for section in ("ethernet", "bonding", "vti", "loopback", "dummy", "wireguard", "tunnel"):
+        sec_dict = ifaces_cfg.get(section)
+        if not isinstance(sec_dict, dict):
+            continue
+        for ifname in sorted(sec_dict.keys()):
+            idata = sec_dict.get(ifname) or {}
+            if not isinstance(idata, dict):
+                continue
+            raw_addr = idata.get("address")
+            if isinstance(raw_addr, list):
+                addrs = [str(a) for a in raw_addr]
+            elif isinstance(raw_addr, str):
+                addrs = [raw_addr]
+            else:
+                addrs = []
+            desc = str(idata.get("description") or "")
+            is_disabled = "disable" in idata
+            sl = "A/D" if is_disabled else "u/u"
+            state_str = "admin-down" if is_disabled else "up"
+
+            # Try per-interface counters via `/show interfaces ethernet <ifname>` if no description triggers stty size
+            rx_pkts = tx_pkts = rx_bytes = tx_bytes = rx_drop = tx_drop = None
+            if section == "ethernet" and not desc:
+                try:
+                    eth_detail = vyos_https_show(host, api_key, ["interfaces", "ethernet", ifname], timeout_s=8, verify=verify)
+                    if eth_detail and "Traceback" not in eth_detail:
+                        stats_map = parse_ip_link_stats(eth_detail)
+                        st = stats_map.get(ifname, {})
+                        rx_pkts = st.get("rx_packets")
+                        tx_pkts = st.get("tx_packets")
+                        rx_bytes = st.get("rx_bytes")
+                        tx_bytes = st.get("tx_bytes")
+                        rx_drop = st.get("rx_dropped")
+                        tx_drop = st.get("tx_dropped")
+                except Exception:
+                    pass
+
+            first_ip = addrs[0] if addrs else "-"
+            lines.append(f"{ifname:<16} {first_ip:<33} {sl:<4} {desc}")
+            for extra_ip in addrs[1:]:
+                lines.append(f"{'':<16} {extra_ip:<33}")
+
+            rows.append({
+                "name": ifname,
+                "state": state_str,
+                "state_code": sl,
+                "addresses": addrs,
+                "description": desc,
+                "rx_packets": rx_pkts,
+                "tx_packets": tx_pkts,
+                "rx_bytes": rx_bytes,
+                "tx_bytes": tx_bytes,
+                "rx_dropped": rx_drop,
+                "tx_dropped": tx_drop,
+            })
+    return "\n".join(lines), rows
 
 
 # ---- Transport Helpers (VyOS HTTPS API + SSH) -------------------------------------------------------------------
@@ -426,7 +499,7 @@ def vyos_ssh_exec(
 
         try:
             client.connect(**connect_kwargs)
-            stdin, stdout, stderr = client.exec_command(remote_cmd, timeout=timeout_s)
+            stdin, stdout, stderr = client.exec_command(remote_cmd, timeout=timeout_s, get_pty=is_vyos_op)
             stdin.close()
             out_bytes = stdout.read()
             err_bytes = stderr.read()
@@ -506,7 +579,9 @@ def run_inspect(
             "success": False,
             "device": router_id or host,
             "command": str(command or ""),
-            "error": {"code": e.code, "message": e.message, "hint": e.hint},
+            "reason": e.code,
+            "error": f"{e.message}" + (f" ({e.hint})" if e.hint else ""),
+            "error_detail": {"code": e.code, "message": e.message, "hint": e.hint},
             "duration_s": round(clock() - t0, 2),
         }
 
@@ -534,10 +609,20 @@ def run_inspect(
         if parsed.post == "statistics":
             show_if_raw = ""
             stats_raw = ""
+            synth_rows: list[dict] = []
             try:
                 show_if_raw = vyos_https_show(host, api_key, ["interfaces"], timeout_s=parsed.timeout_s, verify=verify)
+                if "stty size" in show_if_raw or "Traceback (most recent call last)" in show_if_raw:
+                    show_if_raw, synth_rows = synthesize_show_interfaces_from_config(
+                        host, api_key, timeout_s=parsed.timeout_s, verify=verify
+                    )
             except Exception:
-                pass
+                try:
+                    show_if_raw, synth_rows = synthesize_show_interfaces_from_config(
+                        host, api_key, timeout_s=parsed.timeout_s, verify=verify
+                    )
+                except Exception:
+                    pass
             try:
                 stats_raw = vyos_ssh_exec(
                     host,
@@ -552,12 +637,14 @@ def run_inspect(
                 transport_used = "ssh+https" if show_if_raw else "ssh"
                 raw = stats_raw
             except Exception:
-                # Fallback to HTTPS /show ["interfaces", "counters"] or ["interfaces"]
+                # Fallback to HTTPS /show ["interfaces", "counters"] or synthesized show_if_raw
                 transport_used = "https"
                 try:
                     counters_raw = vyos_https_show(
                         host, api_key, ["interfaces", "counters"], timeout_s=parsed.timeout_s, verify=verify
                     )
+                    if "Traceback (most recent call last)" in counters_raw or P.device_rejection(counters_raw):
+                        counters_raw = ""
                 except Exception:
                     counters_raw = ""
                 raw = "\n\n".join(p for p in (show_if_raw, counters_raw) if p.strip())
@@ -568,6 +655,8 @@ def run_inspect(
             stats_parsed = parse_ip_link_stats(stats_raw) if stats_raw else {}
             if show_parsed or stats_parsed:
                 extra_fields["interfaces"] = merge_interfaces(show_parsed, stats_parsed)
+            elif synth_rows:
+                extra_fields["interfaces"] = synth_rows
 
         # CASE 2: `show interfaces ethernet <eth> queue` -> qdisc / netem inspection
         elif parsed.post == "queue":
@@ -645,7 +734,12 @@ def run_inspect(
                 pass
 
             raw = "\n\n".join(queue_chunks) if queue_chunks else f"No queue output returned for {iface}."
-            extra_fields["queue_stats"] = parse_netem_queue_output(raw)
+            q_stats = parse_netem_queue_output(raw)
+            q_stats["interface"] = iface
+            for q in q_stats.get("qdiscs", []):
+                q["kind"] = q.get("qdisc")
+            extra_fields["queue_stats"] = q_stats
+            extra_fields["queue_summary"] = q_stats
 
         # CASE 3: `show configuration commands [section <section>]`
         elif parsed.kind == P.KIND_CONFIG:
@@ -664,8 +758,11 @@ def run_inspect(
             path_tokens = parsed.send.split()[1:] if parsed.send.startswith("show ") else parsed.send.split()
             try:
                 raw = vyos_https_show(host, api_key, path_tokens, timeout_s=parsed.timeout_s, verify=verify)
-                if P.device_rejection(raw):
-                    # Try SSH fallback if HTTPS /show didn't recognize the form
+                # Detect VyOS op_mode non-TTY bug (`PermissionError: [Errno 1] failed to run command: stty size`)
+                has_stty_bug = "stty size" in raw or "Traceback (most recent call last)" in raw
+                if P.device_rejection(raw) or has_stty_bug:
+                    # Try SSH fallback first (with PTY)
+                    recovered = False
                     try:
                         ssh_raw = vyos_ssh_exec(
                             host,
@@ -677,11 +774,20 @@ def run_inspect(
                             timeout_s=parsed.timeout_s,
                             is_vyos_op=True,
                         )
-                        if ssh_raw.strip() and not P.device_rejection(ssh_raw):
+                        if ssh_raw.strip() and not P.device_rejection(ssh_raw) and "Traceback (most recent call last)" not in ssh_raw:
                             raw = ssh_raw
                             transport_used = "ssh"
+                            recovered = True
                     except Exception:
                         pass
+
+                    # If `show interfaces` hit the VyOS HTTPS `stty size` bug and SSH is unavailable, synthesize from `/retrieve`
+                    if not recovered and has_stty_bug and parsed.command.startswith("show interfaces"):
+                        synth_raw, synth_rows = synthesize_show_interfaces_from_config(
+                            host, api_key, timeout_s=parsed.timeout_s, verify=verify
+                        )
+                        raw = synth_raw
+                        extra_fields["interfaces"] = synth_rows
             except Exception as https_err:
                 # Fallback to SSH if HTTPS /show failed
                 try:
@@ -700,7 +806,10 @@ def run_inspect(
                     raise https_err
 
             if parsed.command == "show interfaces":
-                extra_fields["interfaces_parsed"] = parse_show_interfaces(raw)
+                parsed_if = parse_show_interfaces(raw)
+                extra_fields["interfaces_parsed"] = parsed_if
+                if "interfaces" not in extra_fields and parsed_if:
+                    extra_fields["interfaces"] = merge_interfaces(parsed_if, {})
 
         # CASE 5: Active Probes (`ping` and `traceroute`)
         elif parsed.kind == P.KIND_PROBE:
@@ -723,14 +832,18 @@ def run_inspect(
                     )
                     transport_used = "ssh"
                 except Exception as ssh_err:
+                    err_msg = f"Ping from VyOS router requires SSH access to {host}: {redact_text(str(ssh_err), known_secrets)[:180]}"
+                    hint_msg = "Ensure SSH is enabled on the VyOS router (`set service ssh`) and SSH credentials match in Router Edit settings (default user/pass: `vyos`/`vyos`)."
                     return {
                         **base,
                         "ok": False,
                         "success": False,
-                        "error": {
+                        "reason": "ssh_required_for_ping",
+                        "error": f"{err_msg} — {hint_msg}",
+                        "error_detail": {
                             "code": "ssh_required_for_ping",
-                            "message": f"Ping from VyOS router requires SSH access to {host}: {redact_text(str(ssh_err), known_secrets)[:180]}",
-                            "hint": "Ensure SSH service is enabled on the VyOS router (`set service ssh`) and credentials match (default user `vyos`, or configure SSH credentials in router settings / VYOS_SSH_USER & VYOS_SSH_PASSWORD).",
+                            "message": err_msg,
+                            "hint": hint_msg,
                         },
                         "duration_s": round(clock() - t0, 2),
                     }
@@ -767,6 +880,9 @@ def run_inspect(
                 tr_data = TR.traceroute_fields(raw, destination_ips=(dst,))
                 if tr_data:
                     extra_fields["traceroute"] = tr_data
+                    extra_fields["hops_compact"] = tr_data.get("hops")
+                    extra_fields["reached_destination"] = tr_data.get("reached_destination")
+                    extra_fields["last_responding_hop"] = tr_data.get("last_responding_hop")
 
         # CASE 6: Bounded Text Packet Capture (`capture <ifname> count <1-50> <filter>`)
         elif parsed.kind == P.KIND_CAPTURE:
@@ -783,14 +899,18 @@ def run_inspect(
                 )
                 transport_used = "ssh"
             except Exception as ssh_err:
+                err_msg = f"Bounded packet capture on VyOS requires SSH access to {host}: {redact_text(str(ssh_err), known_secrets)[:180]}"
+                hint_msg = "Ensure SSH is enabled on the VyOS router (`set service ssh`) and SSH credentials match in Router Edit settings (default user/pass: `vyos`/`vyos`)."
                 return {
                     **base,
                     "ok": False,
                     "success": False,
-                    "error": {
+                    "reason": "ssh_required_for_capture",
+                    "error": f"{err_msg} — {hint_msg}",
+                    "error_detail": {
                         "code": "ssh_required_for_capture",
-                        "message": f"Bounded packet capture on VyOS requires SSH access to {host}: {redact_text(str(ssh_err), known_secrets)[:180]}",
-                        "hint": "Ensure SSH service is enabled on the VyOS router (`set service ssh`) and credentials match (default user `vyos`, or configure SSH credentials in router settings).",
+                        "message": err_msg,
+                        "hint": hint_msg,
                     },
                     "duration_s": round(clock() - t0, 2),
                 }
@@ -802,7 +922,9 @@ def run_inspect(
             **base,
             "ok": False,
             "success": False,
-            "error": {"code": code, "message": err_str},
+            "reason": code,
+            "error": err_str,
+            "error_detail": {"code": code, "message": err_str},
             "duration_s": round(clock() - t0, 2),
         }
 
@@ -816,11 +938,14 @@ def run_inspect(
         "duration_s": round(clock() - t0, 2),
     }
     if rejected:
+        rej_str = redact_text(rejected, known_secrets)
         res.update({
             "ok": False,
             "success": False,
-            "rejected": redact_text(rejected, known_secrets),
-            "error": {
+            "rejected": rej_str,
+            "reason": "command_rejected",
+            "error": f"The router did not accept this form: {rej_str}. {P.REJECT_HINT}",
+            "error_detail": {
                 "code": "command_rejected",
                 "message": "The router did not accept this form.",
                 "hint": P.REJECT_HINT,

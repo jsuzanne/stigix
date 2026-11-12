@@ -395,7 +395,10 @@ export default function Vyos(props: VyosProps) {
             ].slice(0, 15));
 
             if (!data.ok) {
-                toast.error(data.error || 'Command rejected or failed');
+                const errText = typeof data.error === 'string'
+                    ? data.error
+                    : (data.error?.message || data.rejected || 'Command rejected or failed');
+                toast.error(errText);
             }
         } catch (e: any) {
             toast.error(`Inspector error: ${e.message}`);
@@ -2205,79 +2208,107 @@ export default function Vyos(props: VyosProps) {
                             )}
 
                             {/* Policy Rejection or Execution Error Banner */}
-                            {inspectorResult && !inspectorResult.ok && (
-                                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 space-y-2">
-                                    <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
-                                        <ShieldX size={16} />
-                                        <span>Command Blocked or Execution Failed ({inspectorResult.reason || 'policy'})</span>
-                                    </div>
-                                    <p className="text-xs text-red-200 font-mono">{inspectorResult.error}</p>
-                                    {inspectorResult.allowed_examples && (
-                                        <div className="pt-2 border-t border-red-500/20">
-                                            <div className="text-[10px] font-black uppercase tracking-widest text-red-300 mb-1">
-                                                Whitelisted Read-Only Grammar Examples:
-                                            </div>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {inspectorResult.allowed_examples.slice(0, 10).map((ex: string, i: number) => (
-                                                    <span key={i} className="text-[10px] font-mono bg-black/40 text-red-200 px-2 py-0.5 rounded border border-red-500/20">
-                                                        {ex}
-                                                    </span>
-                                                ))}
-                                            </div>
+                            {inspectorResult && !inspectorResult.ok && (() => {
+                                const errObj = typeof inspectorResult.error === 'object' && inspectorResult.error !== null
+                                    ? inspectorResult.error
+                                    : inspectorResult.error_detail;
+                                const errReason = String(inspectorResult.reason || errObj?.code || 'policy');
+                                const errMessage = typeof inspectorResult.error === 'string'
+                                    ? inspectorResult.error
+                                    : String(errObj?.message || inspectorResult.rejected || 'Command execution failed');
+                                const errHint = errObj?.hint ? String(errObj.hint) : '';
+                                return (
+                                    <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 space-y-2">
+                                        <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
+                                            <ShieldX size={16} />
+                                            <span>Command Blocked or Execution Failed ({errReason})</span>
                                         </div>
-                                    )}
-                                </div>
-                            )}
+                                        <p className="text-xs text-red-200 font-mono break-words">{errMessage}</p>
+                                        {errHint && !errMessage.includes(errHint) && (
+                                            <p className="text-[11px] text-amber-200/90 font-mono bg-black/30 px-2.5 py-1.5 rounded border border-amber-500/20">
+                                                💡 {errHint}
+                                            </p>
+                                        )}
+                                        {Array.isArray(inspectorResult.allowed_examples) && (
+                                            <div className="pt-2 border-t border-red-500/20">
+                                                <div className="text-[10px] font-black uppercase tracking-widest text-red-300 mb-1">
+                                                    Whitelisted Read-Only Grammar Examples:
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {inspectorResult.allowed_examples.slice(0, 10).map((ex: string, i: number) => (
+                                                        <span key={i} className="text-[10px] font-mono bg-black/40 text-red-200 px-2 py-0.5 rounded border border-red-500/20">
+                                                            {String(ex)}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* Structured Telemetry Cards (Traceroute / Ping / Netem Queue / Interface Counters) */}
                             {inspectorResult && inspectorResult.ok && (
                                 <div className="space-y-4">
                                     {/* 1. Structured Traceroute Hop Visualizer */}
-                                    {inspectorResult.hops_compact && (
-                                        <div className="bg-card-secondary/50 border border-border rounded-xl p-4 space-y-3">
-                                            <div className="flex items-center justify-between flex-wrap gap-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-black uppercase tracking-widest text-cyan-400">
-                                                        Structured Traceroute Path
-                                                    </span>
-                                                    <span className={cn(
-                                                        'text-[10px] font-bold px-2 py-0.5 rounded border',
-                                                        inspectorResult.reached_destination
-                                                            ? 'bg-green-500/15 text-green-400 border-green-500/30'
-                                                            : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                                                    )}>
-                                                        {inspectorResult.reached_destination ? '✓ Reached Destination' : '⚠️ Partial / Filtered Path'}
-                                                    </span>
-                                                </div>
-                                                {inspectorResult.last_responding_hop && (
-                                                    <span className="text-[11px] font-mono text-text-muted">
-                                                        Last Responding Hop: #{inspectorResult.last_responding_hop.hop} ({inspectorResult.last_responding_hop.ip}) — {inspectorResult.last_responding_hop.min_rtt_ms}ms
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                {inspectorResult.hops_compact.map((h: any, idx: number) => (
-                                                    <React.Fragment key={idx}>
-                                                        <div className={cn(
-                                                            'px-3 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-2',
-                                                            h.ip === '*'
-                                                                ? 'bg-zinc-900/60 border-border text-text-muted'
-                                                                : 'bg-card border-cyan-500/30 text-text-primary'
+                                    {(inspectorResult.hops_compact || inspectorResult.traceroute?.hops) && (() => {
+                                        const hopsList = inspectorResult.hops_compact || inspectorResult.traceroute?.hops || [];
+                                        const reachedDst = inspectorResult.reached_destination ?? inspectorResult.traceroute?.reached_destination;
+                                        const lastHop = inspectorResult.last_responding_hop || inspectorResult.traceroute?.last_responding_hop;
+                                        return (
+                                            <div className="bg-card-secondary/50 border border-border rounded-xl p-4 space-y-3">
+                                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-black uppercase tracking-widest text-cyan-400">
+                                                            Structured Traceroute Path
+                                                        </span>
+                                                        <span className={cn(
+                                                            'text-[10px] font-bold px-2 py-0.5 rounded border',
+                                                            reachedDst
+                                                                ? 'bg-green-500/15 text-green-400 border-green-500/30'
+                                                                : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
                                                         )}>
-                                                            <span className="text-[10px] font-black text-cyan-400">#{h.hop}</span>
-                                                            <span className="font-bold">{h.ip}</span>
-                                                            {h.min_rtt_ms !== null && (
-                                                                <span className="text-[10px] text-emerald-400">{h.min_rtt_ms}ms</span>
-                                                            )}
-                                                        </div>
-                                                        {idx < inspectorResult.hops_compact.length - 1 && (
-                                                            <ChevronRight size={14} className="text-text-muted" />
-                                                        )}
-                                                    </React.Fragment>
-                                                ))}
+                                                            {reachedDst ? '✓ Reached Destination' : '⚠️ Partial / Filtered Path'}
+                                                        </span>
+                                                    </div>
+                                                    {lastHop && (
+                                                        <span className="text-[11px] font-mono text-text-muted">
+                                                            Last Responding Hop: #{lastHop.hop} ({lastHop.ip})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    {hopsList.map((h: any, idx: number) => {
+                                                        const isCollapsedRange = h.hop_from !== undefined;
+                                                        const hopLabel = isCollapsedRange
+                                                            ? (h.hop_from === h.hop_to ? `#${h.hop_from}` : `#${h.hop_from}..${h.hop_to}`)
+                                                            : `#${h.hop}`;
+                                                        const ipLabel = isCollapsedRange ? '* (no reply)' : (h.ip || '*');
+                                                        const rttVal = h.rtt_ms ?? h.min_rtt_ms ?? null;
+                                                        return (
+                                                            <React.Fragment key={idx}>
+                                                                <div className={cn(
+                                                                    'px-3 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-2',
+                                                                    !h.responded || ipLabel.startsWith('*')
+                                                                        ? 'bg-zinc-900/60 border-border text-text-muted'
+                                                                        : 'bg-card border-cyan-500/30 text-text-primary'
+                                                                )}>
+                                                                    <span className="text-[10px] font-black text-cyan-400">{hopLabel}</span>
+                                                                    <span className="font-bold">{ipLabel}</span>
+                                                                    {rttVal !== null && (
+                                                                        <span className="text-[10px] text-emerald-400">{rttVal}ms</span>
+                                                                    )}
+                                                                </div>
+                                                                {idx < hopsList.length - 1 && (
+                                                                    <ChevronRight size={14} className="text-text-muted" />
+                                                                )}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
 
                                     {/* 2. Structured Ping Summary */}
                                     {inspectorResult.ping_summary && (

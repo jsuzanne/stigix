@@ -35,6 +35,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     net-tools \
     dos2unix \
     ca-certificates \
+    openssh-client \
+    sshpass \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
@@ -113,8 +115,8 @@ COPY Scripts ./Scripts
 # Copy CLI script
 COPY Scripts/stigix-cli.py /usr/local/lib/stigix/stigix-cli.py
 
-# Install Python dependencies (requests, prompt_toolkit for stigix-cli, websocket-client for Prisma ION CLI)
-RUN pip3 install --no-cache-dir requests prompt_toolkit scapy flask prisma-sase websocket-client \
+# Install Python dependencies (requests, prompt_toolkit for stigix-cli, websocket-client for Prisma ION CLI, paramiko for VyOS Live Inspector)
+RUN pip3 install --no-cache-dir requests prompt_toolkit scapy flask prisma-sase websocket-client paramiko \
     -r iot/requirements.txt -r mcp-server/requirements.txt \
     --break-system-packages || true
 

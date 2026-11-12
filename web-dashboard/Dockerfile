@@ -43,6 +43,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     python3-urllib3 \
     docker.io \
     docker-compose \
+    openssh-client \
+    sshpass \
     vim-tiny \
     && rm -rf /var/lib/apt/lists/*
 
@@ -81,8 +83,8 @@ COPY vyos ./vyos
 # Copy IoT emulation script and devices template
 COPY iot ./iot
 
-# Install Python dependencies for IoT emulator, Site Detection, and Prisma ION CLI
-RUN pip3 install --no-cache-dir prisma-sase websocket-client -r iot/requirements.txt --break-system-packages || true
+# Install Python dependencies for IoT emulator, Site Detection, Prisma ION CLI, and VyOS Live Inspector
+RUN pip3 install --no-cache-dir prisma-sase websocket-client paramiko -r iot/requirements.txt --break-system-packages || true
 
 # Labels for Docker Hub
 LABEL org.opencontainers.image.title="SD-WAN Traffic Generator - Web UI"
