@@ -3170,20 +3170,18 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     </div>
                                 ) : (
                                     <div className="max-h-80 overflow-y-auto overflow-x-auto font-mono text-[11px]">
-                                        <table className="w-full text-left border-collapse">
+                                        <table className="w-full text-left border-collapse whitespace-nowrap">
                                             <thead className="sticky top-0 bg-card-secondary/95 backdrop-blur text-[9px] uppercase text-text-muted border-b border-border/40 z-10">
                                                 <tr>
-                                                    <th className="py-2 px-3">Correlation Scope</th>
-                                                    <th className="py-2 px-3">Hop / Element</th>
-                                                    <th className="py-2 px-3">Source</th>
-                                                    <th className="py-2 px-3">Destination</th>
-                                                    <th className="py-2 px-3">Proto</th>
-                                                    <th className="py-2 px-3">App-ID</th>
-                                                    <th className="py-2 px-3">Path Policy</th>
-                                                    <th className="py-2 px-3">QoS Policy</th>
-                                                    <th className="py-2 px-3">Security Rule</th>
-                                                    <th className="py-2 px-3">Action</th>
-                                                    <th className="py-2 px-3">Egress / Tunnel Path</th>
+                                                    <th className="py-2 px-2.5">Match</th>
+                                                    <th className="py-2 px-2.5">Hop / Element</th>
+                                                    <th className="py-2 px-2.5">Source</th>
+                                                    <th className="py-2 px-2.5">Destination</th>
+                                                    <th className="py-2 px-2">Proto</th>
+                                                    <th className="py-2 px-2.5">App-ID</th>
+                                                    <th className="py-2 px-2.5">Path / QoS Policy</th>
+                                                    <th className="py-2 px-2.5">ZBFW Security</th>
+                                                    <th className="py-2 px-2.5">Egress / Tunnel Path</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-border/20">
@@ -3197,6 +3195,9 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                             selectedTraceFlow.hopOrigin === 'ingress' &&
                                                             selectedTraceFlow.source_port === fl.source_port &&
                                                             selectedTraceFlow.destination_port === fl.destination_port;
+                                                        const netPol = fl.net_policy || '-';
+                                                        const qosPol = fl.pri_policy || '-';
+                                                        const combinedPol = netPol === qosPol ? netPol : `${netPol} / ${qosPol}`;
                                                         return (
                                                             <tr
                                                                 key={`ing-${i}`}
@@ -3209,37 +3210,58 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                                         : 'hover:bg-indigo-500/10'
                                                                 }`}
                                                             >
-                                                                <td className="py-1.5 px-3">
-                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
-                                                                        isExact
-                                                                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
-                                                                            : isSession
-                                                                            ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/40 dark:border-cyan-500/30'
-                                                                            : 'bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/40 dark:border-slate-500/30'
-                                                                    }`}>
-                                                                        {isExact ? '★ Exact Probe 5-Tuple' : isSession ? 'Probe Keepalive' : 'Associated Flow'}
+                                                                <td className="py-2 px-2.5">
+                                                                    <span
+                                                                        title={isExact ? 'Exact probe flow matched in PCAP and ION flow table' : isSession ? 'Active synthetic probe keepalive flow' : 'Associated flow to same destination'}
+                                                                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase border whitespace-nowrap ${
+                                                                            isExact
+                                                                                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
+                                                                                : isSession
+                                                                                ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/40 dark:border-cyan-500/30'
+                                                                                : 'bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/40 dark:border-slate-500/30'
+                                                                        }`}
+                                                                    >
+                                                                        {isExact ? (isIcmpFlow ? '★ Exact ICMP' : '★ Exact 5-Tuple') : isSession ? 'Probe Keepalive' : 'Associated'}
                                                                     </span>
                                                                 </td>
-                                                                <td className="py-1.5 px-3 font-bold text-cyan-700 dark:text-cyan-400">
+                                                                <td className="py-2 px-2.5 font-bold text-cyan-700 dark:text-cyan-400">
                                                                     Ingress ({traceResult.hops?.[1]?.metrics?.element || traceResult.query?.source_site})
                                                                 </td>
-                                                                <td className="py-1.5 px-3 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
-                                                                <td className="py-1.5 px-3 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
-                                                                <td className="py-1.5 px-3 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
-                                                                <td className="py-1.5 px-3 font-bold text-purple-700 dark:text-purple-300">{fl.app_id}</td>
-                                                                <td className="py-1.5 px-3 text-text-secondary">{fl.net_policy || '-'}</td>
-                                                                <td className="py-1.5 px-3 text-text-secondary">{fl.pri_policy || '-'}</td>
-                                                                <td className="py-1.5 px-3 text-text-secondary">{fl.sec_policy || '-'}</td>
-                                                                <td className="py-1.5 px-3">
-                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
-                                                                        String(fl.sec_action).toUpperCase() === 'ALLOW'
-                                                                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-                                                                            : 'bg-rose-500/20 text-rose-700 dark:text-rose-300'
-                                                                    }`}>
-                                                                        {fl.sec_action}
-                                                                    </span>
+                                                                <td className="py-2 px-2.5 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
+                                                                <td className="py-2 px-2.5 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
+                                                                <td className="py-2 px-2 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
+                                                                <td className="py-2 px-2.5 font-bold text-purple-700 dark:text-purple-300 max-w-[160px] truncate" title={fl.app_id}>
+                                                                    {fl.app_id}
                                                                 </td>
-                                                                <td className="py-1.5 px-3 text-cyan-700 dark:text-cyan-300">{fl.egress_path} ({fl.raw_path_type})</td>
+                                                                <td
+                                                                    className="py-2 px-2.5 text-text-secondary max-w-[170px] truncate"
+                                                                    title={`Path Policy: ${netPol} • QoS Policy: ${qosPol}`}
+                                                                >
+                                                                    {combinedPol}
+                                                                </td>
+                                                                <td className="py-2 px-2.5" title={`Rule: ${fl.sec_policy || '-'} • Action: ${fl.sec_action || '-'}`}>
+                                                                    <div className="inline-flex items-center gap-1.5">
+                                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                                                                            String(fl.sec_action).toUpperCase() === 'ALLOW'
+                                                                                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                                                                                : 'bg-rose-500/20 text-rose-700 dark:text-rose-300'
+                                                                        }`}>
+                                                                            {fl.sec_action}
+                                                                        </span>
+                                                                        <span className="text-text-secondary max-w-[130px] truncate">
+                                                                            {fl.sec_policy || '-'}
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td
+                                                                    className="py-2 px-2.5 text-cyan-700 dark:text-cyan-300 font-bold"
+                                                                    title={`${fl.egress_path || '-'} (${fl.raw_path_type || '-'})${fl.wanpath_id ? ` • WANPATH ${fl.wanpath_id}` : ''}`}
+                                                                >
+                                                                    <span>{fl.egress_path}</span>
+                                                                    {fl.raw_path_type && (
+                                                                        <span className="text-text-muted font-normal text-[10px] ml-1">({fl.raw_path_type})</span>
+                                                                    )}
+                                                                </td>
                                                             </tr>
                                                         );
                                                     })}
@@ -3248,35 +3270,57 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                     .map((fl: any, i: number) => {
                                                         const isExact = fl.match_scope === 'EXACT_PCAP_5TUPLE';
                                                         const isSession = fl.match_scope === 'SESSION_PROBE_FLOW';
+                                                        const hubEl = traceResult.hops?.[2]?.metrics?.element || traceResult.verdict?.peer_site_name;
+                                                        const appUnknownOnHub = !fl.app_id || String(fl.app_id).toLowerCase() === 'unknown';
                                                         return (
                                                             <tr
                                                                 key={`tr-${i}`}
                                                                 onClick={() => handleSelectIonFlowRow(fl, 'transit')}
                                                                 className="hover:bg-emerald-500/10 cursor-pointer transition-colors bg-emerald-500/5"
                                                             >
-                                                                <td className="py-1.5 px-3">
-                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
-                                                                        isExact
-                                                                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
-                                                                            : isSession
-                                                                            ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/40 dark:border-cyan-500/30'
-                                                                            : 'bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/40 dark:border-slate-500/30'
-                                                                    }`}>
-                                                                        {isExact ? '★ Exact Probe 5-Tuple' : isSession ? 'Probe Keepalive' : 'Associated Flow'}
+                                                                <td className="py-2 px-2.5">
+                                                                    <span
+                                                                        title={isExact ? 'Exact probe flow matched on Transit Hub ION' : isSession ? 'Active synthetic probe keepalive flow' : 'Associated flow on Transit Hub ION'}
+                                                                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase border whitespace-nowrap ${
+                                                                            isExact
+                                                                                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
+                                                                                : isSession
+                                                                                ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/40 dark:border-cyan-500/30'
+                                                                                : 'bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/40 dark:border-slate-500/30'
+                                                                        }`}
+                                                                    >
+                                                                        {isExact ? (isIcmpFlow ? '★ Exact ICMP' : '★ Exact 5-Tuple') : isSession ? 'Probe Keepalive' : 'Associated'}
                                                                     </span>
                                                                 </td>
-                                                                <td className="py-1.5 px-3 font-bold text-emerald-700 dark:text-emerald-400">
-                                                                    Transit Hub ({traceResult.hops?.[2]?.metrics?.element || traceResult.verdict?.peer_site_name})
+                                                                <td className="py-2 px-2.5 font-bold text-emerald-700 dark:text-emerald-400" title={`Transit Hub (${hubEl})`}>
+                                                                    Hub ({hubEl})
                                                                 </td>
-                                                                <td className="py-1.5 px-3 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
-                                                                <td className="py-1.5 px-3 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
-                                                                <td className="py-1.5 px-3 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
-                                                                <td className="py-1.5 px-3 text-text-muted italic">{fl.app_id} (Ingress Enforced)</td>
-                                                                <td className="py-1.5 px-3 text-text-muted">{fl.net_policy || '-'}</td>
-                                                                <td className="py-1.5 px-3 text-text-muted">{fl.pri_policy || '-'}</td>
-                                                                <td className="py-1.5 px-3 text-text-muted">{fl.sec_policy || '-'}</td>
-                                                                <td className="py-1.5 px-3 text-text-muted">{fl.sec_action}</td>
-                                                                <td className="py-1.5 px-3 text-emerald-700 dark:text-emerald-300 font-bold">{fl.raw_path_type} (WANPATH {fl.wanpath_id})</td>
+                                                                <td className="py-2 px-2.5 text-text-primary">{fl.source_ip}:{fl.source_port}</td>
+                                                                <td className="py-2 px-2.5 text-text-primary">{fl.destination_ip}:{fl.destination_port}</td>
+                                                                <td className="py-2 px-2 text-text-muted">{fl.protocol === 6 ? 'TCP' : fl.protocol === 17 ? 'UDP' : fl.protocol === 1 ? 'ICMP' : fl.protocol}</td>
+                                                                <td
+                                                                    className="py-2 px-2.5 text-text-muted italic"
+                                                                    title="App-ID classification is enforced at the Ingress Branch ION; Transit Hub inspects vpn_to_core overlay sessions"
+                                                                >
+                                                                    {appUnknownOnHub ? 'Inherited (Ingress)' : fl.app_id}
+                                                                </td>
+                                                                <td className="py-2 px-2.5 text-text-muted">
+                                                                    {fl.net_policy && fl.net_policy !== '--' ? fl.net_policy : '—'}
+                                                                </td>
+                                                                <td className="py-2 px-2.5 text-text-muted">
+                                                                    {fl.sec_action && fl.sec_action !== 'N/A' ? fl.sec_action : '—'}
+                                                                </td>
+                                                                <td
+                                                                    className="py-2 px-2.5 text-emerald-700 dark:text-emerald-300 font-bold"
+                                                                    title={`Transit path: ${fl.raw_path_type || 'vpn_to_core'}${fl.wanpath_id ? ` • WANPATH ${fl.wanpath_id}` : ''}`}
+                                                                >
+                                                                    <span>{fl.raw_path_type || 'vpn_to_core'}</span>
+                                                                    {fl.wanpath_id && (
+                                                                        <span className="text-text-muted font-normal text-[10px] ml-1.5">
+                                                                            (WANPATH …{String(fl.wanpath_id).slice(-6)})
+                                                                        </span>
+                                                                    )}
+                                                                </td>
                                                             </tr>
                                                         );
                                                     })}
