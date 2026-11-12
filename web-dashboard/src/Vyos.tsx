@@ -303,13 +303,6 @@ export default function Vyos(props: VyosProps) {
     const [inspectorResult, setInspectorResult] = useState<any | null>(null);
     const [inspectorHistory, setInspectorHistory] = useState<{ ts: number; routerName: string; command: string; ok: boolean; family?: string; result: any }[]>([]);
     const [inspectorFamilyTab, setInspectorFamilyTab] = useState<'all' | 'interfaces' | 'routing' | 'conntrack_nat' | 'probes'>('all');
-
-    // Quick WAN Impairment with Auto-Expire TTL State
-    const [quickImpairLatency, setQuickImpairLatency] = useState<number>(80);
-    const [quickImpairLoss, setQuickImpairLoss] = useState<number>(2);
-    const [quickImpairRate, setQuickImpairRate] = useState<string>('');
-    const [quickImpairTtl, setQuickImpairTtl] = useState<number>(0);
-    const [quickImpairRunning, setQuickImpairRunning] = useState<boolean>(false);
     const [nowTick, setNowTick] = useState<number>(Date.now());
 
     // Live ticker for Auto-Expire TTL countdowns
@@ -408,82 +401,6 @@ export default function Vyos(props: VyosProps) {
             toast.error(`Inspector error: ${e.message}`);
         } finally {
             setInspectorRunning(false);
-        }
-    };
-
-    const applyQuickImpairment = async () => {
-        if (!inspectorRouterId || !inspectorIface) return;
-        setQuickImpairRunning(true);
-        const toastId = toast.loading(`Applying Netem QoS on ${inspectorIface}${quickImpairTtl > 0 ? ` (Auto-Expire in ${quickImpairTtl}m)` : ''}...`);
-        try {
-            const res = await gFetch('/api/vyos/direct-action', {
-                method: 'POST',
-                headers: authHeaders(),
-                body: JSON.stringify({
-                    routerId: inspectorRouterId,
-                    interface: inspectorIface,
-                    command: 'set-qos',
-                    params: {
-                        latency: quickImpairLatency || 0,
-                        loss: quickImpairLoss || 0,
-                        ...(quickImpairRate ? { rate: quickImpairRate } : {}),
-                        ...(quickImpairTtl > 0 ? { ttl_minutes: quickImpairTtl } : {})
-                    },
-                    ttl_minutes: quickImpairTtl > 0 ? quickImpairTtl : undefined,
-                    source: `Live Inspector Quick Impairment${quickImpairTtl > 0 ? ` (TTL ${quickImpairTtl}m)` : ''}`
-                })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                toast.success(
-                    `✓ QoS applied on ${inspectorIface}${quickImpairTtl > 0 ? ` — auto-clears in ${quickImpairTtl} min` : ''}`,
-                    { id: toastId }
-                );
-                await fetchData();
-                // Automatically inspect the Netem queue after applying
-                await runInspectorCommand(`show interfaces ethernet ${inspectorIface} queue`);
-            } else {
-                toast.error(`❌ Failed: ${data.error || 'Unknown error'}`, { id: toastId });
-            }
-        } catch (e: any) {
-            toast.error(`❌ Error: ${e.message}`, { id: toastId });
-        } finally {
-            setQuickImpairRunning(false);
-        }
-    };
-
-    const clearQuickImpairment = async (routerIdOverride?: string, ifaceOverride?: string) => {
-        const rId = routerIdOverride || inspectorRouterId;
-        const ifName = ifaceOverride || inspectorIface;
-        if (!rId || !ifName) return;
-        setQuickImpairRunning(true);
-        const toastId = toast.loading(`Clearing Netem QoS on ${ifName}...`);
-        try {
-            const res = await gFetch('/api/vyos/direct-action', {
-                method: 'POST',
-                headers: authHeaders(),
-                body: JSON.stringify({
-                    routerId: rId,
-                    interface: ifName,
-                    command: 'clear-qos',
-                    params: {},
-                    source: 'Live Inspector Clear QoS'
-                })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                toast.success(`✓ Netem QoS cleared on ${ifName}`, { id: toastId });
-                await fetchData();
-                if (view === 'inspector' && rId === inspectorRouterId) {
-                    await runInspectorCommand(`show interfaces ethernet ${ifName} queue`);
-                }
-            } else {
-                toast.error(`❌ Failed: ${data.error || 'Unknown error'}`, { id: toastId });
-            }
-        } catch (e: any) {
-            toast.error(`❌ Error: ${e.message}`, { id: toastId });
-        } finally {
-            setQuickImpairRunning(false);
         }
     };
 
@@ -2011,11 +1928,19 @@ export default function Vyos(props: VyosProps) {
                             </div>
 
                             {/* Parameter Context Bar for Dynamic Presets */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
-                                        Target Interface
-                                    </label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-text-muted">
+                                            Target Interface
+                                        </label>
+                                        {activeIfaceObj?.qos && ((activeIfaceObj.qos.latency && activeIfaceObj.qos.latency > 0) || (activeIfaceObj.qos.loss && activeIfaceObj.qos.loss > 0) || activeIfaceObj.qos.rate) && (
+                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1" title="Active Netem QoS (managed via Sequences)">
+                                                <span>Netem: +{activeIfaceObj.qos.latency || 0}ms{activeIfaceObj.qos.loss ? ` / ${activeIfaceObj.qos.loss}%` : ''}{activeIfaceObj.qos.rate ? ` / ${activeIfaceObj.qos.rate}` : ''}</span>
+                                                {activeTtlStr && <span className="text-cyan-300">⏱ {activeTtlStr}</span>}
+                                            </span>
+                                        )}
+                                    </div>
                                     <StigixSelect
                                         value={inspectorIface}
                                         onChange={(val) => setInspectorIface(val)}
@@ -2034,7 +1959,7 @@ export default function Vyos(props: VyosProps) {
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
-                                        Target IP / Prefix (Match / Probe)
+                                        Target IP / Prefix (Route / Conntrack / Probe)
                                     </label>
                                     <input
                                         type="text"
@@ -2046,138 +1971,110 @@ export default function Vyos(props: VyosProps) {
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
-                                        Source IP (Ping / Traceroute)
+                                        Source IP (Optional for Ping / Traceroute)
                                     </label>
                                     <input
                                         type="text"
                                         value={inspectorSourceIp}
                                         onChange={(e) => setInspectorSourceIp(e.target.value)}
-                                        placeholder="Optional source IPv4"
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
-                                        Capture Count (1–50 pkts)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        max={50}
-                                        value={inspectorCaptureCount}
-                                        onChange={(e) => setInspectorCaptureCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 15)))}
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
-                                        Capture Filter (Safe BPF)
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={inspectorCaptureFilter}
-                                        onChange={(e) => setInspectorCaptureFilter(e.target.value)}
-                                        placeholder="icmp | port 179 | host 8.8.8.8"
+                                        placeholder="Optional router source IPv4"
                                         className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
                                     />
                                 </div>
                             </div>
 
-                            {/* Quick WAN Impairment + Auto-Expire TTL Bar */}
-                            <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                                <div className="flex items-center gap-2.5">
-                                    <Activity size={16} className="text-indigo-400 shrink-0" />
-                                    <div>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-xs font-black text-text-primary uppercase tracking-tight">
-                                                Quick WAN Impairment ({inspectorIface || 'eth1'})
-                                            </span>
-                                            {activeIfaceObj?.qos && ((activeIfaceObj.qos.latency && activeIfaceObj.qos.latency > 0) || (activeIfaceObj.qos.loss && activeIfaceObj.qos.loss > 0) || activeIfaceObj.qos.rate) && (
-                                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
-                                                    <span>Active: +{activeIfaceObj.qos.latency || 0}ms{activeIfaceObj.qos.loss ? ` / ${activeIfaceObj.qos.loss}% loss` : ''}{activeIfaceObj.qos.rate ? ` / ${activeIfaceObj.qos.rate}` : ''}</span>
-                                                    {activeTtlStr && (
-                                                        <span className="text-cyan-300 bg-cyan-500/20 px-1.5 py-0.2 rounded border border-cyan-500/30">
-                                                            ⏱ Auto-Expire in {activeTtlStr}
-                                                        </span>
-                                                    )}
+                            {/* Bounded Live Packet Capture Bar (Read-Only tcpdump on data interfaces) */}
+                            {(() => {
+                                const capIface = inspectorIface === 'eth0' ? 'eth1' : (inspectorIface || 'eth1');
+                                const capCount = Math.min(50, Math.max(1, inspectorCaptureCount || 15));
+                                const capFilter = inspectorCaptureFilter.trim() || 'icmp';
+                                const capCmd = `capture ${capIface} count ${capCount} ${capFilter}`;
+                                const targetHost = inspectorTargetIp.split('/')[0]?.trim() || '8.8.8.8';
+                                const filterChips = [
+                                    { label: 'ICMP', value: 'icmp' },
+                                    { label: `Host ${targetHost}`, value: `host ${targetHost}` },
+                                    { label: 'BGP (179)', value: 'port 179' },
+                                    { label: 'DNS (53)', value: 'port 53' },
+                                    { label: 'TCP', value: 'tcp' },
+                                    { label: 'UDP', value: 'udp' },
+                                ];
+                                return (
+                                    <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                                    TCPDUMP READ-ONLY
                                                 </span>
-                                            )}
+                                                <span className="text-xs font-black text-text-primary">
+                                                    Bounded Live Interface Capture ({capIface})
+                                                </span>
+                                                {inspectorIface === 'eth0' && (
+                                                    <span className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                                                        eth0 (mgmt) excluded → using eth1
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[11px] text-text-muted">
+                                                Captures up to <span className="font-mono text-text-primary">{capCount}</span> packets (auto-stops after <span className="font-mono text-text-primary">10s</span>) on <span className="font-mono text-cyan-300">{capIface}</span> via SSH: <code className="text-[10px] font-mono text-cyan-300 bg-card px-1.5 py-0.5 rounded border border-border">{capCmd}</code>
+                                            </p>
+                                            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted mr-1">Quick Filters:</span>
+                                                {filterChips.map(chip => (
+                                                    <button
+                                                        key={chip.value}
+                                                        type="button"
+                                                        onClick={() => setInspectorCaptureFilter(chip.value)}
+                                                        className={cn(
+                                                            'px-2 py-0.5 rounded text-[10px] font-mono transition-all border',
+                                                            inspectorCaptureFilter.trim() === chip.value
+                                                                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-bold'
+                                                                : 'bg-card text-text-muted hover:text-text-primary border-border'
+                                                        )}
+                                                    >
+                                                        {chip.label}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                        <p className="text-[10px] text-text-muted">
-                                            Apply Netem delay/loss with an optional safety countdown so active chaos automatically reverts.
-                                        </p>
-                                    </div>
-                                </div>
 
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <div className="flex items-center gap-1 bg-card px-2.5 py-1.5 rounded-lg border border-border">
-                                        <span className="text-[10px] text-text-muted font-bold">Delay</span>
-                                        <input
-                                            type="number"
-                                            min={0}
-                                            max={5000}
-                                            value={quickImpairLatency}
-                                            onChange={(e) => setQuickImpairLatency(Math.max(0, parseInt(e.target.value) || 0))}
-                                            className="w-14 bg-transparent text-xs font-mono font-bold text-indigo-400 text-right focus:outline-none"
-                                        />
-                                        <span className="text-[10px] text-text-muted font-mono">ms</span>
+                                        <div className="flex items-center gap-2 flex-wrap shrink-0">
+                                            <div className="flex items-center gap-1.5 bg-card px-2.5 py-1.5 rounded-lg border border-border">
+                                                <span className="text-[10px] text-text-muted font-bold uppercase">Packets</span>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    max={50}
+                                                    value={inspectorCaptureCount}
+                                                    onChange={(e) => setInspectorCaptureCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 15)))}
+                                                    className="w-12 bg-transparent text-xs font-mono font-bold text-cyan-300 text-right focus:outline-none"
+                                                />
+                                                <span className="text-[10px] text-text-muted font-mono">/50</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 bg-card px-2.5 py-1.5 rounded-lg border border-border">
+                                                <span className="text-[10px] text-text-muted font-bold uppercase">BPF Filter</span>
+                                                <input
+                                                    type="text"
+                                                    value={inspectorCaptureFilter}
+                                                    onChange={(e) => setInspectorCaptureFilter(e.target.value)}
+                                                    placeholder="icmp or port 179"
+                                                    className="w-40 bg-transparent text-xs font-mono font-bold text-text-primary focus:outline-none"
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => runInspectorCommand(capCmd)}
+                                                disabled={inspectorRunning || !inspectorRouterId}
+                                                className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                                            >
+                                                {inspectorRunning && inspectorCommand.startsWith('capture ')
+                                                    ? <RefreshCw size={12} className="animate-spin" />
+                                                    : <Play size={12} />}
+                                                Run Capture (10s max)
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-1 bg-card px-2.5 py-1.5 rounded-lg border border-border">
-                                        <span className="text-[10px] text-text-muted font-bold">Loss</span>
-                                        <input
-                                            type="number"
-                                            min={0}
-                                            max={100}
-                                            value={quickImpairLoss}
-                                            onChange={(e) => setQuickImpairLoss(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-                                            className="w-10 bg-transparent text-xs font-mono font-bold text-amber-400 text-right focus:outline-none"
-                                        />
-                                        <span className="text-[10px] text-text-muted font-mono">%</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 bg-card px-2.5 py-1.5 rounded-lg border border-border">
-                                        <span className="text-[10px] text-text-muted font-bold">Rate</span>
-                                        <input
-                                            type="text"
-                                            value={quickImpairRate}
-                                            onChange={(e) => setQuickImpairRate(e.target.value)}
-                                            placeholder="e.g. 10mbit"
-                                            className="w-16 bg-transparent text-xs font-mono font-bold text-purple-400 focus:outline-none"
-                                        />
-                                    </div>
-                                    <div className="flex items-center gap-1.5 bg-card px-2.5 py-1.5 rounded-lg border border-cyan-500/30">
-                                        <Clock size={12} className="text-cyan-400" />
-                                        <span className="text-[10px] text-cyan-300 font-bold">Auto-Expire</span>
-                                        <select
-                                            value={quickImpairTtl}
-                                            onChange={(e) => setQuickImpairTtl(parseInt(e.target.value) || 0)}
-                                            className="bg-transparent text-xs font-mono font-bold text-cyan-300 focus:outline-none cursor-pointer"
-                                        >
-                                            <option value={0} className="bg-zinc-900">Never (Manual)</option>
-                                            <option value={5} className="bg-zinc-900">5 min</option>
-                                            <option value={10} className="bg-zinc-900">10 min</option>
-                                            <option value={15} className="bg-zinc-900">15 min</option>
-                                            <option value={30} className="bg-zinc-900">30 min</option>
-                                            <option value={60} className="bg-zinc-900">60 min</option>
-                                        </select>
-                                    </div>
-                                    <button
-                                        onClick={applyQuickImpairment}
-                                        disabled={quickImpairRunning || !inspectorRouterId}
-                                        className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                                    >
-                                        {quickImpairRunning ? <RefreshCw size={12} className="animate-spin" /> : <Zap size={12} />}
-                                        Apply &amp; Verify Queue
-                                    </button>
-                                    <button
-                                        onClick={() => clearQuickImpairment()}
-                                        disabled={quickImpairRunning || !inspectorRouterId}
-                                        className="px-3 py-1.5 rounded-lg bg-card hover:bg-red-500/10 text-text-muted hover:text-red-400 border border-border text-xs font-bold transition-all flex items-center gap-1"
-                                        title="Clear Netem QoS on target interface"
-                                    >
-                                        <RotateCcw size={12} /> Clear QoS
-                                    </button>
-                                </div>
-                            </div>
+                                );
+                            })()}
                         </div>
 
                         {/* Quick Presets by Inspection Family */}
