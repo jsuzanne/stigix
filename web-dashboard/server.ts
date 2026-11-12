@@ -420,21 +420,63 @@ const SYSTEM_APP_LOG = path.join(APP_CONFIG.logDir, 'app.log');
 
 // ─── Configuration Backup System ────────────────────────────────────────
 
+const CONFIG_BACKUPS_DIR = path.join(APP_CONFIG.configDir, 'backups');
+
 /**
- * Creates rolling backups (.backup.1 to .backup.7) of a file before it is overwritten.
+ * Automatically migrates legacy *.backup* files from the root config directory
+ * into config/backups/ on startup to keep the CLI config folder clean.
  */
-function backupConfig(filePath: string) {
+function migrateLegacyConfigBackups() {
+    try {
+        if (!fs.existsSync(APP_CONFIG.configDir)) return;
+        fs.mkdirSync(CONFIG_BACKUPS_DIR, { recursive: true });
+        const entries = fs.readdirSync(APP_CONFIG.configDir);
+        let migratedCount = 0;
+        for (const entry of entries) {
+            if (/\.backup(\.\d+|-\d+)?$/.test(entry)) {
+                const src = path.join(APP_CONFIG.configDir, entry);
+                const dest = path.join(CONFIG_BACKUPS_DIR, entry);
+                try {
+                    if (fs.statSync(src).isFile()) {
+                        fs.renameSync(src, dest);
+                        migratedCount++;
+                    }
+                } catch {}
+            }
+        }
+        if (migratedCount > 0) {
+            log('SYSTEM', `Migrated ${migratedCount} legacy config backup file(s) to ${CONFIG_BACKUPS_DIR}`);
+        }
+    } catch (e) {
+        log('SYSTEM', `Failed to migrate legacy config backups: ${e}`, 'error');
+    }
+}
+migrateLegacyConfigBackups();
+
+/**
+ * Creates rolling backups (.backup.1 to .backup.7) of a file inside config/backups/
+ * before it is overwritten, skipping rotation if the content is unchanged.
+ */
+function backupConfig(filePath: string, newData?: any) {
     if (!fs.existsSync(filePath)) return;
     try {
+        if (typeof newData === 'string') {
+            try {
+                const existing = fs.readFileSync(filePath, 'utf8');
+                if (existing === newData) return;
+            } catch {}
+        }
+        fs.mkdirSync(CONFIG_BACKUPS_DIR, { recursive: true });
+        const baseName = path.basename(filePath);
         const maxBackups = 7;
         for (let i = maxBackups - 1; i >= 1; i--) {
-            const src = `${filePath}.backup.${i}`;
-            const dest = `${filePath}.backup.${i + 1}`;
+            const src = path.join(CONFIG_BACKUPS_DIR, `${baseName}.backup.${i}`);
+            const dest = path.join(CONFIG_BACKUPS_DIR, `${baseName}.backup.${i + 1}`);
             if (fs.existsSync(src)) {
                 fs.renameSync(src, dest);
             }
         }
-        fs.copyFileSync(filePath, `${filePath}.backup.1`);
+        fs.copyFileSync(filePath, path.join(CONFIG_BACKUPS_DIR, `${baseName}.backup.1`));
     } catch (e) {
         log('SYSTEM', `Failed to create backup for ${path.basename(filePath)}: ${e}`, 'error');
     }
@@ -451,7 +493,7 @@ const originalWriteFileSync = fs.writeFileSync;
             UI_CONFIG_FILE, CLOUD_CONFIG_FILE
         ];
         if (typeof file === 'string' && configFiles.includes(file)) {
-            backupConfig(file);
+            backupConfig(file, data);
         }
     } catch (tdz) {
         // Some config path constants are not yet initialized (TDZ during module startup).
@@ -7436,10 +7478,8 @@ app.post('/api/connectivity/custom/import', authenticateToken, (req, res) => {
             }
         }
 
-        // Backup
-        if (fs.existsSync(CUSTOM_CONNECTIVITY_FILE)) {
-            fs.copyFileSync(CUSTOM_CONNECTIVITY_FILE, CUSTOM_CONNECTIVITY_FILE + '.backup');
-        }
+        // Backup (handled automatically by writeFileSync interceptor into config/backups/)
+        backupConfig(CUSTOM_CONNECTIVITY_FILE);
 
         fs.writeFileSync(CUSTOM_CONNECTIVITY_FILE, JSON.stringify(probes, null, 2));
         res.json({ success: true, message: 'Probes imported successfully', count: probes.length });
@@ -20894,9 +20934,7 @@ app.post('/api/iot/config/import-sample', authenticateToken, (req, res) => {
             const { running, status, ...clean } = d;
             return clean;
         });
-        if (fs.existsSync(IOT_DEVICES_FILE)) {
-            fs.copyFileSync(IOT_DEVICES_FILE, IOT_DEVICES_FILE + '.backup');
-        }
+        backupConfig(IOT_DEVICES_FILE);
         saveIoTConfig(config);
         res.json({
             success: true,
@@ -20955,11 +20993,10 @@ app.post('/api/iot/config/import', authenticateToken, (req, res) => {
         });
 
 
-        // Backup current file
+        // Backup current file into config/backups/
         if (fs.existsSync(IOT_DEVICES_FILE)) {
-            const backupFile = IOT_DEVICES_FILE + '.backup';
-            fs.copyFileSync(IOT_DEVICES_FILE, backupFile);
-            console.log(`[IOT-REQ] Config backup created: ${backupFile}`);
+            backupConfig(IOT_DEVICES_FILE);
+            console.log(`[IOT-REQ] Config backup created in ${CONFIG_BACKUPS_DIR}`);
         }
 
         console.log(`[IOT-REQ] Success: Importing structured config with ${config.devices.length} devices`);
@@ -21040,9 +21077,7 @@ app.post('/api/iot/import-prisma-csv', authenticateToken, async (req, res) => {
             // from competing with the new import for DHCP offers on the same interface.
             await iotManager.stopAll();
             log('IOT', 'Prisma CSV import: stopped all active devices before replacing config');
-            if (fs.existsSync(IOT_DEVICES_FILE)) {
-                fs.copyFileSync(IOT_DEVICES_FILE, IOT_DEVICES_FILE + '.backup');
-            }
+            backupConfig(IOT_DEVICES_FILE);
             saveIoTConfig({ network: { interface: 'eth0' }, devices: newDevices });
             log('IOT', `Prisma CSV import replaced: ${newDevices.length} devices`);
         }
@@ -21129,9 +21164,7 @@ app.post('/api/iot/import-vuln-csv', authenticateToken, async (req, res) => {
             // from competing with the new import for DHCP offers on the same interface.
             await iotManager.stopAll();
             log('IOT', 'Vulnerability CSV import: stopped all active devices before replacing config');
-            if (fs.existsSync(IOT_DEVICES_FILE)) {
-                fs.copyFileSync(IOT_DEVICES_FILE, IOT_DEVICES_FILE + '.backup');
-            }
+            backupConfig(IOT_DEVICES_FILE);
             saveIoTConfig({ network: { interface: 'eth0' }, devices: newDevices });
             log('IOT', `Vulnerability CSV import replaced: ${newDevices.length} devices`);
         }

@@ -82,8 +82,12 @@ export class CustomTcpConfigStore {
                 }
             } catch (err) {
                 console.error('[CUSTOM_TCP_CONFIG] Corrupt config file, backing up and recreating:', err);
-                const backupPath = `${this.filePath}.backup-${Date.now()}`;
-                try { await fs.promises.copyFile(this.filePath, backupPath); } catch {}
+                const backupsDir = path.join(path.dirname(this.filePath), 'backups');
+                const backupPath = path.join(backupsDir, `${path.basename(this.filePath)}.backup-${Date.now()}`);
+                try {
+                    await fs.promises.mkdir(backupsDir, { recursive: true });
+                    await fs.promises.copyFile(this.filePath, backupPath);
+                } catch {}
             }
         }
 

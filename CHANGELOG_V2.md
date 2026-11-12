@@ -4,6 +4,7 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ## [v2.2.8] - 2026-10-10 — Parallel Remote Fleet Upgrades, Leader Isolation, Circuit Spotlighting & Experimental Go Data-Plane Engine
 
+- **feat(config-backups)**: Isolated rolling configuration backups (`*.backup.1` to `*.backup.7`) into `config/backups/`, added automatic boot-time migration (`migrateLegacyConfigBackups`) to clean up legacy backup files in `config/`, and added content deduplication so unchanged writes no longer rotate backup slots.
 - **feat(go-engine)**: Built unified native Go data-plane engine (`engines/stigix-go/`) replacing Python/Bash workers (`traffic-generator.sh`, `voice_orchestrator.py`, `rtp.py`, `echo_server.py`, `http_server.py`, and `convergence_orchestrator.py`) in a single compiled binary (`stigix-go`) with zero external dependencies.
 - **feat(feature-flag)**: Enforced mandatory `ENABLE_GO_ENGINE=true` environment feature flag in both `stigix-go` binary (`os.Exit(2)` guard) and `web-dashboard/server.ts` so deployments remain on the Legacy Python/Bash engine unless explicitly unlocked.
 - **feat(engine-switcher)**: Added runtime engine hot-switcher and live benchmark telemetry API (`/api/system/engine-runtime`, `/api/system/engine-runtime/baseline`) and UI card in `Settings -> System` (`Hardware & Performance`) comparing RSS memory, CPU usage, process count, and Go runtime heap/goroutine metrics side-by-side.
