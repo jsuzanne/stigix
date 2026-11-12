@@ -1422,19 +1422,19 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             {/* Top Header Card */}
             <div className="bg-card border border-border p-4 rounded-2xl shadow-sm">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                         <div className="p-2.5 bg-cyan-600/10 rounded-xl text-cyan-400 border border-cyan-500/20 shrink-0">
                             <Radio size={22} className={capturing ? "animate-pulse text-rose-400" : ""} />
                         </div>
-                        <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-3 flex-nowrap">
                             <h2 className="text-lg font-black text-text-primary tracking-tight whitespace-nowrap">Packet Capture</h2>
 
                             {/* Mode Switcher: Local PCAP vs E2E Flow & Path Trace (NWPI) */}
-                            <div className="inline-flex items-center bg-card-secondary border border-border rounded-xl p-0.5 text-[11px] font-black">
+                            <div className="inline-flex items-center bg-card-secondary border border-border rounded-xl p-0.5 text-[11px] font-black shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => setCaptureMode('local')}
-                                    className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                                         captureMode === 'local'
                                             ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30 shadow-sm'
                                             : 'text-text-muted hover:text-text-primary border border-transparent'
@@ -1446,7 +1446,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 <button
                                     type="button"
                                     onClick={() => setCaptureMode('trace')}
-                                    className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                                         captureMode === 'trace'
                                             ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 dark:border-indigo-500/30 shadow-sm'
                                             : 'text-text-muted hover:text-text-primary border border-transparent'
@@ -1456,174 +1456,146 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     <span>E2E Flow &amp; Path Trace (NWPI)</span>
                                 </button>
                             </div>
-
-                            {captureMode === 'local' && !capturing && !loadingPackets && activePcapFile && (
-                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border flex items-center gap-2 whitespace-nowrap transition-colors ${
-                                    dissectReadyFlash
-                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
-                                        : 'bg-card-secondary text-text-muted border-border'
-                                }`}>
-                                    <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
-                                    <span className="text-cyan-600 dark:text-cyan-400 font-bold flex items-center gap-0.5">
-                                        <Binary size={11} />
-                                        {totalPackets.toLocaleString()} pkts
-                                    </span>
-                                    {durationSeconds > 0 && (
-                                        <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-0.5">
-                                            <Clock size={11} />
-                                            {durationSeconds}s
-                                        </span>
-                                    )}
-                                    <span className="text-text-muted">
-                                        {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
-                                    </span>
-                                </span>
-                            )}
                         </div>
                     </div>
 
-                    {/* Action Buttons (Full toolbar in Local PCAP mode; discrete Captures history access in E2E Trace mode) */}
-                    <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+                    {/* Action Buttons (Fixed dimensions to guarantee Zero Layout Shift across all capture states) */}
+                    <div className="flex items-center gap-2 shrink-0 flex-nowrap">
                         {captureMode === 'local' ? (
                             <>
-                                {/* 5-Phase Evolving Primary Capture Button */}
+                                {/* 5-Phase Fixed-Geometry Primary Capture Button (w-[176px] h-9) */}
                                 {capturing ? (
                                     <button
                                         onClick={handleStopCapture}
-                                        className="relative overflow-hidden px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-rose-900/40 cursor-pointer"
-                                        title="Click to stop capture and dissect packets immediately"
+                                        className="relative overflow-hidden w-[176px] h-9 px-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-rose-900/40 cursor-pointer shrink-0"
+                                        title="Click to stop capture and decode packets immediately"
                                     >
                                         <span
                                             className="absolute inset-y-0 left-0 bg-white/15 transition-all duration-700 pointer-events-none"
                                             style={{ width: `${Math.min(100, Math.round((elapsedSeconds / Math.max(1, durationSec)) * 100))}%` }}
                                         />
-                                        <span className="relative flex items-center gap-2">
-                                            <Square size={13} fill="currentColor" className="animate-pulse" />
-                                            <span>Stop Capture</span>
-                                            <span className="font-mono text-[11px] bg-black/25 px-2 py-0.5 rounded-md">
-                                                {elapsedSeconds}s / {durationSec}s
-                                                {totalPackets > 0 ? ` · ${totalPackets.toLocaleString()} pkts` : ''}
+                                        <span className="relative flex items-center justify-center gap-1.5">
+                                            <Square size={12} fill="currentColor" className="animate-pulse shrink-0" />
+                                            <span>Stop</span>
+                                            <span className="font-mono text-[10px] bg-black/25 px-1.5 py-0.5 rounded">
+                                                {elapsedSeconds}s/{durationSec}s
                                             </span>
                                         </span>
                                     </button>
                                 ) : stoppingCapture ? (
                                     <button
                                         disabled
-                                        className="px-5 py-2.5 bg-amber-600/80 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg cursor-wait"
+                                        className="w-[176px] h-9 px-3 bg-amber-600/80 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-lg cursor-wait shrink-0"
                                     >
-                                        <Loader2 size={14} className="animate-spin" />
-                                        <span>Stopping capture…</span>
+                                        <Loader2 size={14} className="animate-spin shrink-0" />
+                                        <span>Stopping…</span>
                                     </button>
                                 ) : loadingPackets ? (
                                     <button
                                         disabled
-                                        className="px-5 py-2.5 bg-cyan-600/90 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-cyan-900/30 cursor-wait"
+                                        className="w-[176px] h-9 px-3 bg-cyan-600/90 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-cyan-900/30 cursor-wait shrink-0"
                                     >
-                                        <Loader2 size={14} className="animate-spin" />
-                                        <span>Dissecting {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}…</span>
+                                        <Loader2 size={14} className="animate-spin shrink-0" />
+                                        <span>Decoding…</span>
                                     </button>
                                 ) : startingCapture ? (
                                     <button
                                         disabled
-                                        className="px-5 py-2.5 bg-emerald-600/80 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg cursor-wait"
+                                        className="w-[176px] h-9 px-3 bg-emerald-600/80 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-lg cursor-wait shrink-0"
                                     >
-                                        <Loader2 size={14} className="animate-spin" />
-                                        <span>Starting on {selectedInterface}…</span>
+                                        <Loader2 size={14} className="animate-spin shrink-0" />
+                                        <span>Starting…</span>
                                     </button>
                                 ) : dissectReadyFlash ? (
                                     <button
                                         onClick={handleStartCapture}
-                                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/40 ring-2 ring-emerald-400/60 cursor-pointer"
+                                        className="w-[176px] h-9 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shadow-lg shadow-emerald-900/40 ring-2 ring-emerald-400/60 cursor-pointer shrink-0"
                                     >
-                                        <Check size={14} />
-                                        <span>{totalPackets.toLocaleString()} pkts Ready · New Capture</span>
+                                        <Check size={14} className="shrink-0" />
+                                        <span>Ready ({totalPackets.toLocaleString()})</span>
                                     </button>
                                 ) : (
                                     <button
                                         onClick={handleStartCapture}
-                                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer"
+                                        className="w-[176px] h-9 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-lg shadow-emerald-900/40 cursor-pointer shrink-0"
                                     >
-                                        <Play size={14} fill="currentColor" />
+                                        <Play size={14} fill="currentColor" className="shrink-0" />
                                         <span>Start Capture</span>
                                     </button>
                                 )}
 
                                 <button
                                     onClick={handleOpenHistory}
-                                    className="px-3.5 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                                    className="h-9 px-3.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
                                     title="View saved PCAP captures"
                                 >
-                                    <HardDrive size={13} />
-                                    Captures
+                                    <HardDrive size={13} className="shrink-0" />
+                                    <span>Captures</span>
                                 </button>
 
-                                {activePcapFile && (
-                                    <>
-                                        <button
-                                            onClick={() => handleDownloadCapture(activePcapFile)}
-                                            disabled={downloadingFile === activePcapFile}
-                                            className={`px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 border ${
-                                                downloadedFlash
-                                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
-                                                    : 'bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary'
-                                            }`}
-                                            title="Download raw .pcap for local Wireshark"
-                                        >
-                                            {downloadingFile === activePcapFile ? (
-                                                <>
-                                                    <Loader2 size={13} className="animate-spin text-cyan-600 dark:text-cyan-400" />
-                                                    <span>Downloading…</span>
-                                                </>
-                                            ) : downloadedFlash ? (
-                                                <>
-                                                    <Check size={13} className="text-emerald-500" />
-                                                    <span>Downloaded</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Download size={13} />
-                                                    <span>Download .pcap</span>
-                                                </>
-                                            )}
-                                        </button>
+                                <button
+                                    onClick={() => activePcapFile && handleDownloadCapture(activePcapFile)}
+                                    disabled={!activePcapFile || capturing || loadingPackets || downloadingFile === activePcapFile}
+                                    className={`w-[144px] h-9 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed border shrink-0 ${
+                                        downloadedFlash
+                                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
+                                            : 'bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary'
+                                    }`}
+                                    title={activePcapFile ? "Download raw .pcap for local Wireshark" : "Capture or load a PCAP first"}
+                                >
+                                    {downloadingFile === activePcapFile && activePcapFile ? (
+                                        <>
+                                            <Loader2 size={13} className="animate-spin text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                            <span>Downloading…</span>
+                                        </>
+                                    ) : downloadedFlash ? (
+                                        <>
+                                            <Check size={13} className="text-emerald-500 shrink-0" />
+                                            <span>Downloaded</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download size={13} className="shrink-0" />
+                                            <span>Download .pcap</span>
+                                        </>
+                                    )}
+                                </button>
 
-                                        <button
-                                            onClick={handleSendToReplay}
-                                            disabled={sendingReplay}
-                                            className={`px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer border ${
-                                                sentReplayFlash
-                                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
-                                                    : 'bg-purple-600/15 hover:bg-purple-600/25 border-purple-500/40 dark:border-purple-500/30 text-purple-700 dark:text-purple-300'
-                                            }`}
-                                            title="Send trace to PCAP Replay engine"
-                                        >
-                                            {sendingReplay ? (
-                                                <>
-                                                    <Loader2 size={13} className="animate-spin" />
-                                                    <span>Transferring…</span>
-                                                </>
-                                            ) : sentReplayFlash ? (
-                                                <>
-                                                    <Check size={13} className="text-emerald-500" />
-                                                    <span>Sent to Replay</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Zap size={13} />
-                                                    <span>Send to Replay</span>
-                                                </>
-                                            )}
-                                        </button>
-                                    </>
-                                )}
+                                <button
+                                    onClick={handleSendToReplay}
+                                    disabled={!activePcapFile || capturing || loadingPackets || sendingReplay}
+                                    className={`w-[144px] h-9 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed border shrink-0 ${
+                                        sentReplayFlash
+                                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
+                                            : 'bg-purple-600/15 hover:bg-purple-600/25 border-purple-500/40 dark:border-purple-500/30 text-purple-700 dark:text-purple-300'
+                                    }`}
+                                    title={activePcapFile ? "Send trace to PCAP Replay engine" : "Capture or load a PCAP first"}
+                                >
+                                    {sendingReplay ? (
+                                        <>
+                                            <Loader2 size={13} className="animate-spin shrink-0" />
+                                            <span>Transferring…</span>
+                                        </>
+                                    ) : sentReplayFlash ? (
+                                        <>
+                                            <Check size={13} className="text-emerald-500 shrink-0" />
+                                            <span>Sent to Replay</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Zap size={13} className="shrink-0" />
+                                            <span>Send to Replay</span>
+                                        </>
+                                    )}
+                                </button>
                             </>
                         ) : (
                             <button
                                 onClick={handleOpenHistory}
-                                className="px-3 py-1.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[11px] font-bold text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer"
+                                className="h-9 px-3.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
                                 title="Open saved PCAP capture history"
                             >
-                                <HardDrive size={12} />
+                                <HardDrive size={13} className="shrink-0" />
                                 <span>Captures</span>
                             </button>
                         )}
@@ -3479,25 +3451,25 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             {/* Display Search & Filter Bar + 3-Pane Wireshark Inspector (Always visible in Local PCAP mode, or in Trace mode when 'Captured Packets' tab is selected) */}
             {(captureMode === 'local' || (captureMode === 'trace' && !tracingFlow && traceResult && traceEvidenceTab === 'packets') || (captureMode === 'trace' && !tracingFlow && !traceResult)) && (
             <>
-            <div className="bg-card border border-border px-4 py-2.5 rounded-2xl flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 flex-1">
+            <div className="bg-card border border-border px-4 h-11 rounded-2xl flex items-center justify-between gap-3 flex-nowrap">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
                     <Filter size={14} className="text-text-muted shrink-0" />
                     <input
                         type="text"
                         value={displayFilter}
                         onChange={(e) => setDisplayFilter(e.target.value)}
                         placeholder="Filter by protocol, IP, target (e.g. 'DC1', 'WAN', 'tcp', 'rst', '8080')..."
-                        className="bg-transparent border-0 text-xs text-text-primary font-mono placeholder:text-text-muted/50 focus:outline-none w-full"
+                        className="bg-transparent border-0 text-xs text-text-primary font-mono placeholder:text-text-muted/50 focus:outline-none w-full min-w-0"
                     />
                     {displayFilter && (
-                        <button onClick={() => setDisplayFilter('')} className="text-text-muted hover:text-text-primary p-1 cursor-pointer">
+                        <button onClick={() => setDisplayFilter('')} className="text-text-muted hover:text-text-primary p-1 cursor-pointer shrink-0">
                             <X size={13} />
                         </button>
                     )}
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0 text-[10px] font-mono text-text-muted">
-                    <div className="flex gap-1">
+                <div className="flex items-center gap-2 shrink-0 text-[10px] font-mono text-text-muted flex-nowrap">
+                    <div className="hidden md:flex gap-1 shrink-0">
                         {['tcp', 'udp', 'icmp', 'dns', 'rst'].map(tag => (
                             <button
                                 key={tag}
@@ -3512,11 +3484,34 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                             </button>
                         ))}
                     </div>
-                    <span className="hidden sm:inline border-l border-border/60 pl-2">
+
+                    {/* Active PCAP File Summary or Live Recording Counter (Fixed-height inline badge) */}
+                    {captureMode === 'local' && capturing && (
+                        <span className="hidden lg:inline-flex items-center gap-1.5 border-l border-border/60 pl-2.5 text-rose-400 font-bold whitespace-nowrap">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                            <span>Recording on {selectedInterface}</span>
+                            {totalPackets > 0 && <span className="text-text-primary">· {totalPackets.toLocaleString()} pkts</span>}
+                        </span>
+                    )}
+                    {captureMode === 'local' && !capturing && !loadingPackets && activePcapFile && (
+                        <span className={`hidden lg:inline-flex items-center gap-1.5 border-l border-border/60 pl-2.5 whitespace-nowrap transition-colors ${
+                            dissectReadyFlash ? 'text-emerald-400 font-bold' : 'text-text-muted'
+                        }`}>
+                            <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
+                            {durationSeconds > 0 && (
+                                <span className="text-amber-500 dark:text-amber-400 font-bold">· {durationSeconds}s</span>
+                            )}
+                            {fileSizeBytes > 0 && (
+                                <span>· {(fileSizeBytes / 1024).toFixed(1)} KB</span>
+                            )}
+                        </span>
+                    )}
+
+                    <span className="hidden sm:inline border-l border-border/60 pl-2.5 whitespace-nowrap">
                         {loadingPackets ? (
-                            <span className="flex items-center gap-1.5 text-cyan-400">
+                            <span className="flex items-center gap-1.5 text-cyan-400 font-bold">
                                 <Loader2 size={11} className="animate-spin" />
-                                Dissecting...
+                                Decoding…
                             </span>
                         ) : (
                             `${filteredPackets.length} / ${totalPackets} frames`
@@ -3526,7 +3521,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                         <button
                             onClick={handleLoadMorePackets}
                             disabled={loadingMore}
-                            className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                            className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                             title="Load next batch of packets"
                         >
                             {loadingMore ? <Loader2 size={10} className="animate-spin" /> : null}
@@ -3634,10 +3629,10 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                             <div className="space-y-3">
                                                 <Loader2 size={32} className="animate-spin mx-auto text-cyan-400" />
                                                 <p className="text-xs font-bold text-text-primary">
-                                                    Dissecting packets with Scapy engine...
+                                                    Decoding packets…
                                                 </p>
                                                 <p className="text-[10px] text-text-muted">
-                                                    Decoding OSI protocols, packet headers, and hex dumps
+                                                    Parsing OSI layers, protocol headers, and hex dumps
                                                 </p>
                                             </div>
                                         </td>
@@ -3726,7 +3721,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                             <div className="flex items-center gap-2">
                                 <Layers size={15} className="text-cyan-400" />
                                 <h3 className="text-xs font-black uppercase tracking-wider text-text-primary">
-                                    Protocol Dissection Tree {activePacket ? `(Frame #${activePacket.no})` : ''}
+                                    Packet Decoder {activePacket ? `(Frame #${activePacket.no})` : ''}
                                 </h3>
                             </div>
                             {activePacket && (

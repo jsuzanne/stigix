@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.12] - 2026-11-12
+
+### Changed & Enhanced
+- **Zero-Popup, Zero-Layout-Shift Packet Capture Toolbar & Decoder Terminology (`web-dashboard/src/PacketCapture.tsx`, `.agent/skills/stigix-ux-standards/SKILL.md`)**:
+  - Replaced nominal `react-hot-toast` popups across the Packet Capture lifecycle with a fixed-geometry (`w-[176px] h-9`) 5-phase primary capture button (`▶ Start Capture` $\rightarrow$ `⟳ Starting…` $\rightarrow$ `■ Stop 12s/30s` with inline progress bar $\rightarrow$ `⟳ Stopping…` $\rightarrow$ `⟳ Decoding…` $\rightarrow$ `✓ Ready (N)` $\rightarrow$ `▶ Start Capture`).
+  - Kept `Captures`, `Download .pcap` (`w-[144px] h-9`), and `Send to Replay` (`w-[144px] h-9`) permanently mounted at fixed dimensions (`disabled` when no PCAP file is active) and moved the active capture file summary (`cap_... · 1.76s · 149.8 KB`) into the single-line filter bar (`h-11 flex-nowrap`) so the top header never wraps onto a second line or shifts the layout.
+  - Replaced legacy Wireshark terminology (`Dissecting…`, `Protocol Dissection Tree`) with `Decoding…` and `Packet Decoder (Frame #N)`, and fixed `Duration` (`30s`) / `Packet Limit` (`2,000`) select trigger truncation.
+
 ## [3.2.11] - 2026-11-12
 
 ### Added
