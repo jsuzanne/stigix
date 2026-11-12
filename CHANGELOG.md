@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.11] - 2026-11-12
+
+### Added
+- **VyOS Live Inspector (Read-Only CLI, Routing/BGP, Conntrack/NAT, Netem Queue & Bounded Capture) (`vyos/vyos_cli_policy.py`, `vyos/vyos_inspector.py`, `vyos/traceroute_parse.py`, `vyos/vyos_sdwan_ctl.py`, `web-dashboard/vyos-manager.ts`, `web-dashboard/server.ts`, `web-dashboard/src/Vyos.tsx`)**:
+  - Added a strict read-only command grammar (`vyos_cli_policy.py`) enforcing `READ-ONLY BY CONSTRUCTION` (blocking pipes, redirects, quotes, command separators, and state-changing verbs such as `set`, `delete`, `commit`, `clear`, `reboot`) across 4 inspection families:
+    1. **Interfaces & Netem Queues**: `show interfaces`, `show interfaces ethernet <eth>`, `show interfaces ethernet <eth> queue` (real qdisc/netem & packet drop verification), `show interfaces statistics` (`/bin/ip -s link show`), `show arp`.
+    2. **Routing & BGP**: `show ip route`, `show ip route <addr/prefix>`, `show ip bgp summary`, `show ip bgp <addr/prefix>`, `show ip bgp neighbors <ip> advertised-routes` / `received-routes`.
+    3. **Conntrack, NAT & Firewall Counters**: `show conntrack table ipv4 [match <ip>]`, `show nat source translations [match <ip>]`, `show nat source rules`, `show firewall`, `show policy route`.
+    4. **Active Probes & Bounded Text Capture**: `ping <ip> count <1-5> [source-address <ip>]`, `traceroute <ip> [source-address <ip>]` (with compact hop parsing via `traceroute_parse.py`), and `capture <ifname> count <1-50> <filter>` (`sudo timeout 10 tcpdump -nn -l -s 96 -c N -i IF <filter>`, excluding `eth0` and `lo`).
+  - Added the **Live Inspector & CLI** tab in `web-dashboard/src/Vyos.tsx` with categorized **Quick Presets**, dynamic interface & target IP/prefix injection, structured telemetry cards (Traceroute Hops, Ping Summary, Netem Queue Qdiscs & Drops, Kernel Interface Counters), and raw output filtering.
+  - Added optional **Auto-Expire TTL** (`ttl_minutes`, defaulting to infinite / `Never (Manual)`) when applying WAN Netem impairments (`set-qos`) with live countdown badges (`⏱ MM:SS`) on router cards and in the Live Inspector.
+  - Exposed `run_vyos_cli_show` and `run_vyos_probe` across AI Copilot (`web-dashboard/ai-copilot/ai-tools.ts`), FastMCP (`mcp-server/src/server.py`, `mcp-server/src/lib/orchestrator.py`), and Stigix CLI (`Scripts/stigix-cli.py`).
+
+### Changed & Enhanced
+- **Single-Line vION Flow Records Table for 13-Inch Displays (`web-dashboard/src/PacketCapture.tsx`)**:
+  - Optimized the vION Flow Records table layout in **E2E Flow & Path Trace** to fit on a single horizontal row on 13-inch screens without line wrapping, aligned with the `stigix-ux-standards` skill.
+
 ## [3.2.10] - 2026-11-11
 
 ### Changed & Enhanced
