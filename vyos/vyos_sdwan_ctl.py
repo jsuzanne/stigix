@@ -1140,10 +1140,55 @@ def main():
     
     p_cqos = sub.add_parser("clear-qos")
     p_cqos.add_argument("--iface", required=True)
+
+    # Read-Only Live Inspector subcommands
+    p_cli_show = sub.add_parser("cli-show", help="Execute a whitelisted read-only show/config command")
+    p_cli_show.add_argument("--command", required=True, help="Whitelisted show command")
+    p_cli_show.add_argument("--router-id", default="", help="Router ID")
+    p_cli_show.add_argument("--ssh-user", default="", help="Optional SSH username")
+    p_cli_show.add_argument("--ssh-password", default="", help="Optional SSH password")
+    p_cli_show.add_argument("--ssh-key", default="", help="Optional SSH private key path")
+    p_cli_show.add_argument("--ssh-port", type=int, default=22, help="Optional SSH port")
+
+    p_probe = sub.add_parser("probe", help="Execute an active probe (ping/traceroute) or bounded capture")
+    p_probe.add_argument("--command", required=True, help="Whitelisted probe or capture command")
+    p_probe.add_argument("--router-id", default="", help="Router ID")
+    p_probe.add_argument("--ssh-user", default="", help="Optional SSH username")
+    p_probe.add_argument("--ssh-password", default="", help="Optional SSH password")
+    p_probe.add_argument("--ssh-key", default="", help="Optional SSH private key path")
+    p_probe.add_argument("--ssh-port", type=int, default=22, help="Optional SSH port")
+
+    p_inspect = sub.add_parser("inspect", help="Execute any whitelisted read-only show, config, probe, or capture command")
+    p_inspect.add_argument("--command", required=True, help="Whitelisted command")
+    p_inspect.add_argument("--router-id", default="", help="Router ID")
+    p_inspect.add_argument("--ssh-user", default="", help="Optional SSH username")
+    p_inspect.add_argument("--ssh-password", default="", help="Optional SSH password")
+    p_inspect.add_argument("--ssh-key", default="", help="Optional SSH private key path")
+    p_inspect.add_argument("--ssh-port", type=int, default=22, help="Optional SSH port")
     
     args = parser.parse_args()
     
     # Commands that don't need version
+    if args.cmd in ("cli-show", "probe", "inspect"):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import vyos_cli_policy as P
+        import vyos_inspector as VI
+        kinds = P.SHOW_KINDS if args.cmd == "cli-show" else (P.ACTIVE_KINDS if args.cmd == "probe" else None)
+        res = VI.run_inspect(
+            args.host,
+            args.key,
+            args.command,
+            router_id=getattr(args, "router_id", ""),
+            kinds=kinds,
+            ssh_user=getattr(args, "ssh_user", ""),
+            ssh_password=getattr(args, "ssh_password", ""),
+            ssh_key=getattr(args, "ssh_key", ""),
+            ssh_port=getattr(args, "ssh_port", 22),
+            verify=args.secure,
+        )
+        print(json.dumps(res, indent=2))
+        sys.exit(0 if res.get("ok") else 1)
+
     if args.cmd == "get-info":
         info = get_router_info(args.host, args.key, args.secure)
         print(json.dumps(info, indent=2))

@@ -605,6 +605,38 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"", que
                 {"name": "eth0", "admin_state": "up", "qos": {}, "blackhole_ips": []},
             ],
         })
+    if "vyos/cli-show" in path:
+        cmd = body_json.get("command", "show ip bgp summary")
+        return JSONResponse({
+            "ok": True,
+            "router_id": body_json.get("router_id", "vyosrouter"),
+            "router_name": "VyOS-Mock",
+            "command": cmd,
+            "rule": "show_ip_bgp_summary",
+            "family": "routing",
+            "transport": "https",
+            "output": "IPv4 Unicast Summary:\nNeighbor 10.0.0.1 AS 65001 Up/Down 02:14:00 State/PfxRcd 12",
+        })
+    if "vyos/probe" in path or "vyos/inspect" in path:
+        cmd = body_json.get("command", "ping 8.8.8.8 count 2")
+        return JSONResponse({
+            "ok": True,
+            "router_id": body_json.get("router_id", "vyosrouter"),
+            "router_name": "VyOS-Mock",
+            "command": cmd,
+            "rule": "ping",
+            "family": "probes",
+            "transport": "ssh",
+            "output": "2 packets transmitted, 2 received, 0% packet loss\nrtt min/avg/max/mdev = 4.100/4.250/4.400/0.150 ms",
+            "ping_summary": {
+                "packets_transmitted": 2,
+                "packets_received": 2,
+                "packet_loss_pct": 0.0,
+                "rtt_min_ms": 4.1,
+                "rtt_avg_ms": 4.25,
+                "rtt_max_ms": 4.4,
+            },
+        })
     if "vyos/action" in path or "vyos/adhoc" in path:
         return JSONResponse({"success": True, "command": "show-denied", "output": "0 denied entries"})
     if "vyos" in path:

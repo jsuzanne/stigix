@@ -3239,12 +3239,17 @@ const handleDirectVyosAction = async (req: any, res: any) => {
         if (command === 'set-impairment') command = 'set-qos';
         if (command === 'clear-impairment') command = 'clear-qos';
         const source = body.source || (req.path.includes('adhoc') ? 'AdHoc Action' : 'Topology Action');
-        const params = body.params || body.parameters || {
+        const rawParams = body.params || body.parameters || {
             latency_ms: body.latency_ms,
             loss_pct: body.loss_pct,
             corruption_pct: body.corruption_pct,
             rate: body.rate,
             ip: body.ip
+        };
+        const ttlMinutes = Number(body.ttl_minutes ?? body.autoExpireMinutes ?? rawParams.ttl_minutes ?? rawParams.autoExpireMinutes ?? 0);
+        const params = {
+            ...rawParams,
+            ...(ttlMinutes > 0 ? { ttl_minutes: ttlMinutes } : {})
         };
 
         if (!routerId && !routerName) {
@@ -3304,6 +3309,62 @@ app.get('/api/vyos/state', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: e.message });
     }
 });
+
+// --- VyOS Live Inspector (Read-Only CLI, Routing, BGP, Conntrack, NAT, Netem Queue & Bounded Capture) ---
+
+app.get('/api/vyos/cli/rules', authenticateToken, async (_req, res) => {
+    try {
+        const rules = await vyosManager.getInspectorRules();
+        res.json(rules);
+    } catch (e: any) {
+        res.status(500).json({ ok: false, error: { code: 'rules_error', message: e.message } });
+    }
+});
+app.get('/api/vyos/inspector/rules', authenticateToken, async (_req, res) => {
+    try {
+        const rules = await vyosManager.getInspectorRules();
+        res.json(rules);
+    } catch (e: any) {
+        res.status(500).json({ ok: false, error: { code: 'rules_error', message: e.message } });
+    }
+});
+
+app.get('/api/vyos/ttls', authenticateToken, (_req, res) => {
+    res.json({ ok: true, ttls: vyosManager.getActiveImpairmentTtls() });
+});
+
+const handleVyosInspectorRequest = (defaultMode: 'cli-show' | 'probe' | 'inspect') => async (req: any, res: any) => {
+    try {
+        const body = req.body || {};
+        const routerId = req.params.id || body.routerId || body.router_id || body.device || body.routerName || body.router_name || 'default';
+        const command = String(body.command || '').trim();
+        const mode: 'cli-show' | 'probe' | 'inspect' = body.mode || defaultMode;
+
+        if (!command) {
+            return res.status(400).json({
+                ok: false,
+                success: false,
+                error: { code: 'bad_request', message: 'command is required' }
+            });
+        }
+
+        const result = await vyosManager.runInspect(routerId, command, mode);
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({
+            ok: false,
+            success: false,
+            error: { code: 'inspector_exception', message: e.message }
+        });
+    }
+};
+
+app.post('/api/vyos/routers/:id/cli-show', authenticateToken, handleVyosInspectorRequest('cli-show'));
+app.post('/api/vyos/cli-show', authenticateToken, handleVyosInspectorRequest('cli-show'));
+app.post('/api/vyos/routers/:id/probe', authenticateToken, handleVyosInspectorRequest('probe'));
+app.post('/api/vyos/probe', authenticateToken, handleVyosInspectorRequest('probe'));
+app.post('/api/vyos/routers/:id/inspect', authenticateToken, handleVyosInspectorRequest('inspect'));
+app.post('/api/vyos/inspect', authenticateToken, handleVyosInspectorRequest('inspect'));
 
 // VyOS Unified Configuration Management
 app.get('/api/vyos/config/export', authenticateToken, (req, res) => {

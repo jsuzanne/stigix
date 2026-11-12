@@ -905,9 +905,70 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 ip: {
                     type: 'string',
                     description: 'IP address for firewall block/allow.'
+                },
+                ttl_minutes: {
+                    type: 'number',
+                    description: 'Optional Auto-Expire TTL in minutes for set-qos / set-impairment (0 or omitted = infinite / manual clear).'
                 }
             },
             required: ['router_id', 'command']
+        }
+    },
+    {
+        name: 'run_vyos_cli_show',
+        description: [
+            'Run a READ-ONLY operational `show ...` command on a VyOS router managed by Stigix.',
+            'Strictly validated against the whitelisted read-only grammar (no pipes `|`, redirects `>`, quotes, or state-changing verbs `set`/`delete`/`commit`/`clear`/`reboot`).',
+            'Supported families:',
+            '  - Interfaces & Netem Queues: `show interfaces`, `show interfaces ethernet <ethX>`, `show interfaces ethernet <ethX> queue` (real tc/netem qdisc & drop counters), `show interfaces statistics`, `show arp`',
+            '  - Routing & BGP: `show ip route`, `show ip route <ip|prefix>`, `show ip bgp summary`, `show ip bgp <ip|prefix>`, `show ip bgp neighbors <ip> advertised-routes`, `show ip bgp neighbors <ip> received-routes`',
+            '  - Conntrack, NAT & Firewall: `show conntrack table ipv4 [match <ip>]`, `show nat source translations [match <ip>]`, `show nat source rules`, `show firewall`, `show policy route`'
+        ].join('\n'),
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'Optional ID of the Stigix node managing the VyOS router. Defaults to the current local node if omitted.'
+                },
+                router_id: {
+                    type: 'string',
+                    description: 'ID, name, or IP of the target VyOS router (e.g. "vyosrouter", "vyoslandc1"). Defaults to the first configured router if omitted.'
+                },
+                command: {
+                    type: 'string',
+                    description: 'Exact read-only `show ...` command (e.g. "show ip bgp summary", "show interfaces ethernet eth1 queue", "show conntrack table ipv4 match 8.8.8.8").'
+                }
+            },
+            required: ['command']
+        }
+    },
+    {
+        name: 'run_vyos_probe',
+        description: [
+            'Run a bounded active probe (`ping`, `traceroute`, or `capture`) from a VyOS router managed by Stigix.',
+            'Strictly validated against the whitelisted read-only grammar:',
+            '  - `ping <ip> count <1-5> [source-address <ip>]` (returns structured RTT & loss metrics)',
+            '  - `traceroute <ip> [source-address <ip>]` (returns structured hops_compact, reached_destination, last_responding_hop)',
+            '  - `capture <eth1..ethN> count <1-50> <filter>` (bounded 10s tcpdump text capture on non-eth0 interface; filter uses safe tokens like `icmp`, `port 179`, `host 8.8.8.8 and tcp`)'
+        ].join('\n'),
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'Optional ID of the Stigix node managing the VyOS router. Defaults to the current local node if omitted.'
+                },
+                router_id: {
+                    type: 'string',
+                    description: 'ID, name, or IP of the target VyOS router (e.g. "vyosrouter"). Defaults to the first configured router if omitted.'
+                },
+                command: {
+                    type: 'string',
+                    description: 'Exact probe command starting with `ping`, `traceroute`, or `capture` (e.g. "ping 8.8.8.8 count 3", "traceroute 10.201.0.1", "capture eth1 count 10 icmp").'
+                }
+            },
+            required: ['command']
         }
     },
 
@@ -3218,7 +3279,8 @@ export async function executeCopilotTool(
                     loss_pct: args.loss_pct ?? args.loss ?? args.percent,
                     corruption_pct: args.corruption_pct ?? args.corruption,
                     rate: args.rate,
-                    ip: args.ip
+                    ip: args.ip,
+                    ...(args.ttl_minutes ? { ttl_minutes: Number(args.ttl_minutes) } : {})
                 };
                 const actionRes = await fetchApi(nodeCtx, '/api/vyos/direct-action', {
                     method: 'POST',
@@ -3227,6 +3289,7 @@ export async function executeCopilotTool(
                         command,
                         interface: args.interface,
                         params,
+                        ttl_minutes: args.ttl_minutes ? Number(args.ttl_minutes) : undefined,
                         source: 'AI Copilot'
                     })
                 }, 35000);
@@ -3250,6 +3313,68 @@ export async function executeCopilotTool(
                     interface: args.interface,
                     verified: verifiedInterface !== null || Boolean(actionRes?.success),
                     verified_interface_state: verifiedInterface
+                };
+            }
+
+            case 'run_vyos_cli_show': {
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
+                const command = String(args.command || '').trim();
+                if (!command) {
+                    return { ok: false, error: 'command is required (e.g. "show ip bgp summary")' };
+                }
+                let routerId = args.router_id;
+                if (!routerId || routerId === 'default') {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers) && routers.length > 0) routerId = routers[0].id;
+                } else {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers)) {
+                        const m = routers.find((r: any) =>
+                            r.id === routerId ||
+                            r.name?.toLowerCase() === String(routerId).toLowerCase() ||
+                            r.host === routerId
+                        );
+                        if (m) routerId = m.id;
+                    }
+                }
+                const res = await fetchApi(nodeCtx, '/api/vyos/cli-show', {
+                    method: 'POST',
+                    body: JSON.stringify({ router_id: routerId, command })
+                }, 25000);
+                return {
+                    ...(typeof res === 'object' ? res : { output: String(res) }),
+                    managed_by_node: nodeCtx.siteName
+                };
+            }
+
+            case 'run_vyos_probe': {
+                const { nodeCtx } = await resolveVyosNodeContext(args.agent_id, ctx);
+                const command = String(args.command || '').trim();
+                if (!command) {
+                    return { ok: false, error: 'command is required (e.g. "ping 8.8.8.8 count 3" or "traceroute 8.8.8.8")' };
+                }
+                let routerId = args.router_id;
+                if (!routerId || routerId === 'default') {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers) && routers.length > 0) routerId = routers[0].id;
+                } else {
+                    const routers = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                    if (Array.isArray(routers)) {
+                        const m = routers.find((r: any) =>
+                            r.id === routerId ||
+                            r.name?.toLowerCase() === String(routerId).toLowerCase() ||
+                            r.host === routerId
+                        );
+                        if (m) routerId = m.id;
+                    }
+                }
+                const res = await fetchApi(nodeCtx, '/api/vyos/probe', {
+                    method: 'POST',
+                    body: JSON.stringify({ router_id: routerId, command })
+                }, 35000);
+                return {
+                    ...(typeof res === 'object' ? res : { output: String(res) }),
+                    managed_by_node: nodeCtx.siteName
                 };
             }
 

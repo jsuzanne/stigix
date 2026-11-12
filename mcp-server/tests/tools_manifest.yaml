@@ -292,6 +292,28 @@ tools:
     category: write
     size_budget_kb: 50
     timeout_class: long
+  run_vyos_cli_show:
+    category: read
+    size_budget_kb: 30
+    timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      router_id: vyosrouter
+      command: show ip bgp summary
+    expected_keys:
+      - ok
+      - output
+  run_vyos_probe:
+    category: read
+    size_budget_kb: 30
+    timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      router_id: vyosrouter
+      command: ping 8.8.8.8 count 2
+    expected_keys:
+      - ok
+      - output
   run_vyos_scenario:
     category: write
     size_budget_kb: 20

@@ -983,7 +983,8 @@ class TestOrchestrator:
         loss_pct: Optional[float] = None,
         corruption_pct: Optional[float] = None,
         rate: Optional[str] = None,
-        ip: Optional[str] = None
+        ip: Optional[str] = None,
+        ttl_minutes: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Execute an ad-hoc VyOS action by creating a temporary single-action sequence,
@@ -1011,6 +1012,8 @@ class TestOrchestrator:
             parameters["rate"] = rate
         if ip is not None:
             parameters["ip"] = ip
+        if ttl_minutes is not None and ttl_minutes > 0:
+            parameters["ttl_minutes"] = ttl_minutes
 
         # Translate MCP command to VyOS sequence command
         # set-impairment is the unified MCP command; legacy separate commands also map to set-qos
@@ -1115,6 +1118,69 @@ class TestOrchestrator:
                     pass
                 logger.error(f"VyOS ad-hoc action failed on {agent_id}: {e}")
                 return {"error": str(e), "command": command, "router_id": router_id}
+
+    async def run_vyos_cli_show(
+        self,
+        agent_id: str,
+        command: str,
+        router_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute a whitelisted READ-ONLY `show ...` CLI command on a VyOS router managed by `agent_id`.
+        Calls POST /api/vyos/cli-show on the Stigix agent.
+        """
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"ok": False, "error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        url = f"{agent.api_base_url}/api/vyos/cli-show"
+        payload: Dict[str, Any] = {"command": (command or "").strip()}
+        if router_id:
+            payload["router_id"] = router_id
+
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            try:
+                response = await client.post(url, json=payload, headers=headers)
+                if response.headers.get("content-type", "").startswith("application/json"):
+                    return response.json()
+                response.raise_for_status()
+                return {"ok": True, "output": response.text}
+            except Exception as e:
+                logger.error(f"VyOS CLI show failed on {agent_id} ({router_id}): {e}")
+                return {"ok": False, "error": str(e), "command": command, "router_id": router_id}
+
+    async def run_vyos_probe(
+        self,
+        agent_id: str,
+        command: str,
+        router_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute a whitelisted bounded active probe (`ping`, `traceroute`, or `capture`)
+        from a VyOS router managed by `agent_id`.
+        Calls POST /api/vyos/probe on the Stigix agent.
+        """
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"ok": False, "error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        url = f"{agent.api_base_url}/api/vyos/probe"
+        payload: Dict[str, Any] = {"command": (command or "").strip()}
+        if router_id:
+            payload["router_id"] = router_id
+
+        async with httpx.AsyncClient(timeout=35.0) as client:
+            try:
+                response = await client.post(url, json=payload, headers=headers)
+                if response.headers.get("content-type", "").startswith("application/json"):
+                    return response.json()
+                response.raise_for_status()
+                return {"ok": True, "output": response.text}
+            except Exception as e:
+                logger.error(f"VyOS probe failed on {agent_id} ({router_id}): {e}")
+                return {"ok": False, "error": str(e), "command": command, "router_id": router_id}
 
 
     async def get_dem_stats(self, agent_id: str) -> Dict[str, Any]:

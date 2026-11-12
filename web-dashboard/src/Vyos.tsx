@@ -49,6 +49,8 @@ function formatActionParameters(command: string, parameters: any): string {
             const parts = [];
             if (parameters.latency) parts.push(`${parameters.latency}ms latency`);
             if (parameters.loss) parts.push(`${parameters.loss}% loss`);
+            if (parameters.rate) parts.push(`${parameters.rate}`);
+            if (parameters.ttl_minutes) parts.push(`⏱ TTL ${parameters.ttl_minutes}m`);
             return parts.join(', ');
         case 'cleanup':
             return parameters.label || '';
@@ -72,7 +74,7 @@ export interface VyosRouterInterface {
     description: string | null;
     address: string[];
     status?: 'up' | 'down';
-    qos?: { latency?: number; loss?: number; rate?: string };
+    qos?: { latency?: number; loss?: number; rate?: string; expiresAt?: number };
 }
 
 export interface VyosRouter {
@@ -82,6 +84,9 @@ export interface VyosRouter {
     apiKey: string;
     version: string;
     location?: string;
+    sshUser?: string;
+    sshPassword?: string;
+    sshPort?: number;
     interfaces: VyosRouterInterface[];
     blackholeBlocks?: { prefix: string; description?: string }[];
     enabled: boolean;
@@ -154,7 +159,7 @@ export default function Vyos(props: VyosProps) {
     const [routers, setRouters] = useState<VyosRouter[]>([]);
     const [sequences, setSequences] = useState<VyosSequence[]>([]);
     const [history, setHistory] = useState<any[]>([]);
-    const [view, setView] = useState<'routers' | 'sequences' | 'history' | 'timeline' | 'metrics'>('routers');
+    const [view, setView] = useState<'routers' | 'inspector' | 'sequences' | 'history' | 'timeline' | 'metrics'>('routers');
     const [historySearch, setHistorySearch] = useState('');
     const [historyMissionFilter, setHistoryMissionFilter] = useState('all');
     const [historyNodeFilter, setHistoryNodeFilter] = useState('all');
@@ -284,6 +289,203 @@ export default function Vyos(props: VyosProps) {
     const [razModal, setRazModal] = useState<{ id: string; name: string; state: any } | null>(null);
     const [razLoading, setRazLoading] = useState(false);
     const [razResult, setRazResult] = useState<any>(null);
+
+    // Live Inspector & Read-Only CLI State
+    const [inspectorRouterId, setInspectorRouterId] = useState<string>('');
+    const [inspectorIface, setInspectorIface] = useState<string>('eth1');
+    const [inspectorTargetIp, setInspectorTargetIp] = useState<string>('8.8.8.8');
+    const [inspectorSourceIp, setInspectorSourceIp] = useState<string>('');
+    const [inspectorCaptureCount, setInspectorCaptureCount] = useState<number>(15);
+    const [inspectorCaptureFilter, setInspectorCaptureFilter] = useState<string>('icmp');
+    const [inspectorCommand, setInspectorCommand] = useState<string>('show ip bgp summary');
+    const [inspectorOutputFilter, setInspectorOutputFilter] = useState<string>('');
+    const [inspectorRunning, setInspectorRunning] = useState<boolean>(false);
+    const [inspectorResult, setInspectorResult] = useState<any | null>(null);
+    const [inspectorHistory, setInspectorHistory] = useState<{ ts: number; routerName: string; command: string; ok: boolean; family?: string; result: any }[]>([]);
+    const [inspectorFamilyTab, setInspectorFamilyTab] = useState<'all' | 'interfaces' | 'routing' | 'conntrack_nat' | 'probes'>('all');
+
+    // Quick WAN Impairment with Auto-Expire TTL State
+    const [quickImpairLatency, setQuickImpairLatency] = useState<number>(80);
+    const [quickImpairLoss, setQuickImpairLoss] = useState<number>(2);
+    const [quickImpairRate, setQuickImpairRate] = useState<string>('');
+    const [quickImpairTtl, setQuickImpairTtl] = useState<number>(0);
+    const [quickImpairRunning, setQuickImpairRunning] = useState<boolean>(false);
+    const [nowTick, setNowTick] = useState<number>(Date.now());
+
+    // Live ticker for Auto-Expire TTL countdowns
+    useEffect(() => {
+        const hasActiveTtl = routers.some(r =>
+            r.interfaces?.some(i => i.qos?.expiresAt && i.qos.expiresAt > Date.now())
+        );
+        if (!hasActiveTtl && view !== 'inspector') return;
+        const interval = setInterval(() => {
+            const now = Date.now();
+            setNowTick(now);
+            // If an impairment just expired, refresh router state
+            const justExpired = routers.some(r =>
+                r.interfaces?.some(i => i.qos?.expiresAt && i.qos.expiresAt <= now && i.qos.expiresAt > now - 2000)
+            );
+            if (justExpired) {
+                fetchData();
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [routers, view]);
+
+    const formatRemainingTtl = (expiresAt?: number): string | null => {
+        if (!expiresAt) return null;
+        const diffSec = Math.max(0, Math.ceil((expiresAt - nowTick) / 1000));
+        if (diffSec <= 0) return null;
+        const mins = Math.floor(diffSec / 60);
+        const secs = diffSec % 60;
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    };
+
+    // Keep inspectorRouterId & inspectorIface synced when routers load
+    useEffect(() => {
+        if (routers.length > 0 && (!inspectorRouterId || !routers.some(r => r.id === inspectorRouterId))) {
+            const first = routers[0];
+            setInspectorRouterId(first.id);
+            const wanIface = first.interfaces?.find(i => i.name !== 'eth0')?.name || first.interfaces?.[0]?.name || 'eth1';
+            setInspectorIface(wanIface);
+        }
+    }, [routers, inspectorRouterId]);
+
+    const openInspectorForRouter = (router: VyosRouter, initialCmd?: string) => {
+        setInspectorRouterId(router.id);
+        const wanIface = router.interfaces?.find(i => i.name !== 'eth0')?.name || router.interfaces?.[0]?.name || 'eth1';
+        setInspectorIface(wanIface);
+        if (initialCmd) {
+            setInspectorCommand(initialCmd);
+        }
+        setView('inspector');
+    };
+
+    const runInspectorCommand = async (cmdOverride?: string) => {
+        const cmd = (cmdOverride ?? inspectorCommand).trim();
+        if (!cmd) {
+            toast.error('Enter or select a VyOS command to inspect');
+            return;
+        }
+        if (!inspectorRouterId) {
+            toast.error('Select a target VyOS router first');
+            return;
+        }
+        if (cmdOverride) {
+            setInspectorCommand(cmdOverride);
+        }
+        setInspectorRunning(true);
+        const isProbe = /^(ping|traceroute|capture)\b/i.test(cmd);
+        const endpoint = isProbe
+            ? `/api/vyos/routers/${inspectorRouterId}/probe`
+            : `/api/vyos/routers/${inspectorRouterId}/cli-show`;
+
+        try {
+            const res = await gFetch(endpoint, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ command: cmd })
+            });
+            const data = await res.json();
+            setInspectorResult(data);
+            const routerObj = routers.find(r => r.id === inspectorRouterId);
+            setInspectorHistory(prev => [
+                {
+                    ts: Date.now(),
+                    routerName: routerObj?.name || inspectorRouterId,
+                    command: cmd,
+                    ok: Boolean(data.ok),
+                    family: data.family,
+                    result: data
+                },
+                ...prev.filter(item => !(item.command === cmd && item.routerName === (routerObj?.name || inspectorRouterId)))
+            ].slice(0, 15));
+
+            if (!data.ok) {
+                toast.error(data.error || 'Command rejected or failed');
+            }
+        } catch (e: any) {
+            toast.error(`Inspector error: ${e.message}`);
+        } finally {
+            setInspectorRunning(false);
+        }
+    };
+
+    const applyQuickImpairment = async () => {
+        if (!inspectorRouterId || !inspectorIface) return;
+        setQuickImpairRunning(true);
+        const toastId = toast.loading(`Applying Netem QoS on ${inspectorIface}${quickImpairTtl > 0 ? ` (Auto-Expire in ${quickImpairTtl}m)` : ''}...`);
+        try {
+            const res = await gFetch('/api/vyos/direct-action', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    routerId: inspectorRouterId,
+                    interface: inspectorIface,
+                    command: 'set-qos',
+                    params: {
+                        latency: quickImpairLatency || 0,
+                        loss: quickImpairLoss || 0,
+                        ...(quickImpairRate ? { rate: quickImpairRate } : {}),
+                        ...(quickImpairTtl > 0 ? { ttl_minutes: quickImpairTtl } : {})
+                    },
+                    ttl_minutes: quickImpairTtl > 0 ? quickImpairTtl : undefined,
+                    source: `Live Inspector Quick Impairment${quickImpairTtl > 0 ? ` (TTL ${quickImpairTtl}m)` : ''}`
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success(
+                    `✓ QoS applied on ${inspectorIface}${quickImpairTtl > 0 ? ` — auto-clears in ${quickImpairTtl} min` : ''}`,
+                    { id: toastId }
+                );
+                await fetchData();
+                // Automatically inspect the Netem queue after applying
+                await runInspectorCommand(`show interfaces ethernet ${inspectorIface} queue`);
+            } else {
+                toast.error(`❌ Failed: ${data.error || 'Unknown error'}`, { id: toastId });
+            }
+        } catch (e: any) {
+            toast.error(`❌ Error: ${e.message}`, { id: toastId });
+        } finally {
+            setQuickImpairRunning(false);
+        }
+    };
+
+    const clearQuickImpairment = async (routerIdOverride?: string, ifaceOverride?: string) => {
+        const rId = routerIdOverride || inspectorRouterId;
+        const ifName = ifaceOverride || inspectorIface;
+        if (!rId || !ifName) return;
+        setQuickImpairRunning(true);
+        const toastId = toast.loading(`Clearing Netem QoS on ${ifName}...`);
+        try {
+            const res = await gFetch('/api/vyos/direct-action', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    routerId: rId,
+                    interface: ifName,
+                    command: 'clear-qos',
+                    params: {},
+                    source: 'Live Inspector Clear QoS'
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success(`✓ Netem QoS cleared on ${ifName}`, { id: toastId });
+                await fetchData();
+                if (view === 'inspector' && rId === inspectorRouterId) {
+                    await runInspectorCommand(`show interfaces ethernet ${ifName} queue`);
+                }
+            } else {
+                toast.error(`❌ Failed: ${data.error || 'Unknown error'}`, { id: toastId });
+            }
+        } catch (e: any) {
+            toast.error(`❌ Error: ${e.message}`, { id: toastId });
+        } finally {
+            setQuickImpairRunning(false);
+        }
+    };
 
     // Update countdowns when in timeline view
     useEffect(() => {
@@ -1279,8 +1481,11 @@ export default function Vyos(props: VyosProps) {
                                     </div>
                                 )}
                             </div>
-                            <div className="flex items-center gap-4 mt-1">
+                            <div className="flex items-center gap-4 mt-1 flex-wrap">
                                 <button onClick={() => setView('routers')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'routers' ? 'text-blue-500 border-b-2 border-blue-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Routers</button>
+                                <button onClick={() => setView('inspector')} className={`text-xs font-bold tracking-wider transition-colors flex items-center gap-1.5 ${view === 'inspector' ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>
+                                    <Terminal size={12} /> Live Inspector &amp; CLI
+                                </button>
                                 <button onClick={() => setView('sequences')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'sequences' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Sequences</button>
                                 <button onClick={() => setView('history')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'history' ? 'text-green-500 border-b-2 border-green-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>History</button>
                                 <button onClick={() => setView('timeline')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'timeline' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Timeline</button>
@@ -1420,9 +1625,14 @@ export default function Vyos(props: VyosProps) {
                                                             {iface.description}
                                                         </span>
                                                     )}
-                                                    {iface.qos && ((iface.qos.latency && iface.qos.latency > 0) || (iface.qos.loss && iface.qos.loss > 0)) && (
-                                                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
-                                                            +{iface.qos.latency || 0}ms{iface.qos.loss ? ` ${iface.qos.loss}% loss` : ''}
+                                                    {iface.qos && ((iface.qos.latency && iface.qos.latency > 0) || (iface.qos.loss && iface.qos.loss > 0) || iface.qos.rate) && (
+                                                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0 flex items-center gap-1">
+                                                            <span>+{iface.qos.latency || 0}ms{iface.qos.loss ? ` ${iface.qos.loss}% loss` : ''}{iface.qos.rate ? ` ${iface.qos.rate}` : ''}</span>
+                                                            {formatRemainingTtl(iface.qos.expiresAt) && (
+                                                                <span className="text-cyan-300 bg-cyan-500/20 px-1 rounded border border-cyan-500/30" title="Auto-Expire TTL remaining">
+                                                                    ⏱ {formatRemainingTtl(iface.qos.expiresAt)}
+                                                                </span>
+                                                            )}
                                                         </span>
                                                     )}
                                                 </div>
@@ -1521,6 +1731,13 @@ export default function Vyos(props: VyosProps) {
                                             : <Eye size={16} />}
                                     </button>
                                     <button
+                                        onClick={() => openInspectorForRouter(router)}
+                                        className="p-2 bg-card-secondary hover:bg-cyan-600/10 text-text-muted hover:text-cyan-400 rounded-lg transition-all border border-border/50"
+                                        title="Open Live Inspector & Read-Only CLI"
+                                    >
+                                        <Terminal size={16} />
+                                    </button>
+                                    <button
                                         onClick={() => openRazModal(router.id, router.name)}
                                         disabled={razLoading}
                                         className="p-2 bg-card-secondary hover:bg-amber-600/10 text-text-muted hover:text-amber-400 rounded-lg transition-all border border-border/50"
@@ -1555,6 +1772,796 @@ export default function Vyos(props: VyosProps) {
                     )}
                 </div>
             )}
+
+            {/* ── LIVE INSPECTOR & READ-ONLY CLI VIEW ────────────────────────────── */}
+            {view === 'inspector' && (() => {
+                const selectedRouter = routers.find(r => r.id === inspectorRouterId) || routers[0];
+                const routerInterfaces = selectedRouter?.interfaces || [];
+                const activeIfaceObj = routerInterfaces.find(i => i.name === inspectorIface);
+                const activeTtlStr = formatRemainingTtl(activeIfaceObj?.qos?.expiresAt);
+
+                const presets: {
+                    family: 'interfaces' | 'routing' | 'conntrack_nat' | 'probes';
+                    familyLabel: string;
+                    label: string;
+                    badge: string;
+                    command: string;
+                    description: string;
+                }[] = [
+                    // 1. Interfaces & Netem Queues
+                    {
+                        family: 'interfaces',
+                        familyLabel: 'Interfaces & Netem',
+                        label: 'Interfaces Summary',
+                        badge: 'SHOW',
+                        command: 'show interfaces',
+                        description: 'Operational state, IPv4 addresses, and kernel RX/TX counters'
+                    },
+                    {
+                        family: 'interfaces',
+                        familyLabel: 'Interfaces & Netem',
+                        label: `Netem Queue (${inspectorIface || 'eth1'})`,
+                        badge: 'QDISC',
+                        command: `show interfaces ethernet ${inspectorIface || 'eth1'} queue`,
+                        description: 'Live tc qdisc / netem delay, loss, rate, and dropped packet counters'
+                    },
+                    {
+                        family: 'interfaces',
+                        familyLabel: 'Interfaces & Netem',
+                        label: `Ethernet Detail (${inspectorIface || 'eth1'})`,
+                        badge: 'ETH',
+                        command: `show interfaces ethernet ${inspectorIface || 'eth1'}`,
+                        description: 'Detailed interface status and hardware counters'
+                    },
+                    {
+                        family: 'interfaces',
+                        familyLabel: 'Interfaces & Netem',
+                        label: 'Kernel Link Statistics',
+                        badge: 'STATS',
+                        command: 'show interfaces statistics',
+                        description: 'Full /bin/ip -s link show counters across all interfaces'
+                    },
+                    {
+                        family: 'interfaces',
+                        familyLabel: 'Interfaces & Netem',
+                        label: 'ARP Table',
+                        badge: 'ARP',
+                        command: 'show arp',
+                        description: 'Resolved IPv4 neighbors and MAC bindings'
+                    },
+                    // 2. Routing & BGP
+                    {
+                        family: 'routing',
+                        familyLabel: 'Routing & BGP',
+                        label: 'BGP Summary',
+                        badge: 'BGP',
+                        command: 'show ip bgp summary',
+                        description: 'BGP peer states, AS numbers, up/down timers, and prefix counts'
+                    },
+                    {
+                        family: 'routing',
+                        familyLabel: 'Routing & BGP',
+                        label: 'IP Routing Table',
+                        badge: 'RIB',
+                        command: 'show ip route',
+                        description: 'Full IPv4 routing table (connected, static, BGP, OSPF, blackholes)'
+                    },
+                    {
+                        family: 'routing',
+                        familyLabel: 'Routing & BGP',
+                        label: `Route Lookup (${inspectorTargetIp || '8.8.8.8'})`,
+                        badge: 'LOOKUP',
+                        command: `show ip route ${inspectorTargetIp || '8.8.8.8'}`,
+                        description: 'Longest-prefix match and next-hop resolution for target IP/prefix'
+                    },
+                    {
+                        family: 'routing',
+                        familyLabel: 'Routing & BGP',
+                        label: `BGP Prefix (${inspectorTargetIp || '8.8.8.8'})`,
+                        badge: 'BGP-PFX',
+                        command: `show ip bgp ${inspectorTargetIp || '8.8.8.8'}`,
+                        description: 'BGP AS-path, next-hop, MED, and local-pref for target prefix'
+                    },
+                    {
+                        family: 'routing',
+                        familyLabel: 'Routing & BGP',
+                        label: `BGP Advertised (${inspectorTargetIp.split('/')[0] || '10.0.0.1'})`,
+                        badge: 'ADV',
+                        command: `show ip bgp neighbors ${inspectorTargetIp.split('/')[0] || '10.0.0.1'} advertised-routes`,
+                        description: 'Routes advertised to the specified BGP neighbor IP'
+                    },
+                    {
+                        family: 'routing',
+                        familyLabel: 'Routing & BGP',
+                        label: `BGP Received (${inspectorTargetIp.split('/')[0] || '10.0.0.1'})`,
+                        badge: 'RCV',
+                        command: `show ip bgp neighbors ${inspectorTargetIp.split('/')[0] || '10.0.0.1'} received-routes`,
+                        description: 'Routes received from the specified BGP neighbor IP'
+                    },
+                    // 3. Conntrack, NAT & Firewall
+                    {
+                        family: 'conntrack_nat',
+                        familyLabel: 'Conntrack, NAT & FW',
+                        label: `Conntrack Match (${inspectorTargetIp.split('/')[0] || '8.8.8.8'})`,
+                        badge: 'CT-IP',
+                        command: `show conntrack table ipv4 match ${inspectorTargetIp.split('/')[0] || '8.8.8.8'}`,
+                        description: 'Filter active IPv4 conntrack flows containing the target IP'
+                    },
+                    {
+                        family: 'conntrack_nat',
+                        familyLabel: 'Conntrack, NAT & FW',
+                        label: 'Conntrack Table (Full)',
+                        badge: 'CT',
+                        command: 'show conntrack table ipv4',
+                        description: 'Active IPv4 connection tracking table (bounded to 256 lines)'
+                    },
+                    {
+                        family: 'conntrack_nat',
+                        familyLabel: 'Conntrack, NAT & FW',
+                        label: `NAT Translations (${inspectorTargetIp.split('/')[0] || '8.8.8.8'})`,
+                        badge: 'NAT-IP',
+                        command: `show nat source translations match ${inspectorTargetIp.split('/')[0] || '8.8.8.8'}`,
+                        description: 'Active SNAT translations matching the target IP'
+                    },
+                    {
+                        family: 'conntrack_nat',
+                        familyLabel: 'Conntrack, NAT & FW',
+                        label: 'NAT Source Rules',
+                        badge: 'SNAT',
+                        command: 'show nat source rules',
+                        description: 'Configured source NAT rules and packet/byte counters'
+                    },
+                    {
+                        family: 'conntrack_nat',
+                        familyLabel: 'Conntrack, NAT & FW',
+                        label: 'Firewall Counters',
+                        badge: 'FW',
+                        command: 'show firewall',
+                        description: 'Firewall rulesets and hit counters'
+                    },
+                    {
+                        family: 'conntrack_nat',
+                        familyLabel: 'Conntrack, NAT & FW',
+                        label: 'Policy Route (PBR)',
+                        badge: 'PBR',
+                        command: 'show policy route',
+                        description: 'Policy-based routing rules and table assignments'
+                    },
+                    // 4. Active Probes & Bounded Capture
+                    {
+                        family: 'probes',
+                        familyLabel: 'Probes & Capture',
+                        label: `Ping (${inspectorTargetIp.split('/')[0] || '8.8.8.8'})`,
+                        badge: 'PING',
+                        command: `ping ${inspectorTargetIp.split('/')[0] || '8.8.8.8'} count 4${inspectorSourceIp.trim() ? ` source-address ${inspectorSourceIp.trim()}` : ''}`,
+                        description: 'Bounded ICMP probe (1-5 packets) from router with RTT & loss parsing'
+                    },
+                    {
+                        family: 'probes',
+                        familyLabel: 'Probes & Capture',
+                        label: `Traceroute (${inspectorTargetIp.split('/')[0] || '8.8.8.8'})`,
+                        badge: 'TRACE',
+                        command: `traceroute ${inspectorTargetIp.split('/')[0] || '8.8.8.8'}${inspectorSourceIp.trim() ? ` source-address ${inspectorSourceIp.trim()}` : ''}`,
+                        description: 'Numeric UDP traceroute (max 15 hops) with structured hop parser'
+                    },
+                    {
+                        family: 'probes',
+                        familyLabel: 'Probes & Capture',
+                        label: `Live Capture (${inspectorIface === 'eth0' ? 'eth1' : (inspectorIface || 'eth1')})`,
+                        badge: 'TCPDUMP',
+                        command: `capture ${inspectorIface === 'eth0' ? 'eth1' : (inspectorIface || 'eth1')} count ${Math.min(50, Math.max(1, inspectorCaptureCount || 15))} ${inspectorCaptureFilter.trim() || 'icmp'}`,
+                        description: 'Bounded 10s tcpdump text capture (1-50 packets, non-eth0) with safe BPF grammar'
+                    },
+                ];
+
+                const visiblePresets = inspectorFamilyTab === 'all'
+                    ? presets
+                    : presets.filter(p => p.family === inspectorFamilyTab);
+
+                const rawOutputLines: string[] = (inspectorResult?.output || '').split('\n');
+                const filteredOutput = inspectorOutputFilter.trim()
+                    ? rawOutputLines.filter(l => l.toLowerCase().includes(inspectorOutputFilter.trim().toLowerCase())).join('\n')
+                    : (inspectorResult?.output || '');
+
+                return (
+                    <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-300">
+                        {/* Top Control Bar: Router + Context Inputs */}
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-border/60 pb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 rounded-xl">
+                                        <Terminal size={20} className="text-cyan-400" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-base font-black text-text-primary tracking-tight">VyOS Live Inspector &amp; Read-Only CLI</h3>
+                                            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                Read-Only By Construction
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-text-muted mt-0.5">
+                                            Inspect BGP, RIB, Conntrack, SNAT, Netem queues, and run bounded Ping / Traceroute / Tcpdump probes with zero configuration mutation risk.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Router Selector */}
+                                <div className="flex items-center gap-3">
+                                    <div className="w-64">
+                                        <StigixSelect
+                                            value={inspectorRouterId}
+                                            onChange={(val) => {
+                                                setInspectorRouterId(val);
+                                                const r = routers.find(rt => rt.id === val);
+                                                const wanIf = r?.interfaces?.find(i => i.name !== 'eth0')?.name || r?.interfaces?.[0]?.name || 'eth1';
+                                                setInspectorIface(wanIf);
+                                            }}
+                                            accent="cyan"
+                                            placeholder="Select VyOS Router..."
+                                            menuMinWidth={240}
+                                            options={routers.map(r => ({
+                                                value: r.id,
+                                                label: r.name,
+                                                badge: r.host,
+                                                sublabel: r.location || `v${r.version}`,
+                                            }))}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Parameter Context Bar for Dynamic Presets */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
+                                        Target Interface
+                                    </label>
+                                    <StigixSelect
+                                        value={inspectorIface}
+                                        onChange={(val) => setInspectorIface(val)}
+                                        accent="cyan"
+                                        placeholder="Interface..."
+                                        options={routerInterfaces.length > 0 ? routerInterfaces.map(i => ({
+                                            value: i.name,
+                                            label: i.name,
+                                            sublabel: i.description || i.address?.[0] || undefined,
+                                        })) : [
+                                            { value: 'eth0', label: 'eth0' },
+                                            { value: 'eth1', label: 'eth1' },
+                                            { value: 'eth2', label: 'eth2' },
+                                        ]}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
+                                        Target IP / Prefix (Match / Probe)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={inspectorTargetIp}
+                                        onChange={(e) => setInspectorTargetIp(e.target.value)}
+                                        placeholder="e.g. 8.8.8.8 or 10.0.0.0/24"
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
+                                        Source IP (Ping / Traceroute)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={inspectorSourceIp}
+                                        onChange={(e) => setInspectorSourceIp(e.target.value)}
+                                        placeholder="Optional source IPv4"
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
+                                        Capture Count (1–50 pkts)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={50}
+                                        value={inspectorCaptureCount}
+                                        onChange={(e) => setInspectorCaptureCount(Math.min(50, Math.max(1, parseInt(e.target.value) || 15)))}
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-text-muted block mb-1">
+                                        Capture Filter (Safe BPF)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={inspectorCaptureFilter}
+                                        onChange={(e) => setInspectorCaptureFilter(e.target.value)}
+                                        placeholder="icmp | port 179 | host 8.8.8.8"
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Quick WAN Impairment + Auto-Expire TTL Bar */}
+                            <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5">
+                                    <Activity size={16} className="text-indigo-400 shrink-0" />
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-xs font-black text-text-primary uppercase tracking-tight">
+                                                Quick WAN Impairment ({inspectorIface || 'eth1'})
+                                            </span>
+                                            {activeIfaceObj?.qos && ((activeIfaceObj.qos.latency && activeIfaceObj.qos.latency > 0) || (activeIfaceObj.qos.loss && activeIfaceObj.qos.loss > 0) || activeIfaceObj.qos.rate) && (
+                                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                                                    <span>Active: +{activeIfaceObj.qos.latency || 0}ms{activeIfaceObj.qos.loss ? ` / ${activeIfaceObj.qos.loss}% loss` : ''}{activeIfaceObj.qos.rate ? ` / ${activeIfaceObj.qos.rate}` : ''}</span>
+                                                    {activeTtlStr && (
+                                                        <span className="text-cyan-300 bg-cyan-500/20 px-1.5 py-0.2 rounded border border-cyan-500/30">
+                                                            ⏱ Auto-Expire in {activeTtlStr}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[10px] text-text-muted">
+                                            Apply Netem delay/loss with an optional safety countdown so active chaos automatically reverts.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <div className="flex items-center gap-1 bg-card px-2.5 py-1.5 rounded-lg border border-border">
+                                        <span className="text-[10px] text-text-muted font-bold">Delay</span>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            max={5000}
+                                            value={quickImpairLatency}
+                                            onChange={(e) => setQuickImpairLatency(Math.max(0, parseInt(e.target.value) || 0))}
+                                            className="w-14 bg-transparent text-xs font-mono font-bold text-indigo-400 text-right focus:outline-none"
+                                        />
+                                        <span className="text-[10px] text-text-muted font-mono">ms</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 bg-card px-2.5 py-1.5 rounded-lg border border-border">
+                                        <span className="text-[10px] text-text-muted font-bold">Loss</span>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            max={100}
+                                            value={quickImpairLoss}
+                                            onChange={(e) => setQuickImpairLoss(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                                            className="w-10 bg-transparent text-xs font-mono font-bold text-amber-400 text-right focus:outline-none"
+                                        />
+                                        <span className="text-[10px] text-text-muted font-mono">%</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 bg-card px-2.5 py-1.5 rounded-lg border border-border">
+                                        <span className="text-[10px] text-text-muted font-bold">Rate</span>
+                                        <input
+                                            type="text"
+                                            value={quickImpairRate}
+                                            onChange={(e) => setQuickImpairRate(e.target.value)}
+                                            placeholder="e.g. 10mbit"
+                                            className="w-16 bg-transparent text-xs font-mono font-bold text-purple-400 focus:outline-none"
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-1.5 bg-card px-2.5 py-1.5 rounded-lg border border-cyan-500/30">
+                                        <Clock size={12} className="text-cyan-400" />
+                                        <span className="text-[10px] text-cyan-300 font-bold">Auto-Expire</span>
+                                        <select
+                                            value={quickImpairTtl}
+                                            onChange={(e) => setQuickImpairTtl(parseInt(e.target.value) || 0)}
+                                            className="bg-transparent text-xs font-mono font-bold text-cyan-300 focus:outline-none cursor-pointer"
+                                        >
+                                            <option value={0} className="bg-zinc-900">Never (Manual)</option>
+                                            <option value={5} className="bg-zinc-900">5 min</option>
+                                            <option value={10} className="bg-zinc-900">10 min</option>
+                                            <option value={15} className="bg-zinc-900">15 min</option>
+                                            <option value={30} className="bg-zinc-900">30 min</option>
+                                            <option value={60} className="bg-zinc-900">60 min</option>
+                                        </select>
+                                    </div>
+                                    <button
+                                        onClick={applyQuickImpairment}
+                                        disabled={quickImpairRunning || !inspectorRouterId}
+                                        className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                                    >
+                                        {quickImpairRunning ? <RefreshCw size={12} className="animate-spin" /> : <Zap size={12} />}
+                                        Apply &amp; Verify Queue
+                                    </button>
+                                    <button
+                                        onClick={() => clearQuickImpairment()}
+                                        disabled={quickImpairRunning || !inspectorRouterId}
+                                        className="px-3 py-1.5 rounded-lg bg-card hover:bg-red-500/10 text-text-muted hover:text-red-400 border border-border text-xs font-bold transition-all flex items-center gap-1"
+                                        title="Clear Netem QoS on target interface"
+                                    >
+                                        <RotateCcw size={12} /> Clear QoS
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Quick Presets by Inspection Family */}
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-black uppercase tracking-widest text-text-muted mr-2">Quick Presets:</span>
+                                    {([
+                                        { id: 'all', label: 'All Families (20)' },
+                                        { id: 'interfaces', label: '1. Interfaces & Netem Queues' },
+                                        { id: 'routing', label: '2. Routing & BGP' },
+                                        { id: 'conntrack_nat', label: '3. Conntrack, NAT & Firewall' },
+                                        { id: 'probes', label: '4. Ping, Traceroute & Capture' },
+                                    ] as const).map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setInspectorFamilyTab(tab.id)}
+                                            className={cn(
+                                                'px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border',
+                                                inspectorFamilyTab === tab.id
+                                                    ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 shadow-sm'
+                                                    : 'bg-card-secondary text-text-muted border-border/60 hover:text-text-primary'
+                                            )}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                {visiblePresets.map((preset, idx) => {
+                                    const isActive = inspectorCommand.trim() === preset.command.trim();
+                                    return (
+                                        <button
+                                            key={idx}
+                                            onClick={() => runInspectorCommand(preset.command)}
+                                            disabled={inspectorRunning}
+                                            title={preset.description}
+                                            className={cn(
+                                                'text-left p-3 rounded-xl border transition-all flex flex-col justify-between gap-2 group',
+                                                isActive
+                                                    ? 'bg-cyan-500/10 border-cyan-500/50 shadow-sm'
+                                                    : 'bg-card-secondary/50 border-border/60 hover:border-cyan-500/40 hover:bg-card-secondary'
+                                            )}
+                                        >
+                                            <div className="flex items-center justify-between gap-2 w-full">
+                                                <span className="text-xs font-bold text-text-primary group-hover:text-cyan-300 transition-colors truncate">
+                                                    {preset.label}
+                                                </span>
+                                                <span className="text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/25 shrink-0">
+                                                    {preset.badge}
+                                                </span>
+                                            </div>
+                                            <code className="text-[10px] font-mono text-text-muted truncate w-full block">
+                                                {preset.command}
+                                            </code>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Read-Only CLI Input Bar & Execution Result */}
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4">
+                            <form
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    runInspectorCommand();
+                                }}
+                                className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
+                            >
+                                <div className="flex-1 flex items-center gap-2 bg-black/50 border border-border focus-within:border-cyan-500/60 rounded-xl px-4 py-2.5">
+                                    <span className="text-xs font-mono font-bold text-cyan-400 select-none shrink-0">
+                                        vyos@{selectedRouter?.name || 'router'}:~$
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={inspectorCommand}
+                                        onChange={(e) => setInspectorCommand(e.target.value)}
+                                        placeholder="Type an allowed show / ping / traceroute / capture command..."
+                                        className="flex-1 bg-transparent text-xs font-mono text-green-300 focus:outline-none"
+                                    />
+                                    {inspectorCommand && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setInspectorCommand('')}
+                                            className="text-text-muted hover:text-text-primary text-xs px-1"
+                                            title="Clear command"
+                                        >
+                                            ×
+                                        </button>
+                                    )}
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={inspectorRunning || !inspectorCommand.trim()}
+                                    className="px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20 shrink-0"
+                                >
+                                    {inspectorRunning ? <RefreshCw size={15} className="animate-spin" /> : <Play size={15} />}
+                                    {inspectorRunning ? 'Executing…' : 'Execute Read-Only'}
+                                </button>
+                            </form>
+
+                            {/* Recent Command History Chips */}
+                            {inspectorHistory.length > 0 && (
+                                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted mr-1">Recent:</span>
+                                    {inspectorHistory.map((item, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => {
+                                                setInspectorCommand(item.command);
+                                                setInspectorResult(item.result);
+                                            }}
+                                            className={cn(
+                                                'px-2 py-0.5 rounded-lg text-[10px] font-mono border transition-all flex items-center gap-1.5',
+                                                item.ok
+                                                    ? 'bg-card-secondary border-border text-text-secondary hover:border-cyan-500/40'
+                                                    : 'bg-red-500/10 border-red-500/30 text-red-300'
+                                            )}
+                                        >
+                                            <span className="text-[9px] font-bold text-cyan-400">{item.routerName}</span>
+                                            <span>{item.command}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Policy Rejection or Execution Error Banner */}
+                            {inspectorResult && !inspectorResult.ok && (
+                                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 space-y-2">
+                                    <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
+                                        <ShieldX size={16} />
+                                        <span>Command Blocked or Execution Failed ({inspectorResult.reason || 'policy'})</span>
+                                    </div>
+                                    <p className="text-xs text-red-200 font-mono">{inspectorResult.error}</p>
+                                    {inspectorResult.allowed_examples && (
+                                        <div className="pt-2 border-t border-red-500/20">
+                                            <div className="text-[10px] font-black uppercase tracking-widest text-red-300 mb-1">
+                                                Whitelisted Read-Only Grammar Examples:
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {inspectorResult.allowed_examples.slice(0, 10).map((ex: string, i: number) => (
+                                                    <span key={i} className="text-[10px] font-mono bg-black/40 text-red-200 px-2 py-0.5 rounded border border-red-500/20">
+                                                        {ex}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Structured Telemetry Cards (Traceroute / Ping / Netem Queue / Interface Counters) */}
+                            {inspectorResult && inspectorResult.ok && (
+                                <div className="space-y-4">
+                                    {/* 1. Structured Traceroute Hop Visualizer */}
+                                    {inspectorResult.hops_compact && (
+                                        <div className="bg-card-secondary/50 border border-border rounded-xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-black uppercase tracking-widest text-cyan-400">
+                                                        Structured Traceroute Path
+                                                    </span>
+                                                    <span className={cn(
+                                                        'text-[10px] font-bold px-2 py-0.5 rounded border',
+                                                        inspectorResult.reached_destination
+                                                            ? 'bg-green-500/15 text-green-400 border-green-500/30'
+                                                            : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                                    )}>
+                                                        {inspectorResult.reached_destination ? '✓ Reached Destination' : '⚠️ Partial / Filtered Path'}
+                                                    </span>
+                                                </div>
+                                                {inspectorResult.last_responding_hop && (
+                                                    <span className="text-[11px] font-mono text-text-muted">
+                                                        Last Responding Hop: #{inspectorResult.last_responding_hop.hop} ({inspectorResult.last_responding_hop.ip}) — {inspectorResult.last_responding_hop.min_rtt_ms}ms
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {inspectorResult.hops_compact.map((h: any, idx: number) => (
+                                                    <React.Fragment key={idx}>
+                                                        <div className={cn(
+                                                            'px-3 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-2',
+                                                            h.ip === '*'
+                                                                ? 'bg-zinc-900/60 border-border text-text-muted'
+                                                                : 'bg-card border-cyan-500/30 text-text-primary'
+                                                        )}>
+                                                            <span className="text-[10px] font-black text-cyan-400">#{h.hop}</span>
+                                                            <span className="font-bold">{h.ip}</span>
+                                                            {h.min_rtt_ms !== null && (
+                                                                <span className="text-[10px] text-emerald-400">{h.min_rtt_ms}ms</span>
+                                                            )}
+                                                        </div>
+                                                        {idx < inspectorResult.hops_compact.length - 1 && (
+                                                            <ChevronRight size={14} className="text-text-muted" />
+                                                        )}
+                                                    </React.Fragment>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 2. Structured Ping Summary */}
+                                    {inspectorResult.ping_summary && (
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            <div className="bg-card-secondary/50 border border-border rounded-xl p-3">
+                                                <div className="text-[10px] font-black uppercase text-text-muted">Packets TX / RX</div>
+                                                <div className="text-base font-black font-mono text-text-primary mt-0.5">
+                                                    {inspectorResult.ping_summary.packets_transmitted ?? '—'} / {inspectorResult.ping_summary.packets_received ?? '—'}
+                                                </div>
+                                            </div>
+                                            <div className="bg-card-secondary/50 border border-border rounded-xl p-3">
+                                                <div className="text-[10px] font-black uppercase text-text-muted">Packet Loss</div>
+                                                <div className={cn(
+                                                    'text-base font-black font-mono mt-0.5',
+                                                    (inspectorResult.ping_summary.packet_loss_pct || 0) > 0 ? 'text-amber-400' : 'text-green-400'
+                                                )}>
+                                                    {inspectorResult.ping_summary.packet_loss_pct ?? 0}%
+                                                </div>
+                                            </div>
+                                            <div className="bg-card-secondary/50 border border-border rounded-xl p-3">
+                                                <div className="text-[10px] font-black uppercase text-text-muted">RTT Avg</div>
+                                                <div className="text-base font-black font-mono text-cyan-400 mt-0.5">
+                                                    {inspectorResult.ping_summary.rtt_avg_ms !== null ? `${inspectorResult.ping_summary.rtt_avg_ms} ms` : '—'}
+                                                </div>
+                                            </div>
+                                            <div className="bg-card-secondary/50 border border-border rounded-xl p-3">
+                                                <div className="text-[10px] font-black uppercase text-text-muted">RTT Min / Max</div>
+                                                <div className="text-base font-black font-mono text-text-primary mt-0.5">
+                                                    {inspectorResult.ping_summary.rtt_min_ms ?? '—'} / {inspectorResult.ping_summary.rtt_max_ms ?? '—'} ms
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 3. Structured Netem / Qdisc Summary */}
+                                    {inspectorResult.queue_summary && inspectorResult.queue_summary.qdiscs?.length > 0 && (
+                                        <div className="bg-card-secondary/50 border border-border rounded-xl p-4 space-y-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-black uppercase tracking-widest text-indigo-400">
+                                                    Kernel TC / Netem Queue Discipline ({inspectorResult.queue_summary.interface})
+                                                </span>
+                                                <span className={cn(
+                                                    'text-[10px] font-bold px-2 py-0.5 rounded border',
+                                                    inspectorResult.queue_summary.netem_active
+                                                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                                        : 'bg-green-500/15 text-green-400 border-green-500/30'
+                                                )}>
+                                                    {inspectorResult.queue_summary.netem_active ? '〰️ Netem Impairment Active' : '✓ Default Queue (No Netem)'}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                                {inspectorResult.queue_summary.qdiscs.map((q: any, idx: number) => (
+                                                    <div key={idx} className="bg-card border border-border/80 rounded-lg p-3 text-xs font-mono space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-black text-cyan-400">qdisc {q.kind} ({q.handle})</span>
+                                                            <span className="text-[10px] text-text-muted">dropped: <strong className={q.dropped > 0 ? 'text-red-400' : 'text-green-400'}>{q.dropped}</strong></span>
+                                                        </div>
+                                                        <div className="flex items-center gap-3 text-[11px] text-text-secondary flex-wrap">
+                                                            {q.delay && <span className="text-indigo-300">delay: {q.delay}</span>}
+                                                            {q.loss && <span className="text-amber-300">loss: {q.loss}</span>}
+                                                            {q.rate && <span className="text-purple-300">rate: {q.rate}</span>}
+                                                            <span>sent: {q.sent_packets} pkts ({q.sent_bytes} B)</span>
+                                                            <span>overlimits: {q.overlimits}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 4. Structured Interface Kernel Counters */}
+                                    {inspectorResult.interfaces && inspectorResult.interfaces.length > 0 && (
+                                        <div className="bg-card-secondary/50 border border-border rounded-xl overflow-hidden">
+                                            <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+                                                <span className="text-[11px] font-black uppercase tracking-widest text-cyan-400">
+                                                    Structured Interface &amp; Kernel Counters
+                                                </span>
+                                                <span className="text-[10px] text-text-muted font-mono">
+                                                    {inspectorResult.interfaces.length} interface(s)
+                                                </span>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-xs font-mono">
+                                                    <thead className="bg-card/60 text-[10px] text-text-muted uppercase">
+                                                        <tr>
+                                                            <th className="px-3 py-2">Interface</th>
+                                                            <th className="px-3 py-2">State</th>
+                                                            <th className="px-3 py-2">IPv4</th>
+                                                            <th className="px-3 py-2">Description</th>
+                                                            <th className="px-3 py-2 text-right">RX Pkts</th>
+                                                            <th className="px-3 py-2 text-right">TX Pkts</th>
+                                                            <th className="px-3 py-2 text-right">RX/TX Drops</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-border/40">
+                                                        {inspectorResult.interfaces.map((itf: any) => (
+                                                            <tr key={itf.name} className="hover:bg-card/40">
+                                                                <td className="px-3 py-2 font-bold text-text-primary">{itf.name}</td>
+                                                                <td className="px-3 py-2">
+                                                                    <span className={cn(
+                                                                        'px-1.5 py-0.5 rounded text-[10px] font-bold',
+                                                                        itf.oper_state === 'up' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+                                                                    )}>
+                                                                        {itf.admin_state || 'u'}/{itf.oper_state || 'u'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-3 py-2 text-text-secondary">{(itf.ipv4 || []).join(', ') || '—'}</td>
+                                                                <td className="px-3 py-2 text-blue-400">{itf.description || '—'}</td>
+                                                                <td className="px-3 py-2 text-right">{itf.counters?.rx_packets ?? '—'}</td>
+                                                                <td className="px-3 py-2 text-right">{itf.counters?.tx_packets ?? '—'}</td>
+                                                                <td className="px-3 py-2 text-right">
+                                                                    <span className={(itf.counters?.rx_dropped || itf.counters?.tx_dropped) ? 'text-amber-400 font-bold' : 'text-text-muted'}>
+                                                                        {itf.counters?.rx_dropped ?? 0} / {itf.counters?.tx_dropped ?? 0}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Raw Terminal Output Pane */}
+                                    <div className="bg-zinc-950 border border-border rounded-xl overflow-hidden shadow-inner">
+                                        <div className="px-4 py-2.5 bg-zinc-900/90 border-b border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-[11px] font-mono font-bold text-green-400">
+                                                    $ {inspectorResult.vyos_command || inspectorResult.command}
+                                                </span>
+                                                {inspectorResult.rule && (
+                                                    <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                                        rule: {inspectorResult.rule}
+                                                    </span>
+                                                )}
+                                                {inspectorResult.transport && (
+                                                    <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                                        via {inspectorResult.transport}
+                                                    </span>
+                                                )}
+                                                {inspectorResult.match_ip && (
+                                                    <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                                        match: {inspectorResult.match_ip} ({inspectorResult.matched_lines} lines)
+                                                    </span>
+                                                )}
+                                                {inspectorResult.truncated && (
+                                                    <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-orange-500/15 text-orange-300 border border-orange-500/30">
+                                                        Truncated ({inspectorResult.lines_returned}/{inspectorResult.lines_total} lines)
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={inspectorOutputFilter}
+                                                    onChange={(e) => setInspectorOutputFilter(e.target.value)}
+                                                    placeholder="Filter output lines..."
+                                                    className="bg-black/60 border border-border rounded-lg px-2.5 py-1 text-[11px] font-mono text-text-primary focus:outline-none focus:border-cyan-500/50 w-44"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(filteredOutput || '');
+                                                        toast.success('Output copied to clipboard');
+                                                    }}
+                                                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-text-secondary text-[10px] font-bold flex items-center gap-1"
+                                                >
+                                                    <Copy size={11} /> Copy
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <pre className="p-4 text-xs font-mono text-green-300/95 overflow-x-auto max-h-[520px] overflow-y-auto leading-relaxed whitespace-pre">
+                                            {filteredOutput || '(empty output)'}
+                                        </pre>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {view === 'sequences' && (
                 <div className="space-y-4 w-full">
@@ -2578,15 +3585,19 @@ export default function Vyos(props: VyosProps) {
                                                         <input type="number" placeholder="ms" title="Latency (ms)"
                                                             value={action.parameters?.latency || ''}
                                                             onChange={(e) => { const a = [...editingSeq.actions]; a[idx].parameters = { ...a[idx].parameters, latency: parseInt(e.target.value) || 0 }; setEditingSeq({ ...editingSeq, actions: a }); }}
-                                                            className="w-14 bg-card border border-indigo-500/30 rounded px-1.5 py-1 text-[11px] text-indigo-400 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500/50" />
+                                                            className="w-12 bg-card border border-indigo-500/30 rounded px-1 py-1 text-[11px] text-indigo-400 text-center focus:outline-none focus:ring-1 focus:ring-indigo-500/50" />
                                                         <input type="number" placeholder="%" title="Loss (%)"
                                                             value={action.parameters?.loss || ''}
                                                             onChange={(e) => { const a = [...editingSeq.actions]; a[idx].parameters = { ...a[idx].parameters, loss: parseInt(e.target.value) || 0 }; setEditingSeq({ ...editingSeq, actions: a }); }}
-                                                            className="w-10 bg-card border border-orange-500/30 rounded px-1.5 py-1 text-[11px] text-orange-400 text-center focus:outline-none focus:ring-1 focus:ring-orange-500/50" />
+                                                            className="w-10 bg-card border border-orange-500/30 rounded px-1 py-1 text-[11px] text-orange-400 text-center focus:outline-none focus:ring-1 focus:ring-orange-500/50" />
                                                         <input type="text" placeholder="rate" title="Rate (e.g. 10mbit)"
                                                             value={action.parameters?.rate || ''}
                                                             onChange={(e) => { const a = [...editingSeq.actions]; a[idx].parameters = { ...a[idx].parameters, rate: e.target.value }; setEditingSeq({ ...editingSeq, actions: a }); }}
-                                                            className="w-16 bg-card border border-purple-500/30 rounded px-1.5 py-1 text-[11px] text-purple-400 text-center focus:outline-none focus:ring-1 focus:ring-purple-500/50" />
+                                                            className="w-14 bg-card border border-purple-500/30 rounded px-1 py-1 text-[11px] text-purple-400 text-center focus:outline-none focus:ring-1 focus:ring-purple-500/50" />
+                                                        <input type="number" placeholder="TTL m" title="Optional Auto-Expire TTL in minutes (auto-clears QoS)"
+                                                            value={action.parameters?.ttl_minutes || ''}
+                                                            onChange={(e) => { const a = [...editingSeq.actions]; const ttlVal = parseInt(e.target.value) || 0; a[idx].parameters = { ...a[idx].parameters, ttl_minutes: ttlVal > 0 ? ttlVal : undefined }; setEditingSeq({ ...editingSeq, actions: a }); }}
+                                                            className="w-12 bg-card border border-cyan-500/30 rounded px-1 py-1 text-[11px] text-cyan-400 text-center focus:outline-none focus:ring-1 focus:ring-cyan-500/50" />
                                                     </div>
                                                 ) : needsIp ? (
                                                     <div className="flex items-center gap-1">
@@ -2721,6 +3732,45 @@ export default function Vyos(props: VyosProps) {
                                     onChange={(e) => setEditingRouter({ ...editingRouter, location: e.target.value })}
                                     className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm font-medium text-text-primary tracking-normal focus:ring-1 focus:ring-purple-500/50 outline-none transition-all shadow-inner"
                                 />
+                            </div>
+
+                            <div className="space-y-2 p-3.5 bg-card-secondary/40 rounded-xl border border-border/60">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">Optional SSH Credentials (Ping / Capture / TC Queue)</span>
+                                    <span className="text-[9px] text-text-muted font-mono">Default: vyos / vyos : 22</span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2.5">
+                                    <div>
+                                        <label className="text-[9px] font-semibold text-text-muted block mb-1">SSH User</label>
+                                        <input
+                                            type="text"
+                                            placeholder="vyos"
+                                            value={editingRouter.sshUser || ''}
+                                            onChange={(e) => setEditingRouter({ ...editingRouter, sshUser: e.target.value || undefined })}
+                                            className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[9px] font-semibold text-text-muted block mb-1">SSH Password</label>
+                                        <input
+                                            type="password"
+                                            placeholder="vyos"
+                                            value={editingRouter.sshPassword || ''}
+                                            onChange={(e) => setEditingRouter({ ...editingRouter, sshPassword: e.target.value || undefined })}
+                                            className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[9px] font-semibold text-text-muted block mb-1">SSH Port</label>
+                                        <input
+                                            type="number"
+                                            placeholder="22"
+                                            value={editingRouter.sshPort || ''}
+                                            onChange={(e) => setEditingRouter({ ...editingRouter, sshPort: parseInt(e.target.value) || undefined })}
+                                            className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-cyan-500/50"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex items-center justify-between p-4 bg-card-secondary/50 rounded-xl border border-border">

@@ -3855,17 +3855,35 @@ def cmd_vyos(args):
 
     elif sub in ("netem", "impair", "qos"):
         if len(args) < 3:
-            err("Usage: vyos netem <router-id|router-name> <interface> [latency_ms] [loss_pct]")
+            err("Usage: vyos netem <router-id|router-name> <interface> [latency_ms] [loss_pct] [--ttl <minutes>]")
             err("       (Pass 0 0 or omit numbers to clear QoS impairment)")
             return
         router_target, iface = args[1], args[2]
-        latency = int(args[3]) if len(args) > 3 and args[3].isdigit() else 0
-        loss = float(args[4]) if len(args) > 4 else 0.0
+        # Extract optional --ttl <minutes>
+        ttl_minutes = None
+        clean_tail = []
+        i = 3
+        while i < len(args):
+            if args[i] in ("--ttl", "-t") and i + 1 < len(args):
+                try:
+                    ttl_minutes = int(args[i + 1])
+                except ValueError:
+                    pass
+                i += 2
+            else:
+                clean_tail.append(args[i])
+                i += 1
+
+        latency = int(clean_tail[0]) if len(clean_tail) > 0 and clean_tail[0].isdigit() else 0
+        loss = float(clean_tail[1]) if len(clean_tail) > 1 else 0.0
 
         if latency > 0 or loss > 0:
             cmd = "set-qos"
             params = {"latency": latency, "loss": loss}
-            info(f"Injecting QoS impairment on {iface} ({router_target}): latency={latency}ms, loss={loss}%...")
+            if ttl_minutes and ttl_minutes > 0:
+                params["ttl_minutes"] = ttl_minutes
+            ttl_msg = f" (Auto-Expire in {ttl_minutes}m)" if ttl_minutes and ttl_minutes > 0 else ""
+            info(f"Injecting QoS impairment on {iface} ({router_target}): latency={latency}ms, loss={loss}%{ttl_msg}...")
         else:
             cmd = "clear-qos"
             params = {}
@@ -3876,6 +3894,7 @@ def cmd_vyos(args):
             "interface": iface,
             "command": cmd,
             "params": params,
+            "ttl_minutes": ttl_minutes if (ttl_minutes and ttl_minutes > 0) else None,
             "source": "CLI Direct Action"
         }
         res = api_post("/api/vyos/direct-action", payload)
@@ -3883,6 +3902,47 @@ def cmd_vyos(args):
             ok(f"QoS action executed on {iface} ({router_target}) in {res.get('durationMs', 0)}ms")
         else:
             err(f"Failed: {res.get('error') if res else 'Unknown error'}")
+
+    elif sub in ("show", "cli-show", "probe", "inspect"):
+        if len(args) < 3:
+            err(f"Usage: vyos {sub} <router-id|router-name> <command...>")
+            info("  Examples:")
+            info("    vyos show vyosrouter show ip bgp summary")
+            info("    vyos show vyosrouter show interfaces ethernet eth1 queue")
+            info("    vyos show vyosrouter show conntrack table ipv4 match 8.8.8.8")
+            info("    vyos probe vyosrouter ping 8.8.8.8 count 3")
+            info("    vyos probe vyosrouter traceroute 8.8.8.8")
+            info("    vyos probe vyosrouter capture eth1 count 10 icmp")
+            return
+        router_target = args[1]
+        raw_cmd = " ".join(args[2:]).strip()
+        if sub in ("show", "cli-show") and not raw_cmd.lower().startswith("show "):
+            raw_cmd = f"show {raw_cmd}"
+        endpoint = "/api/vyos/probe" if (sub == "probe" or raw_cmd.split()[0].lower() in ("ping", "traceroute", "capture")) else "/api/vyos/cli-show"
+        info(f"Running Read-Only VyOS Inspector on '{router_target}': {raw_cmd}")
+        res = api_post(endpoint, {"router_id": router_target, "command": raw_cmd}, timeout=35)
+        if not res:
+            return
+        if not res.get("ok"):
+            err(f"Rejected / Failed ({res.get('reason', 'error')}): {res.get('error', 'Unknown error')}")
+            return
+        hdr(f"━━ VyOS Live Inspector [{res.get('router_name') or router_target}] ({res.get('rule', '?')} via {res.get('transport', '?')}) ━━")
+        if res.get("hops_compact"):
+            info(f"Traceroute Reached Destination: {res.get('reached_destination')} | Path: {res.get('path_summary')}")
+        if res.get("ping_summary"):
+            ps = res["ping_summary"]
+            info(f"Ping Summary: TX={ps.get('packets_transmitted')} RX={ps.get('packets_received')} Loss={ps.get('packet_loss_pct')}% RTT avg={ps.get('rtt_avg_ms')}ms")
+        if res.get("queue_summary"):
+            qs = res["queue_summary"]
+            info(f"Netem Active on {qs.get('interface')}: {qs.get('netem_active')} ({len(qs.get('qdiscs', []))} qdisc(s))")
+        print(res.get("output") or "(empty output)")
+
+    elif sub == "rules":
+        res = api_get("/api/vyos/cli/rules")
+        if res and res.get("rules"):
+            hdr("━━ VyOS Read-Only Inspector Whitelisted Grammar ━━")
+            rows = [[r.get("name", "?"), r.get("family", "?"), r.get("pattern", "?"), r.get("description", "")[:45]] for r in res["rules"]]
+            table(["Rule", "Family", "Pattern", "Description"], rows)
 
     elif sub in ("block", "unblock"):
         cmd = "simple-block" if sub == "block" else "simple-unblock"
@@ -3941,9 +4001,12 @@ def cmd_vyos(args):
         _help_section("VyOS CONTROL", [
             ("vyos list",            "List configured routers"),
             ("vyos ifaces [router]", "List interfaces, IPs, UP/DOWN status, and QoS"),
+            ("vyos show <r> <cmd>",  "Run whitelisted Read-Only CLI show command on router"),
+            ("vyos probe <r> <cmd>", "Run bounded ping / traceroute / capture probe from router"),
+            ("vyos rules",           "List whitelisted Read-Only Inspector CLI grammar rules"),
             ("vyos shut <r> <if>",   "Shut down an interface on router"),
             ("vyos no-shut <r> <if>","Enable / up an interface on router"),
-            ("vyos netem <r> <if> [ms] [%]", "Inject latency & packet loss via VyOS engine"),
+            ("vyos netem <r> <if> [ms] [%] [--ttl min]", "Inject latency & packet loss (optional Auto-Expire TTL)"),
             ("vyos block <r> <ip>",  "Block traffic from IP address on router"),
             ("vyos unblock <r> <ip>","Unblock traffic for IP address"),
             ("vyos sequences",       "List action sequences"),

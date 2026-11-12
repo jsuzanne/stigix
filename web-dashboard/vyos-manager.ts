@@ -15,7 +15,7 @@ export interface VyosRouterInterface {
     description: string | null;
     address: string[];
     status?: 'up' | 'down' | 'unknown';
-    qos?: { latency?: number; loss?: number };
+    qos?: { latency?: number; loss?: number; rate?: string; expiresAt?: number };
 }
 
 export interface VyosRouter {
@@ -25,6 +25,10 @@ export interface VyosRouter {
     apiKey: string;
     version: string;        // auto-detected
     location?: string;
+    sshUser?: string;
+    sshPassword?: string;
+    sshKey?: string;
+    sshPort?: number;
     interfaces: VyosRouterInterface[];
     blackholeBlocks?: { prefix: string; description?: string }[];
     enabled: boolean;
@@ -43,8 +47,11 @@ export interface VyosAction {
 export class VyosManager extends EventEmitter {
     private pythonPath: string;
     private pythonScriptPath: string;
+    private inspectorScriptPath: string;
     private routersFile: string;
     private routers: Map<string, VyosRouter> = new Map();
+    private impairmentTimers: Map<string, { timer: NodeJS.Timeout; expiresAt: number }> = new Map();
+    private cachedRules: any = null;
 
     constructor(configDir: string, pythonPath: string = 'python3') {
         super();
@@ -61,6 +68,8 @@ export class VyosManager extends EventEmitter {
                 this.pythonScriptPath = fallback;
             }
         }
+
+        this.inspectorScriptPath = path.join(path.dirname(this.pythonScriptPath), 'vyos_inspector.py');
 
         this.loadRouters();
         log('VYOS', `Manager initialized. File: ${this.routersFile}`);
@@ -402,9 +411,18 @@ export class VyosManager extends EventEmitter {
                             } else if (command === 'set-qos') {
                                 const lat = action.params?.latency !== undefined ? Number(action.params.latency) : (action.params?.ms !== undefined ? Number(action.params.ms) : undefined);
                                 const los = action.params?.loss !== undefined ? Number(action.params.loss) : undefined;
-                                targetIface.qos = { latency: lat, loss: los };
+                                const rate = action.params?.rate !== undefined ? String(action.params.rate) : undefined;
+                                const ttlMin = Number(action.params?.ttl_minutes || action.params?.autoExpireMinutes || 0);
+                                const expiresAt = ttlMin > 0 ? Date.now() + Math.round(ttlMin * 60000) : undefined;
+                                targetIface.qos = { latency: lat, loss: los, rate, ...(expiresAt ? { expiresAt } : {}) };
+                                if (ttlMin > 0) {
+                                    this.scheduleImpairmentExpiry(router.id, targetIface.name, ttlMin);
+                                } else {
+                                    this.cancelImpairmentExpiry(router.id, targetIface.name);
+                                }
                                 this.saveRouters();
                             } else if (command === 'clear-qos') {
+                                this.cancelImpairmentExpiry(router.id, targetIface.name);
                                 delete targetIface.qos;
                                 this.saveRouters();
                             }
@@ -571,9 +589,15 @@ export class VyosManager extends EventEmitter {
                                         if (item.qos_active) {
                                             const lat = item.qos_active.delay_ms ? parseInt(String(item.qos_active.delay_ms).replace(/[^\d]/g, ''), 10) : undefined;
                                             const los = item.qos_active.loss_pct ? parseInt(String(item.qos_active.loss_pct).replace(/[^\d]/g, ''), 10) : undefined;
-                                            target.qos = { latency: lat, loss: los };
+                                            const rate = item.qos_active.rate ? String(item.qos_active.rate) : undefined;
+                                            const ttlKey = `${router.id}:${target.name.toLowerCase()}`;
+                                            const ttlEntry = this.impairmentTimers.get(ttlKey);
+                                            const expiresAt = ttlEntry && ttlEntry.expiresAt > Date.now() ? ttlEntry.expiresAt : target.qos?.expiresAt;
+                                            item.qos_active.expires_at = expiresAt;
+                                            target.qos = { latency: lat, loss: los, rate, ...(expiresAt && expiresAt > Date.now() ? { expiresAt } : {}) };
                                             changed = true;
                                         } else if (target.qos) {
+                                            this.cancelImpairmentExpiry(router.id, target.name);
                                             delete target.qos;
                                             changed = true;
                                         }
@@ -644,5 +668,218 @@ export class VyosManager extends EventEmitter {
     resetConfig() {
         const emptyConfig = { routers: [], sequences: [] };
         this.setFullConfig(emptyConfig);
+    }
+
+    /**
+     * Schedule automatic rollback (clear-qos) for an interface impairment after ttlMinutes
+     */
+    scheduleImpairmentExpiry(routerId: string, ifaceName: string, ttlMinutes: number) {
+        this.cancelImpairmentExpiry(routerId, ifaceName);
+        if (!ttlMinutes || ttlMinutes <= 0) return;
+
+        const key = `${routerId}:${ifaceName.toLowerCase()}`;
+        const delayMs = Math.round(ttlMinutes * 60000);
+        const expiresAt = Date.now() + delayMs;
+
+        log('VYOS', `Scheduled auto-expire for impairment on ${routerId}:${ifaceName} in ${ttlMinutes}m`);
+        const timer = setTimeout(async () => {
+            this.impairmentTimers.delete(key);
+            log('VYOS', `Auto-expiring impairment on ${routerId}:${ifaceName} (TTL ${ttlMinutes}m reached)`);
+            try {
+                await this.executeAction(routerId, {
+                    id: `ttl-expire-${Date.now()}`,
+                    offset_minutes: 0,
+                    router_id: routerId,
+                    command: 'clear-qos',
+                    params: { interface: ifaceName }
+                });
+                this.emit('impairment:expired', { routerId, interface: ifaceName, ttlMinutes });
+            } catch (e: any) {
+                log('VYOS', `Failed to auto-expire impairment on ${routerId}:${ifaceName}: ${e.message}`, 'error');
+            }
+        }, delayMs);
+
+        this.impairmentTimers.set(key, { timer, expiresAt });
+    }
+
+    /**
+     * Cancel scheduled auto-expire timer(s) for a router interface (or all interfaces on router)
+     */
+    cancelImpairmentExpiry(routerId: string, ifaceName?: string) {
+        if (ifaceName) {
+            const key = `${routerId}:${ifaceName.toLowerCase()}`;
+            const entry = this.impairmentTimers.get(key);
+            if (entry) {
+                clearTimeout(entry.timer);
+                this.impairmentTimers.delete(key);
+            }
+            const router = this.routers.get(routerId);
+            const target = router?.interfaces.find(i => i.name.toLowerCase() === ifaceName.toLowerCase());
+            if (target?.qos?.expiresAt) {
+                delete target.qos.expiresAt;
+            }
+        } else {
+            for (const [k, entry] of this.impairmentTimers.entries()) {
+                if (k.startsWith(`${routerId}:`)) {
+                    clearTimeout(entry.timer);
+                    this.impairmentTimers.delete(k);
+                }
+            }
+        }
+    }
+
+    /**
+     * Return active TTL expiration timestamps keyed by "${routerId}:${ifaceName}"
+     */
+    getActiveImpairmentTtls(): Record<string, number> {
+        const out: Record<string, number> = {};
+        const now = Date.now();
+        for (const [k, entry] of this.impairmentTimers.entries()) {
+            if (entry.expiresAt > now) {
+                out[k] = entry.expiresAt;
+            } else {
+                this.impairmentTimers.delete(k);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Resolve router by ID, name, or fallback to first configured router when 'default' / empty
+     */
+    resolveRouter(idOrName?: string): VyosRouter | undefined {
+        const all = this.getRouters();
+        if (!idOrName || idOrName === 'default') {
+            return all[0];
+        }
+        const q = String(idOrName).trim().toLowerCase();
+        return (
+            this.routers.get(idOrName) ||
+            all.find(r => r.id.toLowerCase() === q || r.name.toLowerCase() === q || r.host.toLowerCase() === q) ||
+            all.find(r => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))
+        );
+    }
+
+    /**
+     * Retrieve the whitelisted Read-Only VyOS CLI rules and presets
+     */
+    async getInspectorRules(): Promise<any> {
+        if (this.cachedRules) return this.cachedRules;
+        return new Promise((resolve, reject) => {
+            const proc = spawn(this.pythonPath, [this.inspectorScriptPath, 'rules']);
+            let output = '';
+            let errBuf = '';
+            proc.stdout.on('data', d => output += d.toString());
+            proc.stderr.on('data', d => errBuf += d.toString());
+            proc.on('close', code => {
+                if (code === 0) {
+                    try {
+                        const parsed = JSON.parse(output);
+                        this.cachedRules = parsed;
+                        resolve(parsed);
+                    } catch {
+                        reject(new Error('Invalid JSON from vyos_inspector.py rules'));
+                    }
+                } else {
+                    reject(new Error(errBuf.trim() || `vyos_inspector.py rules exited with ${code}`));
+                }
+            });
+        });
+    }
+
+    /**
+     * Execute a whitelisted Read-Only VyOS CLI Show, Probe, or Bounded Capture command
+     */
+    async runInspect(
+        routerIdOrName: string,
+        command: string,
+        mode: 'cli-show' | 'probe' | 'inspect' = 'inspect'
+    ): Promise<any> {
+        const router = this.resolveRouter(routerIdOrName);
+        if (!router) {
+            return {
+                ok: false,
+                success: false,
+                device: routerIdOrName || 'unknown',
+                command,
+                error: {
+                    code: 'unknown_device',
+                    message: `Router '${routerIdOrName || ''}' not found on this Stigix node.`,
+                    hint: `Configured routers: ${this.getRouters().map(r => `${r.id} (${r.name})`).join(', ') || 'none'}`
+                }
+            };
+        }
+
+        const args = [
+            this.inspectorScriptPath,
+            '--host', router.host,
+            '--key', router.apiKey,
+            '--router-id', router.id,
+        ];
+        if (router.sshUser) args.push('--ssh-user', router.sshUser);
+        if (router.sshPassword) args.push('--ssh-password', router.sshPassword);
+        if (router.sshKey) args.push('--ssh-key', router.sshKey);
+        if (router.sshPort) args.push('--ssh-port', String(router.sshPort));
+
+        args.push(mode, '--command', String(command || '').trim());
+
+        const scrubbed = args.map(a => (a === router.apiKey || (router.sshPassword && a === router.sshPassword) ? '***' : a));
+        log('VYOS', `Live Inspector (${mode}): ${this.pythonPath} ${scrubbed.join(' ')}`, 'debug');
+
+        return new Promise((resolve) => {
+            const timeoutMs = 30000;
+            const proc = spawn(this.pythonPath, args);
+            let output = '';
+            let errBuf = '';
+
+            const timer = setTimeout(() => {
+                proc.kill();
+                resolve({
+                    ok: false,
+                    success: false,
+                    device: router.id,
+                    command,
+                    error: { code: 'timeout', message: `Inspector command timed out after ${timeoutMs / 1000}s` }
+                });
+            }, timeoutMs);
+
+            proc.stdout.on('data', d => output += d.toString());
+            proc.stderr.on('data', d => errBuf += d.toString());
+
+            proc.on('close', () => {
+                clearTimeout(timer);
+                try {
+                    const jsonStart = output.indexOf('{');
+                    const jsonStr = jsonStart !== -1 ? output.substring(jsonStart) : output;
+                    const parsed = JSON.parse(jsonStr);
+                    resolve({
+                        ...parsed,
+                        router_id: router.id,
+                        router_name: router.name,
+                        router_host: router.host,
+                    });
+                } catch {
+                    resolve({
+                        ok: false,
+                        success: false,
+                        device: router.id,
+                        router_id: router.id,
+                        command,
+                        error: {
+                            code: 'inspector_error',
+                            message: errBuf.trim() || output.trim() || 'Invalid JSON output from VyOS inspector'
+                        }
+                    });
+                }
+            });
+        });
+    }
+
+    async runCliShow(routerIdOrName: string, command: string): Promise<any> {
+        return this.runInspect(routerIdOrName, command, 'cli-show');
+    }
+
+    async runProbe(routerIdOrName: string, command: string): Promise<any> {
+        return this.runInspect(routerIdOrName, command, 'probe');
     }
 }

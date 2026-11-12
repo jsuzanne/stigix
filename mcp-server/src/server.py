@@ -828,7 +828,8 @@ async def vyos_execute_action(
     loss_pct: Optional[float] = None,
     corruption_pct: Optional[float] = None,
     rate: Optional[str] = None,
-    ip: Optional[str] = None
+    ip: Optional[str] = None,
+    ttl_minutes: Optional[int] = None
 ) -> dict:
     """
     Execute an ad-hoc VyOS network action on a specific router interface.
@@ -887,11 +888,80 @@ async def vyos_execute_action(
         corruption_pct:  Corruption % (0-100). Used with 'set-corruption'.
         rate:            Bandwidth limit string (e.g. '10mbit'). Used with 'set-rate'.
         ip:              IP address. Used with 'deny-traffic' / 'allow-traffic'.
+        ttl_minutes:     Optional Auto-Expire TTL in minutes (default None = infinite / manual clear).
     """
     return await orchestrator.vyos_execute_adhoc(
         agent_id, router_id, command, interface,
-        latency_ms, loss_pct, corruption_pct, rate, ip
+        latency_ms, loss_pct, corruption_pct, rate, ip, ttl_minutes
     )
+
+
+@mcp.tool()
+async def run_vyos_cli_show(
+    agent_id: str,
+    command: str,
+    router_id: Optional[str] = None
+) -> dict:
+    """
+    Run a READ-ONLY operational `show ...` CLI command on a VyOS router managed by a Stigix node.
+
+    Strictly validated against the whitelisted read-only grammar (READ-ONLY BY CONSTRUCTION:
+    no pipes `|`, redirects `>`, quotes, command separators, or state-changing verbs
+    `set`, `delete`, `commit`, `clear`, `reboot`).
+
+    Supported inspection families:
+      - Interfaces & Netem Queues:
+        * `show interfaces`
+        * `show interfaces ethernet <ethX>`
+        * `show interfaces ethernet <ethX> queue` (real tc/netem qdisc & drop counters)
+        * `show interfaces statistics` (`/bin/ip -s link show`)
+        * `show arp`
+      - Routing & BGP:
+        * `show ip route`
+        * `show ip route <ip|prefix>`
+        * `show ip bgp summary`
+        * `show ip bgp <ip|prefix>`
+        * `show ip bgp neighbors <ip> advertised-routes`
+        * `show ip bgp neighbors <ip> received-routes`
+      - Conntrack, NAT & Firewall:
+        * `show conntrack table ipv4 [match <ip>]`
+        * `show nat source translations [match <ip>]`
+        * `show nat source rules`
+        * `show firewall`
+        * `show policy route`
+
+    Args:
+        agent_id:  Stigix node ID managing the VyOS router (e.g. 'DC1', 'BR8-Ubuntu').
+        command:   Exact read-only `show ...` command (e.g. 'show ip bgp summary', 'show interfaces ethernet eth1 queue').
+        router_id: Optional VyOS router ID, name, or IP (defaults to the first router on the node if omitted).
+    """
+    return await orchestrator.run_vyos_cli_show(agent_id, command, router_id)
+
+
+@mcp.tool()
+async def run_vyos_probe(
+    agent_id: str,
+    command: str,
+    router_id: Optional[str] = None
+) -> dict:
+    """
+    Run a bounded active probe (`ping`, `traceroute`, or `capture`) from a VyOS router managed by a Stigix node.
+
+    Strictly validated against the whitelisted read-only grammar:
+      - `ping <ip> count <1-5> [source-address <ip>]`
+        Returns structured `ping_summary` (packets_transmitted, packets_received, packet_loss_pct, rtt_min_ms, rtt_avg_ms, rtt_max_ms).
+      - `traceroute <ip> [source-address <ip>]`
+        Returns structured `hops_compact`, `reached_destination`, `last_responding_hop`, and `path_summary`.
+      - `capture <eth1..ethN> count <1-50> <filter>`
+        Bounded 10s tcpdump text capture on a non-eth0 interface (`timeout 10 tcpdump -nn -l -s 96 -c N -i IF <filter>`).
+        Filter tokens are strictly whitelisted (`icmp`, `tcp`, `udp`, `arp`, `esp`, `host <ip>`, `net <cidr>`, `port <num>`, `and`, `or`, `not`).
+
+    Args:
+        agent_id:  Stigix node ID managing the VyOS router (e.g. 'DC1', 'BR8-Ubuntu').
+        command:   Exact probe command starting with `ping`, `traceroute`, or `capture` (e.g. 'ping 8.8.8.8 count 3', 'traceroute 10.201.0.1').
+        router_id: Optional VyOS router ID, name, or IP (defaults to the first router on the node if omitted).
+    """
+    return await orchestrator.run_vyos_probe(agent_id, command, router_id)
 
 
 @mcp.tool()
