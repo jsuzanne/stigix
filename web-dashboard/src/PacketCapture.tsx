@@ -289,6 +289,13 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
 
     // Active session state
     const [capturing, setCapturing] = useState<boolean>(false);
+    const [startingCapture, setStartingCapture] = useState<boolean>(false);
+    const [stoppingCapture, setStoppingCapture] = useState<boolean>(false);
+    const [dissectReadyFlash, setDissectReadyFlash] = useState<boolean>(false);
+    const [downloadedFlash, setDownloadedFlash] = useState<boolean>(false);
+    const [sendingReplay, setSendingReplay] = useState<boolean>(false);
+    const [sentReplayFlash, setSentReplayFlash] = useState<boolean>(false);
+    const [bpfAppliedFlash, setBpfAppliedFlash] = useState<string | null>(null);
     const [activeSession, setActiveSession] = useState<any>(null);
     const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
@@ -387,7 +394,8 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         setSelectedPreset(newId);
         setBpfFilter(newPreset.bpf);
         setShowSavePresetModal(false);
-        toast.success(`Custom BPF filter "${newPreset.name}" saved!`);
+        setBpfAppliedFlash(`Saved "${newPreset.name}"`);
+        setTimeout(() => setBpfAppliedFlash(null), 2000);
     };
 
     const handleDeleteCustomPreset = (presetId: string) => {
@@ -396,14 +404,14 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         setCustomBpfPresets(prev => prev.filter(cp => cp.id !== presetId));
         setSelectedPreset('all');
         setBpfFilter('');
-        toast.success(`Deleted preset "${p.name}"`);
     };
 
     const handleApplyRecipe = (recipe: BpfRecipe) => {
         setBpfFilter(recipe.bpf);
         setSelectedPreset('custom');
         setShowBpfLibraryModal(false);
-        toast.success(`Applied BPF filter: ${recipe.name}`);
+        setBpfAppliedFlash('Recipe applied');
+        setTimeout(() => setBpfAppliedFlash(null), 2000);
     };
 
     // History modal
@@ -920,7 +928,6 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                             isCapturingRef.current = false;
                             setCapturing(false);
                             setActiveSession(null);
-                            toast.success(`Packet capture completed (${status.elapsed_seconds || durationSec}s)!`);
                             if (status.pcap_filename) {
                                 loadDissectedPackets(status.pcap_filename);
                             }
@@ -976,12 +983,10 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         dissectingFileRef.current = targetFile;
 
         setLoadingPackets(true);
+        setDissectReadyFlash(false);
         setPackets([]);
         setSelectedPacketNo(null);
         setActivePcapFile(targetFile);
-        const displayName = targetFile.split('/').pop() || 'capture';
-        const toastKey = `dissect-${displayName}`;
-        toast.loading(`Dissecting ${displayName}...`, { id: toastKey });
 
         try {
             const fileQuery = `?file=${encodeURIComponent(targetFile)}&limit=250`;
@@ -1010,12 +1015,11 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                         'User Datagram Protocol': true
                     });
                 }
-                toast.success(`Loaded ${data.packets.length} packets from ${displayName} (Total: ${data.total_packets || data.packets.length})`, { id: toastKey });
-            } else {
-                toast.dismiss(toastKey);
+                setDissectReadyFlash(true);
+                setTimeout(() => setDissectReadyFlash(false), 1800);
             }
         } catch (e: any) {
-            toast.error(`Failed to load packets: ${e.message}`, { id: toastKey });
+            toast.error(`Failed to load packets: ${e.message}`);
         } finally {
             setLoadingPackets(false);
             dissectingFileRef.current = null;
@@ -1036,7 +1040,6 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             if (data.error) throw new Error(data.error);
             if (Array.isArray(data.packets) && data.packets.length > 0) {
                 setPackets(prev => [...prev, ...data.packets]);
-                toast.success(`Loaded +${data.packets.length} packets (${packets.length + data.packets.length}/${totalPackets})`);
             }
         } catch (e: any) {
             toast.error(`Failed to load more packets: ${e.message}`);
@@ -1046,6 +1049,9 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     };
 
     const handleStartCapture = async () => {
+        if (startingCapture || capturing) return;
+        setStartingCapture(true);
+        setDissectReadyFlash(false);
         setPackets([]);
         setTotalPackets(0);
         setSelectedPacketNo(null);
@@ -1073,12 +1079,13 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 setCapturing(true);
                 setActiveSession(data);
                 setActivePcapFile(data.pcap_filename);
-                toast.success(`Packet capture started on ${selectedInterface}!`);
             } else {
                 toast.error(data.error || 'Failed to start capture');
             }
         } catch (e: any) {
             toast.error(`Error: ${e.message}`);
+        } finally {
+            setStartingCapture(false);
         }
     };
 
@@ -1086,6 +1093,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         if (isStoppingRef.current) return;
         isStoppingRef.current = true;
         isCapturingRef.current = false;
+        setStoppingCapture(true);
         setCapturing(false);
 
         try {
@@ -1100,7 +1108,6 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 const targetFile = data.pcap_filename || activePcapFile;
                 // Mark session as completed so background poller doesn't trigger duplicate notifications
                 completedSessionIdRef.current = data.session_id || targetFile || 'stopped';
-                toast.success('Capture stopped');
                 if (targetFile) {
                     loadDissectedPackets(targetFile);
                 }
@@ -1109,14 +1116,15 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             toast.error(`Error stopping capture: ${e.message}`);
         } finally {
             isStoppingRef.current = false;
+            setStoppingCapture(false);
         }
     };
 
     const handleSendToReplay = async () => {
-        if (!activePcapFile) {
-            toast.error('No capture file active to send');
+        if (!activePcapFile || sendingReplay) {
             return;
         }
+        setSendingReplay(true);
 
         try {
             const res = await gFetch('/api/capture/send-to-replay', {
@@ -1127,15 +1135,18 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             });
             const data = await res.json();
             if (res.ok && data.success) {
-                toast.success(data.message || 'PCAP trace transferred to Replay Engine!');
+                setSentReplayFlash(true);
+                setTimeout(() => setSentReplayFlash(false), 2000);
                 if (onNavigateToReplay) {
-                    setTimeout(() => onNavigateToReplay(), 1200);
+                    setTimeout(() => onNavigateToReplay(), 800);
                 }
             } else {
                 toast.error(data.error || 'Failed to transfer PCAP to replay catalog');
             }
         } catch (e: any) {
             toast.error(`Transfer error: ${e.message}`);
+        } finally {
+            setSendingReplay(false);
         }
     };
 
@@ -1210,7 +1221,8 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
             }, 2000);
-            toast.success(`Downloaded ${filename}`);
+            setDownloadedFlash(true);
+            setTimeout(() => setDownloadedFlash(false), 2000);
         } catch (e: any) {
             console.error('Download capture error:', e);
             toast.error(e.message || 'Download failed');
@@ -1388,7 +1400,6 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         navigator.clipboard.writeText(fullHex);
         setCopiedHex(true);
         setTimeout(() => setCopiedHex(false), 2000);
-        toast.success('Hex dump copied to clipboard');
     };
 
     const getProtoColorClass = (proto: string, info: string) => {
@@ -1446,35 +1457,27 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </button>
                             </div>
 
-                            {captureMode === 'local' && (
-                                capturing ? (
-                                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 animate-pulse whitespace-nowrap">
-                                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                                        RECORDING ({elapsedSeconds}s / {durationSec}s)
+                            {captureMode === 'local' && !capturing && !loadingPackets && activePcapFile && (
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border flex items-center gap-2 whitespace-nowrap transition-colors ${
+                                    dissectReadyFlash
+                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                        : 'bg-card-secondary text-text-muted border-border'
+                                }`}>
+                                    <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
+                                    <span className="text-cyan-600 dark:text-cyan-400 font-bold flex items-center gap-0.5">
+                                        <Binary size={11} />
+                                        {totalPackets.toLocaleString()} pkts
                                     </span>
-                                ) : loadingPackets ? (
-                                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30 animate-pulse whitespace-nowrap">
-                                        <Loader2 size={11} className="animate-spin" />
-                                        DISSECTING {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}...
-                                    </span>
-                                ) : activePcapFile ? (
-                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-card-secondary text-text-muted border border-border flex items-center gap-2 whitespace-nowrap">
-                                        <span className="text-text-primary font-bold">{activePcapFile.split('/').pop()}</span>
-                                        <span className="text-cyan-600 dark:text-cyan-400 font-bold flex items-center gap-0.5">
-                                            <Binary size={11} />
-                                            {totalPackets.toLocaleString()} pkts
+                                    {durationSeconds > 0 && (
+                                        <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-0.5">
+                                            <Clock size={11} />
+                                            {durationSeconds}s
                                         </span>
-                                        {durationSeconds > 0 && (
-                                            <span className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-0.5">
-                                                <Clock size={11} />
-                                                {durationSeconds}s
-                                            </span>
-                                        )}
-                                        <span className="text-text-muted">
-                                            {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
-                                        </span>
+                                    )}
+                                    <span className="text-text-muted">
+                                        {fileSizeBytes ? `(${(fileSizeBytes / 1024).toFixed(1)} KB)` : ''}
                                     </span>
-                                ) : null
+                                </span>
                             )}
                         </div>
                     </div>
@@ -1483,13 +1486,57 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
                         {captureMode === 'local' ? (
                             <>
+                                {/* 5-Phase Evolving Primary Capture Button */}
                                 {capturing ? (
                                     <button
                                         onClick={handleStopCapture}
-                                        className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-rose-900/40 cursor-pointer"
+                                        className="relative overflow-hidden px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-rose-900/40 cursor-pointer"
+                                        title="Click to stop capture and dissect packets immediately"
                                     >
-                                        <Square size={14} fill="currentColor" />
-                                        Stop Capture
+                                        <span
+                                            className="absolute inset-y-0 left-0 bg-white/15 transition-all duration-700 pointer-events-none"
+                                            style={{ width: `${Math.min(100, Math.round((elapsedSeconds / Math.max(1, durationSec)) * 100))}%` }}
+                                        />
+                                        <span className="relative flex items-center gap-2">
+                                            <Square size={13} fill="currentColor" className="animate-pulse" />
+                                            <span>Stop Capture</span>
+                                            <span className="font-mono text-[11px] bg-black/25 px-2 py-0.5 rounded-md">
+                                                {elapsedSeconds}s / {durationSec}s
+                                                {totalPackets > 0 ? ` · ${totalPackets.toLocaleString()} pkts` : ''}
+                                            </span>
+                                        </span>
+                                    </button>
+                                ) : stoppingCapture ? (
+                                    <button
+                                        disabled
+                                        className="px-5 py-2.5 bg-amber-600/80 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg cursor-wait"
+                                    >
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span>Stopping capture…</span>
+                                    </button>
+                                ) : loadingPackets ? (
+                                    <button
+                                        disabled
+                                        className="px-5 py-2.5 bg-cyan-600/90 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-cyan-900/30 cursor-wait"
+                                    >
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span>Dissecting {activePcapFile ? activePcapFile.split('/').pop() : 'PCAP'}…</span>
+                                    </button>
+                                ) : startingCapture ? (
+                                    <button
+                                        disabled
+                                        className="px-5 py-2.5 bg-emerald-600/80 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg cursor-wait"
+                                    >
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span>Starting on {selectedInterface}…</span>
+                                    </button>
+                                ) : dissectReadyFlash ? (
+                                    <button
+                                        onClick={handleStartCapture}
+                                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/40 ring-2 ring-emerald-400/60 cursor-pointer"
+                                    >
+                                        <Check size={14} />
+                                        <span>{totalPackets.toLocaleString()} pkts Ready · New Capture</span>
                                     </button>
                                 ) : (
                                     <button
@@ -1497,7 +1544,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer"
                                     >
                                         <Play size={14} fill="currentColor" />
-                                        Start Capture
+                                        <span>Start Capture</span>
                                     </button>
                                 )}
 
@@ -1515,24 +1562,57 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         <button
                                             onClick={() => handleDownloadCapture(activePcapFile)}
                                             disabled={downloadingFile === activePcapFile}
-                                            className="px-3.5 py-2.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                            className={`px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 border ${
+                                                downloadedFlash
+                                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
+                                                    : 'bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-text-primary'
+                                            }`}
                                             title="Download raw .pcap for local Wireshark"
                                         >
                                             {downloadingFile === activePcapFile ? (
-                                                <Loader2 size={13} className="animate-spin text-cyan-600 dark:text-cyan-400" />
+                                                <>
+                                                    <Loader2 size={13} className="animate-spin text-cyan-600 dark:text-cyan-400" />
+                                                    <span>Downloading…</span>
+                                                </>
+                                            ) : downloadedFlash ? (
+                                                <>
+                                                    <Check size={13} className="text-emerald-500" />
+                                                    <span>Downloaded</span>
+                                                </>
                                             ) : (
-                                                <Download size={13} />
+                                                <>
+                                                    <Download size={13} />
+                                                    <span>Download .pcap</span>
+                                                </>
                                             )}
-                                            Download .pcap
                                         </button>
 
                                         <button
                                             onClick={handleSendToReplay}
-                                            className="px-3.5 py-2.5 bg-purple-600/15 hover:bg-purple-600/25 border border-purple-500/40 dark:border-purple-500/30 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                                            disabled={sendingReplay}
+                                            className={`px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                                sentReplayFlash
+                                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
+                                                    : 'bg-purple-600/15 hover:bg-purple-600/25 border-purple-500/40 dark:border-purple-500/30 text-purple-700 dark:text-purple-300'
+                                            }`}
                                             title="Send trace to PCAP Replay engine"
                                         >
-                                            <Zap size={13} />
-                                            Send to Replay
+                                            {sendingReplay ? (
+                                                <>
+                                                    <Loader2 size={13} className="animate-spin" />
+                                                    <span>Transferring…</span>
+                                                </>
+                                            ) : sentReplayFlash ? (
+                                                <>
+                                                    <Check size={13} className="text-emerald-500" />
+                                                    <span>Sent to Replay</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Zap size={13} />
+                                                    <span>Send to Replay</span>
+                                                </>
+                                            )}
                                         </button>
                                     </>
                                 )}
@@ -2202,7 +2282,15 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     {/* Kernel BPF Filter */}
                     <div className="lg:col-span-4 space-y-1">
                         <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Kernel BPF Filter</label>
+                            <div className="flex items-center gap-2">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-text-muted">Kernel BPF Filter</label>
+                                {bpfAppliedFlash && (
+                                    <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.2 rounded border border-emerald-500/30 flex items-center gap-1">
+                                        <Check size={9} />
+                                        {bpfAppliedFlash}
+                                    </span>
+                                )}
+                            </div>
                             <div className="flex items-center gap-2 text-[10px]">
                                 <button
                                     type="button"
@@ -2236,7 +2324,9 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 }}
                                 disabled={capturing}
                                 placeholder="e.g. tcp[tcpflags] & (tcp-syn) != 0 or port 53"
-                                className="w-full bg-card-secondary border border-border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none focus:border-cyan-500 pr-7 h-9"
+                                className={`w-full bg-card-secondary border rounded-xl px-3 py-1.5 text-xs text-text-primary font-mono focus:outline-none pr-7 h-9 transition-colors ${
+                                    bpfAppliedFlash ? 'border-emerald-500/50' : 'border-border focus:border-cyan-500'
+                                }`}
                             />
                             {bpfFilter && !capturing && (
                                 <button
@@ -2263,10 +2353,10 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                             triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
                             options={[
                                 { value: 10, label: '10s', sublabel: 'Quick burst' },
-                                { value: 30, label: '30s', badge: 'Default' },
+                                { value: 30, label: '30s', sublabel: 'Default (30s)' },
                                 { value: 60, label: '60s', sublabel: '1 minute' },
                                 { value: 120, label: '120s', sublabel: '2 minutes' },
-                                { value: 300, label: '300s', badge: 'Max' }
+                                { value: 300, label: '300s', sublabel: 'Max (5 minutes)' }
                             ]}
                         />
                     </div>
@@ -2282,11 +2372,11 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                             menuMinWidth={190}
                             triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
                             options={[
-                                { value: 500, label: '500 pkts' },
-                                { value: 2000, label: '2,000 pkts', badge: 'Default' },
-                                { value: 5000, label: '5,000 pkts' },
-                                { value: 10000, label: '10,000 pkts' },
-                                { value: 100000, label: 'Max pkts', sublabel: 'Time-bounded only' }
+                                { value: 500, label: '500', sublabel: '500 packets' },
+                                { value: 2000, label: '2,000', sublabel: 'Default (2,000 pkts)' },
+                                { value: 5000, label: '5,000', sublabel: '5,000 packets' },
+                                { value: 10000, label: '10,000', sublabel: '10,000 packets' },
+                                { value: 100000, label: 'Max', sublabel: 'Time-bounded only (100k)' }
                             ]}
                         />
                     </div>

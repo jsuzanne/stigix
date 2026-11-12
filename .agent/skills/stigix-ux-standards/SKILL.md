@@ -104,6 +104,14 @@ Apply these 5 rules across **all** Stigix screens and components:
 - Keep only the 3–4 primary controls visible by default; tuck secondary or expert options into a collapsible drawer (`Advanced options ▸`) with a persistent 1-line summary pill.
 - Avoid micro-text overload: limit any summary card to **3 information levels** (Role/Status, Equipment/Target Name, 1-line State Summary + discrete footer). Push raw counters, CLI commands, and technical flags into the detail panel or hover tooltips.
 
-### Rule 5 — Strict Stigix Design System Reuse
+### Rule 5 — Strict Stigix Design System Reuse & Non-Truncated Select Triggers
 - Always reuse `StigixSelect` (`web-dashboard/src/components/common/StigixSelect.tsx`) — never introduce native `<select>` elements.
+- In narrow grid columns (`lg:col-span-1` or `col-span-2`), never put `badge: 'Default'` or `badge: 'Max'` on `StigixSelect` options because `badge` renders inside the closed trigger button and truncates short labels (`30s` $\rightarrow$ `3.. Defa..`). Put descriptive notes in `sublabel` instead (`sublabel: 'Default (30s)'`), which only renders inside the open dropdown menu.
 - Use semantic theme variables (`bg-card`, `bg-card-secondary`, `border-border`, `text-text-primary`, `text-text-secondary`, `text-text-muted`) and the standard status palette (`emerald` = verified/allow, `cyan` = path/telemetry, `indigo`/`purple` = primary action/App-ID, `amber` = no response/partial visibility, `rose` = blocked/error).
+
+### Rule 6 — Zero-Popup Stateful Inline Controls (No Toast Spam on Nominal Workflows)
+- Never fire `react-hot-toast` popups (`toast.success` / `toast.loading`) for multi-step or high-frequency nominal operations (such as starting/stopping a packet capture, dissecting packets, loading more rows, downloading a file, copying hex, or applying a filter recipe).
+- Instead, make **the action button itself evolve in place** across the lifecycle:
+  - Primary lifecycle button example (`PacketCapture.tsx`): `▶ Start Capture` $\rightarrow$ `⟳ Starting on <iface>…` $\rightarrow$ `■ Stop Capture · 12s / 30s · 420 pkts` (with an inline progress bar fill) $\rightarrow$ `⟳ Stopping capture…` $\rightarrow$ `⟳ Dissecting PCAP…` $\rightarrow$ `✓ 1,276 pkts Ready · New Capture` (1.8s flash) $\rightarrow$ `▶ Start Capture`.
+  - Secondary action buttons (`Download`, `Send to Replay`, `Copy`, `Apply Recipe`): transition inline (`⬇ Download .pcap` $\rightarrow$ `⟳ Downloading…` $\rightarrow$ `✓ Downloaded` for 2s).
+- Reserve `toast.error` strictly for unexpected server/network failures.
