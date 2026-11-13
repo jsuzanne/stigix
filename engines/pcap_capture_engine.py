@@ -594,7 +594,21 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
         except (ValueError, TypeError):
             pass
 
-        tree["Transmission Control Protocol"] = {
+        tcp_mss = None
+        tcp_wscale = None
+        try:
+            for opt_k, opt_v in (getattr(tcp, 'options', None) or []):
+                if opt_k == 'MSS' and opt_v is not None:
+                    tcp_mss = int(opt_v)
+                elif opt_k == 'WScale' and opt_v is not None:
+                    tcp_wscale = int(opt_v)
+        except Exception:
+            pass
+
+        if tcp_mss is not None:
+            info = f"{info} MSS={tcp_mss}"
+
+        tcp_tree_dict = {
             "Source Port": sport,
             "Destination Port": dport,
             "Sequence Number": tcp.seq if tcp.seq is not None else 0,
@@ -605,6 +619,11 @@ def dissect_packet(pkt: Any, pkt_idx: int, t0: float) -> Dict[str, Any]:
             "Checksum": safe_hex(getattr(tcp, 'chksum', None), 4),
             "Urgent Pointer": tcp.urgptr if tcp.urgptr is not None else 0
         }
+        if tcp_mss is not None:
+            tcp_tree_dict["Maximum Segment Size (MSS)"] = tcp_mss
+        if tcp_wscale is not None:
+            tcp_tree_dict["Window Scale"] = tcp_wscale
+        tree["Transmission Control Protocol"] = tcp_tree_dict
 
         # HTTP / TLS application hints
         if payload_len > 0:

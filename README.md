@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-10-27 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-11-13 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-3.2.10-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--11--11-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.2.17-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--11--13-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -125,20 +125,20 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
 
+### 🚀 Stigix 3.2 — End-to-End SD-WAN Path Trace (NWPI), Live vION WebSocket CLI & Fleet Bulk Orchestration *(v3.2.10)*
+
+- **🔎 End-to-End SD-WAN Flow & Path Trace (NWPI)** — Correlates local `tcpdump --immediate-mode` packet captures and synthetic probes (TCP/TLS SNI, DNS, ICMP) with live Prisma SD-WAN Device Toolkit WebSocket CLI (`inspect flow brief`, `dump servicelink summary all`) across Branch ION, Hub HA (`DC1-R1/R2`, `DC2-R1/R2`), and SASE ServiceLinks. Features an interactive horizontal path timeline, 5-tuple / ICMP flow matching, unidirectional drop diagnosis (`TX > 0 / 0 RX`), and remote Spoke PCAP delegation.
+- **⚡ On-Demand Live SD-WAN Path Inspection (`vION WebSocket CLI`)** — Sub-2s SSH-free dataplane flow resolution across **Failover Lab** (`CONV-*`), **Voice** (`CALL-*` via `Inspect Paths`), and **Speedtest** (`XFR-*` via `Inspect Live Path`), with cross-version ION OS (`6.5`, `6.8`, `7.x`) and hardware (`ION 1200-S` / `3102v`) support.
+- **🤖 93 FastMCP & AI Copilot Tools** — Added read-only Prisma SD-WAN Controller operational & config views (`get_prisma_ops_view`, `get_prisma_site_config`, `get_prisma_object`), `run_prisma_ion_cli`, and an embedded SD-WAN diagnostic playbook with executive verdict scorecards.
+- **🎛️ Fleet Bulk Orchestration, Live Timeline & 100% WebSocket Strict Mode** — Parallel multi-node start/stop controls (Traffic, Voice, IoT, DEM Probes, Force Sync), real-time Fleet Live Timeline drawer, perpetual WebSocket JWT renewal, and out-of-band heartbeat auto-heal.
+- **📌 Failover Run Pinning, N×N Reachability Matrix 2.0 & XFR Presets** — Pin reference PoC failover runs against auto-purge, inspect directional SLA asymmetry with On-Net / Cloud scope toggles in the dedicated Reachability Matrix view, and benchmark links with fleet-synced Speedtest presets.
+
 ### 🚀 Stigix 3.0.49 — ChangeGuard Diff Engine, AI Copilot Suite & SD-WAN Diagnostics *(v3.0.49)*
 
 - **🛡️ ChangeGuard Network State Snapshot & Diff** — Capture pre/post-maintenance snapshots of SD-WAN overlay tunnels, routes, and underlay state with instant visual delta comparison.
-- **🤖 Expanded FastMCP AI Copilot (89 Tools)** — Multi-turn network diagnostics, automated failover verification, security audit suites, and self-healing test automation.
+- **🤖 Expanded FastMCP AI Copilot** — Multi-turn network diagnostics, automated failover verification, security audit suites, and self-healing test automation.
 - **🗺️ Enhanced 3-State SD-WAN Overlay Diagnostics** — Strict `ACTIVE`, `INACTIVE`, and `DOWN` tunnel states with real-time root-cause analysis (Core BGP peering, correlation events) and 1-click ION CLI inspection.
 - **📦 Resilient Stateful PCAP Replay** — L7 application replay with deduplicated live packet capture dissection and zero race condition event handling.
-
-### 🚀 Stigix 3.0.14 — Performance Acceleration, DEM Master Control & Failover Optimization *(v3.0.14)*
-
-- **⏸️ DEM Local Engine Master Switch** — 1-click toggle to suspend or resume synthetic probes on local management/out-of-band nodes while propagating configurations fleet-wide.
-- **⚡ In-Memory Ring Buffer & Sub-200ms DEM Loading** — In-memory ring buffer (5,000 samples) and parallelized history fetch eliminating disk scan bottlenecks on the Digital Experience page.
-- **⏱️ Adaptive Real-Time Failover Telemetry** — Ultra-responsive 500ms polling during active SD-WAN convergence tests, relaxing to 2.5s when idle to save CPU and network bandwidth.
-- **☁️ BYOC Cloudflare Worker Setup Wizard** — 1-click Bring-Your-Own-Cloud deployment wizard with automated Master Key setup and daily free tier quota telemetry (100k req/day).
-- **🚀 Lazy-Loaded Instant Settings** — Tab lazy-loading and parallelized remote reachability checks for instantaneous settings navigation.
 
 ### 🚀 Stigix 3.0 — Mission Control, Unified SASE Rail Navigation & Fleet Mesh Intelligence *(v3.0.0)*
 
@@ -147,84 +147,6 @@ The project is evolving rapidly with major features, engines, and UX refinements
 - **🌐 Fleet Mesh Autodiscovery & Tunnel Routing** — Dynamic multi-site peer synchronization via Cloudflare Registry and local leader election with zero configuration.
 - **🎙️ Real-Time VoIP RTP Telemetry** — Sub-millisecond MOS, jitter, and packet loss monitoring with 1-decimal precision and multi-codec emulation (G.711, G.729, Opus).
 - **🛡️ Integrated Security & Threat Validation** — Real-time EICAR and malware inspection, synthetic DNS/URL/Threat engines, and expanded FastMCP AI Copilot tools.
-
-### 🚀 Stigix 2.2 — Modernized Topology, Real-Time Failover & Multi-Arch Release *(v2.2.0)*
-
-- **🗺️ Modernized 4-Mode Topology Experience** — Dedicated views for WAN Transport (Physical), SD-WAN Mesh Overlay, SASE Fabric, and VyOS Underlay. Features direct carrier telemetry inspection drawers, responsive MacBook 13"/27" viewport auto-fit, and top transport filter ribbons.
-- **⏱️ High-Precision Real-Time Failover Telemetry** — Ultra-responsive 500ms live polling (2x/sec) for instant RTT, jitter, loss, and packet exchange updates during SD-WAN/SASE failover testing.
-- **⚡ Frictionless Local Container Self-Upgrade** — Streamlined 1-click upgrades without blocking browser confirmation dialogs, backed by detached ephemeral container recreation and auto-prune.
-- **🐳 Multi-Architecture Production Docker Builds** — Official multi-arch (`linux/amd64` + `linux/arm64`) release published with `:latest`, `:stable`, and `:2.2.0` Docker Hub tags.
-
-### 🚀 Stigix 2.1.2 — Leader-Orchestrated Remote Upgrades, SASE Fabric Topology & Resilient In-Place Maintenance *(v2.1.2)*
-
-- **📡 Live Packet Capture & Web Analyzer (Wireshark-Grade 3-Pane Inspector)** 🦈 — Capture live network traffic across any interface (`any`, `ens3`, `docker0`) directly from the Web UI. Features BPF kernel filtering presets (*Custom TCP*, *Synthetic Probes*, *Voice RTP*, *Security EICAR*, *DNS*), full OSI protocol dissection tree, synchronized 16-byte hex/ASCII dump viewer, in-memory streaming, and 1-click **« Send to PCAP Replay »** to turn live packet captures into stateful replay scenarios instantly. [Read more](docs/PRD_PACKET_CAPTURE_AND_WEB_ANALYZER.md)
-- **🚀 Leader-Orchestrated 1-Click Remote Peer Upgrades** 🌐 — Discover remote node versions across the entire fleet via the Fleet Gateway (`/api/gateway/:peerId/api/admin/maintenance/version`). Trigger seamless 1-click upgrades on remote spoke nodes directly from the Leader dashboard in both **Registered Targets** and **Maintenance & Updates** tabs.
-- **📡 Real-Time Remote Upgrade Stepper & Log Stream** 💻 — Dedicated remote upgrade modal with 4-phase visual progress tracking (`Remote Pull` ➔ `Recreate` ➔ `Healthcheck` ➔ `Ready`), live console log streaming from remote ephemeral updaters, and healthcheck reconnect radar pinging port 8080 until the node reports healthy.
-- **🛡️ Ephemeral Detached In-Place Self-Upgrade** ⚙️ — Self-contained detached updater container (`docker run --rm -d --network host -v /var/run/docker.sock...`) executing pull, recreate, healthcheck, and auto-prune out-of-process without process suicide. Protected by pre-upgrade Docker socket verification (`/var/run/docker.sock`).
-- **🧹 Automated Docker Image Pruning** 🧼 — Automatically reclaims disk space after every upgrade via `docker image prune -f`, with an on-demand Prune button in the Maintenance tab.
-- **🗺️ SASE Fabric Topology Overhaul** 🌐 — Dedicated **SASE Fabric** view switcher dock alongside Overlay and Underlay topologies. Features official Palo Alto Prisma Access & Zscaler branded logos, dynamic PoP matching (France North, France Central, Europe West), interactive tunnel breakdown drawer with uptime & latency telemetry, and instant 0ms edge spotlighting.
-- **🔄 Dynamic Auto-Mesh Client Pausing & Zero-Latency Resume** ⏸️ — Custom TCP client streams automatically pause (`⏸️ PAUSED (Server Offline)`) when a remote server listener goes down and instantly resume the moment it restarts, eliminating connection retry floods.
-- **🛡️ Custom TCP Apps EICAR Threat Correlation** 🎯 — Active Custom TCP/HTTP app listeners dynamically register as verified EICAR threat responders, enabling false-positive-free security testing with target category filters (All, Custom Apps, Fabric, Cloud).
-- **⏱️ Automated Daily Resource Housekeeping** 🧹 — Daily 2 AM cron and boot-time cleanup routine that automatically purges orphaned worker stats files and expired logs.
-
-### ⚡ Stigix 2.1.1 — Control Plane Heartbeats, Live RTT & Fleet Auto-Sync *(v2.1.1)*
-
-- **💓 WebSocket Control Plane RTT Heartbeat** ⚡ — Continuous 15-second soft RTT ping/pong loop (`tunnel:rtt_ping`) measuring precise sub-millisecond reverse tunnel latency across all remote spoke nodes (DC1, BR1, BR2, BR5, BR8).
-- **📊 Real-Time Fleet Latency Badges** 🟢 — Dynamic color-coded latency tags (`⚡ 12ms`, `⚡ 45ms`) in the Fleet Overview and node details for instant control plane link quality assessment.
-- **🔄 Bidirectional Provisioning ACKs & Sync Timestamps** ⏱️ — Real-time `provisioning:ack` stream from spoke nodes with human-readable timestamps (`updatedAt` on Leader, `appliedAt` on Spokes) across all 10 configuration modules.
-- **🚀 Debounced Fleet Auto-Sync** 📡 — Automatic 2.5s debounced push of Synthetic Probes and Applications Catalogue upon any modification on the Leader, with a 1-click header toggle switch.
-- **🎯 Accurate DEM Outage Scoring** 🛡️ — Digital Experience Monitoring scores strictly drop to `0` upon packet timeout or connection blackout, preventing false-positive operational health reports.
-- **📈 Multi-Path Speedtest Polish** ⚡ — Fixed sequence labeling and added human-readable TCP congestion window (`cwnd`) formatting in KB/MB.
-
-### 🌟 Stigix 2.1 — Major Milestone Release *(v2.1.0)*
-
-- **🪄 1-Click Token Onboarding (Magic Join)** ⚡ — Generate a secure onboarding token or 1-line `curl` installation command directly from the Controller UI. Remote nodes automatically register, establish a secure reverse WebSocket tunnel, sync test targets, and appear live on the topology in seconds. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)
-- **🌐 WebSocket Reverse Tunnel & NAT Traversal** 🚀 — Out-of-band remote management across branches, data centers, and public clouds through strict NAT and firewalls with zero inbound ports or public IPs required on spoke nodes. [Read more](docs/REMOTE_VIEW_USER_GUIDE.md)
-- **🎛️ Central Fleet Provisioning & Sync** 📡 — Push targets, security policies, custom application definitions, and test profiles from a central Stigix Controller to all fleet nodes with a single click.
-- **🌪️ Live Underlay Chaos & QoS Impairment Injection** 🗺️ — Interactive VyOS router controls directly on the Underlay Topology map: inject latency, jitter, packet loss, bandwidth shaping, and DSCP/QoS marking to validate SD-WAN path steering, brownout recovery, and sub-second failover. [Read more](docs/UNDERLAY_TOPOLOGY.md)
-- **🛠️ Custom TCP Applications Simulation Engine** 🔄 — Stateful multi-port TCP/UDP client-server workload generator. Configurable payload templates, transaction loops, server chaos modes (delay, drop, jitter), and real-time RX/TX telemetry badges. [Read more](docs/CUSTOM_TCP_APPS.md)
-- **📦 Stateful L7 PCAP Replay Engine** 🛡️ — Replay real-world enterprise traffic flows, malware, and exploits from `.pcap`, `.pcapng`, or password-protected `.zip` archives. Features directional step-by-step reassembly, payload inspector, micro-timing controls, and zero disk residue (`Memory Guard`). [Read more](docs/PRD_PCAP_REPLAY_ENGINE.md)
-- **🔐 Streamlined Root CA Certificate Installation** 🔑 — Direct CA download and 1-click trust scripts for Linux, macOS, and Windows (`/ca.crt`). Automatic environment injection (`curl`, `python`, `node`) for seamless SSL/TLS Decryption (DPI) testing without certificate errors. [Read more](docs/SECURITY_TESTING.md)
-- **🧪 Interactive API Studio & Automation Sandbox** 📡 — Built-in REST API explorer with instant `curl`, Python, and TypeScript code generation, sub-50ms transaction inspector, and Model Context Protocol (FastMCP) AI support. [Read more](docs/API_STUDIO_GUIDE.md)
-- **🎯 Target Port Architecture Isolation** 🔌 — Decoupled service bindings across Management Dashboard (`:8080`), HTTP & EICAR App-Sim (`:8082`), Custom TCP Apps (`:8083+`), XFR Speedtest (`:9000`), and Iperf3 (`:5201`) with automatic configuration migration.
-- **📊 SD-WAN Reachability SLA Grid 2.0** 📈 — Operational bidirectional matrix featuring *SLA Compliant*, *SLA Breach*, *Egress Only* (cloud ingress NAT), and asymmetric failure diagnostics.
-- **Direct ZIP & Malware Archive Ingestion** 📦 — Native upload support for `.zip` archives (including nested `.pcap.zip` captures) with automatic password recovery (`infected`, `virus`, `malware`) and zero disk pollution (`Memory Guard`).
-- **100% Exploit Benchmark Validation** 🛡️ — Tested across 496 real-world exploit kit and malware captures (`Nuclear-EK`, `Rig-EK`, `Angler-EK`, `Magnitude-EK`, `Blaster`) with zero failures.
-- **Noise Classification & Fast Flow Filter Bar** 🎯 — Automatic isolation of network background noise (DHCPv6, LLMNR, NetBIOS) and 1-click bulk filters (`Select All`, `Unicast Only`, `+ TCP`, `+ UDP`).
-- **UDP Loop Replay & Cumulative Byte Telemetry** 🔄 — Continuous replay looping with real-time accumulation of total TX/RX bytes exchanged across iterations.
-- **Dynamic Scenario Awareness** 🕹️ — Explicit scenario names and active PID tracking on Server/Client Start and Stop action buttons.
-
-### 🔐 Prisma Access SSL Decryption & URL Filtering HTTPS Toggle *(v2.0.143)*
-- **1-Click Forward Trust CA Auto-Import** 🔐 — Direct extraction of `Forward-Trust-CA` (RSA/ECDSA) and custom Root CAs from Prisma SASE API (`/sse/config/v1/certificates`) into `config/certs/ca-bundle.pem`.
-- **Runtime Environment Injection** ⚡ — Zero-touch propagation into Node.js (`NODE_EXTRA_CA_CERTS`), Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`), and subprocesses (`CURL_CA_BUNDLE`).
-- **Mesh CA Sync Bundle** 🌐 — Automatic synchronization of CA certificates from Leader to all connected branch peers (DC1, BR1, BR2, BR5, BR8) via Central Global Provisioning (`ca-certificates` bundle).
-- **URL Filtering HTTP / HTTPS Protocol Switcher** 🔄 — Instant toggle in the URL Filtering header dynamically swapping test targets between `http://` (port 80) and `https://` (port 443) for live SSL Decryption policy validation.
-
-### 📦 Custom TCP Applications Export/Import Lifecycle & Resilience *(v2.0.66)*
-- **Full Bundle & Single-Profile JSON Export/Import** 🔄 — Export individual profiles or entire multi-application meshes directly from the UI header and Settings tab.
-- **Merge & Update vs. Replace All Import Modes** ⚙️ — Dedicated modal with live JSON schema validation, port collision detection, and instant configuration preview.
-- **100% Roundtrip Schema Fidelity** 🛡️ — Full preservation of `serverBehavior` chaos modes, detailed `listener` security policies (CIDR ACLs, token authentication), and `clientDefaults`.
-- **FastMCP Stability & Error Boundaries** 🤖 — Fully typed FastMCP tools (`export_custom_tcp_apps`, `import_custom_tcp_apps`) and React Error Boundaries preventing UI blank screens on partial profile imports.
-
-### 🌟 Digital Experience Monitoring & Speedtest Glow *(v2.0.65)*
-- **High-Contrast DEM Global Score Gauge** 📊 — Upgraded experience score indicator to a 132px glowing donut arc with explicit status badges (`OPTIMAL`, `GOOD`, `DEGRADED`, `CRITICAL`) and full-height trend area chart.
-- **Failover Engine POSIX Atomic State** ⚡ — Atomic POSIX file writes (`_atomic_write_json`) and Node.js fallback caching eliminating transient UI card disappearance during high-rate failover testing.
-- **Multi-Layer Neon Speedtest Glow** 📈 — Emerald green (`#10b981`) and electric blue (`#3b82f6`) neon gradients under Speedtest sent/received bandwidth curves.
-- **SD-WAN Failover Research & Making-Of White Papers** 📄 — Interactive HTML & PDF reports catalog in `site/reports.html` and `docs/MCP Reports/`.
-
-### 🚀 FastMCP Server Parity & Speedtest Telemetry *(v2.0.64)*
-- **Unified Convergence & Speedtest Metrics** ⚡ — Aligned real-time throughput and convergence metrics across `get_test_status`, `list_speedtest_history`, and `run_test`.
-- **64-bit Prisma ID & Dual-Mode Name Resolution** ☁️ — Full support for real Prisma SD-WAN 64-bit flow identifiers, probe filtering, and automatic DNS/site resolution.
-
-### 🖧 Underlay Router Topology & Port-Level Diagnostics *(v2.0.0)*
-- **Unified Underlay / Overlay Mapping** 🖧 — Visual representation of active VyOS backbone routers mapped directly to Prisma SD-WAN circuits with port-level resolution (`ethX`).
-- **Direct 1:1 Port Cable Wiring** 🔌 — Animated amber connections between Prisma SD-WAN circuit handles and exact `ethX` router ports.
-- **Direct Topology Chaos Actions** ⚡ — Instant Shut / No-Shut port toggle, Netem latency/loss impairment injection, and persistent canvas badges (`⏱️ +120ms`). [Read docs](docs/UNDERLAY_TOPOLOGY.md)
-
-### 🤖 MCP Server & Claude Desktop Integration *(v1.4.1)*
-- **Natural Language Network Control** 🤖 — Control the entire Stigix mesh from Claude Desktop: run tests, simulate failures, check posture across any node.
-- **VyOS Chaos Engineering via Claude** ⚡ — Plain-English impairment triggers with automatic router discovery and propose-and-confirm safety flow.
-- **MCP Live Interaction Feed & Logging** ✨ — Real-time color-coded tool feed in Settings → MCP Server with duration bars, LIVE pulse, and server-side logging to `mcp-history.jsonl`. [Read docs](docs/MCP_SERVER.md)
 
 [View full changelog with all version details →](CHANGELOG.md)
 

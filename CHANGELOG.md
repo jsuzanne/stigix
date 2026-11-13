@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.17] - 2026-11-13
+
+### Added & Enhanced
+- **E2E Flow & Path Trace (NWPI) Wave 1 Enrichments (`engines/pcap_capture_engine.py`, `web-dashboard/packet-capture-routes.ts`, `web-dashboard/src/PacketCapture.tsx`)**:
+  - **Phase Timing Waterfall (+0 ms overhead)**: Extracts `DNS Resolution ms`, `TCP 3-Way Handshake RTT ms`, `TLS Handshake ms`, `App TTFB ms`, and `Wire RTT ms` directly from captured Hop 1 PCAP frame timestamps (`pkt.epoch`).
+  - **L3/L4 PCAP Forensics at Hop 1 (`SOURCE_STIGIX`)**: Dissects TCP `MSS` (`Maximum Segment Size`) and `Window Scale` options on `SYN` / `SYN-ACK` frames to automatically detect **SD-WAN IPSec MSS Clamping** (`TX MSS → RX MSS` with clamped byte delta), `DF Bit / Max Frame Bytes`, **DSCP QoS Marking (`TX → RX`)** preservation vs remarking, **Return TTL & Estimated L3 Hops**, and **TCP Retransmissions / Zero Window** events.
+  - **E2E Trace History, 7-Day Auto-Retention (`Pin 📌`, `Delete 🗑️`, `Purge 🧹`) & Before/After Comparison ($\Delta$)**: Persists every E2E trace run (`trace-history.json` + `trace-runs/<trace_id>.json`) with 7-day automatic expiry for unpinned runs, 1-click baseline pinning (`📌`), selective purge of unpinned runs (`Purge Unpinned`), and an interactive **Before / After Comparison Banner ($\Delta$)** comparing `E2E Verdict`, `SD-WAN Egress Path`, `Transport RTT`, and `MSS / DSCP / App-ID` between a baseline and the current trace.
+  - **One-Click Probe-to-E2E Trace Redirection (`web-dashboard/src/ConnectivityPerformance.tsx`, `web-dashboard/src/Failover.tsx`, `web-dashboard/src/App.tsx`)**: Added a 1-click `Run E2E Flow & Path Trace` (`Sparkles`) action on DEM Connectivity probes and Failover targets, plus a compact `Probes ▾` selector inside the Packet Capture E2E Trace composer bar.
+
 ## [3.2.16] - 2026-11-13
 
 ### Changed & Enhanced

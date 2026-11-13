@@ -1,19 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePeerContext } from './PeerContext';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
-import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff, Copy, Check, Pin } from 'lucide-react';
+import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff, Copy, Check, Pin, Sparkles } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
 import { FailoverSkeleton } from './components/skeletons/FailoverSkeleton';
 import { StigixSelect } from './components/common/StigixSelect';
+import type { InitialFlowTraceRequest } from './PacketCapture';
 
 interface FailoverProps {
     token: string;
     externalStatus?: any[];
+    onTraceFlow?: (req: InitialFlowTraceRequest) => void;
 }
 
 export default function Failover(props: FailoverProps) {
-    const { token, externalStatus } = props;
+    const { token, externalStatus, onTraceFlow } = props;
     const [endpoints, setEndpoints] = useState<any[]>([]);
     const [thresholds, setThresholds] = useState({ good: 1000, degraded: 5000, critical: 10000, retentionDays: 7 });
     const [showAddModal, setShowAddModal] = useState(false);
@@ -1128,6 +1130,25 @@ export default function Failover(props: FailoverProps) {
                                                     className="text-text-muted hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1"
                                                 >
                                                     <Trash2 size={12} />
+                                                </button>
+                                            )}
+                                            {onTraceFlow && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(ev) => {
+                                                        ev.stopPropagation();
+                                                        onTraceFlow({
+                                                            destination: e.target,
+                                                            dstPort: Number(e.port) || 6200,
+                                                            protocol: 'udp',
+                                                            probeLabel: e.label || e.target,
+                                                            autoRun: true
+                                                        });
+                                                    }}
+                                                    className="p-1.5 rounded-md transition-colors border bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white border-indigo-500/25 hover:border-indigo-600 cursor-pointer"
+                                                    title={`Run E2E Flow & Path Trace for ${e.label || e.target} (UDP/${e.port || 6200})`}
+                                                >
+                                                    <Sparkles size={10} />
                                                 </button>
                                             )}
                                             {(() => {

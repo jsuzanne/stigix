@@ -4,17 +4,143 @@ import {
     Clock, HardDrive, Filter, Layers, Binary, CheckCircle2, 
     AlertCircle, ChevronRight, ChevronDown, Copy, Check, 
     FileText, ArrowRight, Zap, X, ShieldAlert, Cpu,
-    BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info, Globe, Server
+    BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info, Globe, Server,
+    Pin, ArrowLeftRight, Activity
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
 import { StigixSelect, type StigixSelectGroup, type StigixSelectOption } from './components/common/StigixSelect';
 import type { TargetDefinition } from './types/targets';
 
+export interface InitialFlowTraceRequest {
+    sourceSite?: string;
+    destination: string;
+    dstPort?: number;
+    protocol: 'tcp' | 'udp' | 'icmp';
+    srcIp?: string;
+    probeLabel?: string;
+    autoRun?: boolean;
+}
+
+export interface TraceHistoryItem {
+    trace_id: string;
+    created_at: string;
+    timestamp_ms: number;
+    pinned: boolean;
+    label?: string;
+    probe_label?: string;
+    source_site: string;
+    source_mode: string;
+    source_ip: string;
+    destination: string;
+    resolved_ip: string;
+    dst_port: number | null;
+    protocol: string;
+    verdict_status: string;
+    verdict_headline: string;
+    app_id: string | null;
+    sec_action: string | null;
+    egress_path: string | null;
+    peer_site_name: string | null;
+    duration_ms: number;
+    pcap_filename: string | null;
+    waterfall?: {
+        dns_ms: number | null;
+        tcp_connect_rtt_ms: number | null;
+        tls_handshake_ms: number | null;
+        app_ttfb_ms: number | null;
+        transport_rtt_ms: number | null;
+        probe_total_ms: number | null;
+    };
+    forensics?: {
+        tcp_mss_tx: number | null;
+        tcp_mss_rx: number | null;
+        mss_clamped: boolean;
+        mss_clamped_delta: number | null;
+        df_bit_tx: boolean | null;
+        max_frame_bytes: number | null;
+        dscp_tx: number | null;
+        dscp_tx_label: string | null;
+        dscp_rx: number | null;
+        dscp_rx_label: string | null;
+        dscp_preserved: boolean | null;
+        ttl_tx: number | null;
+        ttl_rx: number | null;
+        initial_ttl_guess: number | null;
+        estimated_return_hops: number | null;
+        tcp_retransmissions: number;
+        zero_window_events: number;
+    };
+}
+
+interface ConfiguredProbeOption {
+    id: string;
+    name: string;
+    category: 'DEM Connectivity' | 'Failover / Convergence' | 'Target Catalog';
+    destination: string;
+    dstPort: number;
+    protocol: 'tcp' | 'udp' | 'icmp';
+    badge: string;
+}
+
+export function parseEndpointToTraceTarget(input: {
+    name?: string;
+    type?: string;
+    target?: string;
+    host?: string;
+    port?: number;
+    protocol?: string;
+}): { destination: string; dstPort: number; protocol: 'tcp' | 'udp' | 'icmp'; badge: string } | null {
+    const rawType = String(input.type || input.protocol || 'TCP').toUpperCase();
+    const rawTarget = String(input.target || input.host || '').trim();
+    if (!rawTarget) return null;
+
+    if (rawType === 'PING' || rawType === 'ICMP') {
+        const cleaned = rawTarget.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+        return { destination: cleaned, dstPort: 0, protocol: 'icmp', badge: 'ICMP' };
+    }
+
+    if (rawType === 'DNS') {
+        const cleaned = rawTarget.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+        // If the DNS target is an IP address, probe UDP/53; if it's a domain name, probe TCP/443 so auto-DNS + HTTPS path is traced
+        const isIp = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(cleaned);
+        return isIp
+            ? { destination: cleaned, dstPort: 53, protocol: 'udp', badge: 'DNS/53' }
+            : { destination: cleaned, dstPort: 443, protocol: 'tcp', badge: 'DNS+TLS' };
+    }
+
+    if (rawTarget.startsWith('http://') || rawTarget.startsWith('https://')) {
+        try {
+            const urlObj = new URL(rawTarget);
+            const isHttps = urlObj.protocol === 'https:';
+            const parsedPort = urlObj.port ? parseInt(urlObj.port, 10) : (isHttps ? 443 : 80);
+            return {
+                destination: urlObj.hostname,
+                dstPort: parsedPort,
+                protocol: 'tcp',
+                badge: `${isHttps ? 'HTTPS' : 'HTTP'}/${parsedPort}`
+            };
+        } catch {}
+    }
+
+    const hostParts = rawTarget.replace(/^https?:\/\//i, '').split('/')[0].split(':');
+    const host = hostParts[0];
+    const explicitPort = hostParts[1] ? parseInt(hostParts[1], 10) : (input.port || (rawType === 'HTTPS' ? 443 : rawType === 'HTTP' ? 80 : 443));
+    const proto: 'tcp' | 'udp' | 'icmp' = rawType === 'UDP' ? 'udp' : 'tcp';
+    return {
+        destination: host,
+        dstPort: explicitPort || 443,
+        protocol: proto,
+        badge: `${proto.toUpperCase()}/${explicitPort || 443}`
+    };
+}
+
 interface PacketCaptureProps {
     token: string;
     localSiteName?: string;
     onNavigateToReplay?: () => void;
+    initialTraceRequest?: InitialFlowTraceRequest | null;
+    onClearInitialTraceRequest?: () => void;
 }
 
 interface InterfaceItem {
@@ -269,7 +395,13 @@ function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (l
     );
 }
 
-export default function PacketCapture({ token, localSiteName, onNavigateToReplay }: PacketCaptureProps) {
+export default function PacketCapture({
+    token,
+    localSiteName,
+    onNavigateToReplay,
+    initialTraceRequest,
+    onClearInitialTraceRequest
+}: PacketCaptureProps) {
     const { gFetch, activePeerId, activePeer, peers } = usePeerContext();
 
     const authHeaders = useMemo(() => ({
@@ -456,6 +588,15 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
     const [showTraceAdvanced, setShowTraceAdvanced] = useState<boolean>(false);
     const activeTraceIdRef = useRef<string>('');
 
+    // E2E Trace History, Pin/Delete/Purge (7-day default retention) & Before/After Compare
+    const [traceHistory, setTraceHistory] = useState<TraceHistoryItem[]>([]);
+    const [loadingTraceHistory, setLoadingTraceHistory] = useState<boolean>(false);
+    const [showTraceHistoryModal, setShowTraceHistoryModal] = useState<boolean>(false);
+    const [traceHistoryFilter, setTraceHistoryFilter] = useState<'all' | 'pinned' | 'anomalies'>('all');
+    const [compareBaseline, setCompareBaseline] = useState<TraceHistoryItem | null>(null);
+    const [activeProbeLabel, setActiveProbeLabel] = useState<string>('');
+    const [configuredProbes, setConfiguredProbes] = useState<ConfiguredProbeOption[]>([]);
+
     // Draggable Column Widths for Virtual Packet Table
     const DEFAULT_COL_WIDTHS = useMemo(() => ({
         no: 56,
@@ -541,14 +682,274 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
 
     const tableEndRef = useRef<HTMLDivElement>(null);
 
-    // Initial load: interfaces, presets, and targets (re-run when activePeerId changes)
+    // Initial load: interfaces, presets, targets, trace sites, trace history, and configured probes (re-run when activePeerId changes)
     useEffect(() => {
         fetchInterfaces();
         fetchPresets();
         fetchTargets();
         checkActiveStatus();
         fetchTraceSites();
+        fetchTraceHistory();
+        fetchConfiguredProbes();
     }, [activePeerId]);
+
+    // Cross-module probe-to-E2E trace handoff (from Connectivity Performance / Failover)
+    useEffect(() => {
+        if (!initialTraceRequest) return;
+        const req = initialTraceRequest;
+        if (onClearInitialTraceRequest) {
+            onClearInitialTraceRequest();
+        }
+        setCaptureMode('trace');
+        if (req.sourceSite) setTraceSourceSite(req.sourceSite);
+        setTraceDestination(req.destination);
+        if (req.dstPort !== undefined) setTraceDstPort(req.dstPort);
+        setTraceProtocol(req.protocol);
+        setTraceSrcIp(req.srcIp || '');
+        setActiveProbeLabel(req.probeLabel || '');
+        if (req.autoRun !== false) {
+            handleRunFlowTrace({
+                sourceSite: req.sourceSite,
+                destination: req.destination,
+                dstPort: req.dstPort,
+                protocol: req.protocol,
+                srcIp: req.srcIp,
+                probeLabel: req.probeLabel
+            });
+        }
+    }, [initialTraceRequest]);
+
+    const fetchConfiguredProbes = async () => {
+        try {
+            const [customRes, activeRes, convRes] = await Promise.all([
+                gFetch('/api/connectivity/custom', { credentials: 'include', headers: authHeaders }).catch(() => null),
+                gFetch('/api/connectivity/active-probes', { credentials: 'include', headers: authHeaders }).catch(() => null),
+                gFetch('/api/convergence/endpoints', { credentials: 'include', headers: authHeaders }).catch(() => null)
+            ]);
+            const probeMap = new Map<string, ConfiguredProbeOption>();
+
+            if (activeRes && activeRes.ok) {
+                const activeData = await activeRes.json().catch(() => null);
+                if (activeData && Array.isArray(activeData.probes)) {
+                    for (const p of activeData.probes) {
+                        const parsed = parseEndpointToTraceTarget(p);
+                        if (parsed && parsed.destination) {
+                            const name = p.name || p.id || parsed.destination;
+                            const key = `dem_${name.toLowerCase()}`;
+                            probeMap.set(key, {
+                                id: key,
+                                name,
+                                category: 'DEM Connectivity',
+                                destination: parsed.destination,
+                                dstPort: parsed.dstPort,
+                                protocol: parsed.protocol,
+                                badge: parsed.badge
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (customRes && customRes.ok) {
+                const customList = await customRes.json().catch(() => null);
+                if (Array.isArray(customList)) {
+                    for (const p of customList) {
+                        if (p.enabled === false) continue;
+                        const parsed = parseEndpointToTraceTarget(p);
+                        if (parsed && parsed.destination) {
+                            const name = p.name || parsed.destination;
+                            const key = `dem_${name.toLowerCase()}`;
+                            probeMap.set(key, {
+                                id: key,
+                                name,
+                                category: 'DEM Connectivity',
+                                destination: parsed.destination,
+                                dstPort: parsed.dstPort,
+                                protocol: parsed.protocol,
+                                badge: parsed.badge
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (convRes && convRes.ok) {
+                const convData = await convRes.json().catch(() => null);
+                const endpoints = Array.isArray(convData) ? convData : (convData?.endpoints || []);
+                if (Array.isArray(endpoints)) {
+                    for (const ep of endpoints) {
+                        const parsed = parseEndpointToTraceTarget({
+                            name: ep.name || ep.label,
+                            type: ep.protocol || ep.type,
+                            host: ep.host || ep.target,
+                            port: ep.port
+                        });
+                        if (parsed && parsed.destination) {
+                            const name = ep.name || ep.label || parsed.destination;
+                            const key = `conv_${name.toLowerCase()}`;
+                            probeMap.set(key, {
+                                id: key,
+                                name,
+                                category: 'Failover / Convergence',
+                                destination: parsed.destination,
+                                dstPort: parsed.dstPort,
+                                protocol: parsed.protocol,
+                                badge: parsed.badge
+                            });
+                        }
+                    }
+                }
+            }
+
+            setConfiguredProbes(Array.from(probeMap.values()));
+        } catch (e) {
+            console.error('Failed to load configured probes for E2E selector', e);
+        }
+    };
+
+    const fetchTraceHistory = async () => {
+        setLoadingTraceHistory(true);
+        try {
+            const res = await gFetch('/api/capture/trace-history', {
+                credentials: 'include',
+                headers: authHeaders
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.items)) {
+                    setTraceHistory(data.items);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load trace history', e);
+        } finally {
+            setLoadingTraceHistory(false);
+        }
+    };
+
+    const handleTogglePinTrace = async (traceId: string, nextPinned: boolean, label?: string) => {
+        try {
+            const res = await gFetch(`/api/capture/trace-history/${encodeURIComponent(traceId)}/pin`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: authHeaders,
+                body: JSON.stringify({ pinned: nextPinned, label })
+            });
+            if (res.ok) {
+                setTraceHistory(prev =>
+                    prev.map(item =>
+                        item.trace_id === traceId
+                            ? { ...item, pinned: nextPinned, ...(label !== undefined ? { label } : {}) }
+                            : item
+                    )
+                );
+                if (compareBaseline?.trace_id === traceId) {
+                    setCompareBaseline(prev => prev ? { ...prev, pinned: nextPinned } : null);
+                }
+                toast.success(nextPinned ? 'Trace pinned (protected from 7-day auto-expiry & purge)' : 'Trace unpinned');
+            }
+        } catch (e: any) {
+            toast.error(`Failed to update pin: ${e.message}`);
+        }
+    };
+
+    const handleDeleteTraceHistoryItem = async (traceId: string) => {
+        try {
+            const res = await gFetch(`/api/capture/trace-history/${encodeURIComponent(traceId)}`, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: authHeaders
+            });
+            if (res.ok) {
+                setTraceHistory(prev => prev.filter(item => item.trace_id !== traceId));
+                if (compareBaseline?.trace_id === traceId) {
+                    setCompareBaseline(null);
+                }
+                toast.success('Trace run deleted');
+            }
+        } catch (e: any) {
+            toast.error(`Failed to delete trace run: ${e.message}`);
+        }
+    };
+
+    const handlePurgeUnpinnedTraces = async () => {
+        try {
+            const res = await gFetch('/api/capture/trace-history', {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: authHeaders
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.items)) {
+                    setTraceHistory(data.items);
+                } else {
+                    setTraceHistory(prev => prev.filter(i => i.pinned));
+                }
+                if (compareBaseline && !compareBaseline.pinned) {
+                    setCompareBaseline(null);
+                }
+                toast.success(`Purged ${data.purged_count || 0} unpinned trace run(s) (${data.remaining_pinned || 0} pinned preserved)`);
+            }
+        } catch (e: any) {
+            toast.error(`Failed to purge trace history: ${e.message}`);
+        }
+    };
+
+    const handleLoadSavedTraceRun = async (traceId: string) => {
+        try {
+            const res = await gFetch(`/api/capture/trace-history/${encodeURIComponent(traceId)}`, {
+                credentials: 'include',
+                headers: authHeaders
+            });
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            setCaptureMode('trace');
+            setTraceResult(data);
+            setTraceProgress(null);
+            if (data.query) {
+                if (data.query.source_site) setTraceSourceSite(data.query.source_site);
+                if (data.query.destination_input) setTraceDestination(data.query.destination_input);
+                if (data.query.dst_port) setTraceDstPort(data.query.dst_port);
+                if (data.query.protocol) setTraceProtocol(String(data.query.protocol).toLowerCase() as any);
+                setActiveProbeLabel(data.query.probe_label || '');
+            }
+            const hopsList: any[] = Array.isArray(data.hops) ? data.hops : [];
+            const anomalyHop = hopsList.find((h) =>
+                ['BLOCKED', 'UNREACHABLE', 'UNAVAILABLE', 'NOT_OBSERVED'].includes(String(h.status || '').toUpperCase())
+            );
+            if (anomalyHop?.id) {
+                setSelectedHopId(anomalyHop.id);
+            } else if (hopsList.some((h) => h.id === 'hop_ingress_ion')) {
+                setSelectedHopId('hop_ingress_ion');
+            } else if (hopsList[0]?.id) {
+                setSelectedHopId(hopsList[0].id);
+            }
+
+            if (data.pcap && Array.isArray(data.pcap.packets)) {
+                setPackets(data.pcap.packets);
+                setTotalPackets(data.pcap.total_packets || data.pcap.packets.length);
+                setActivePcapFile(data.pcap.filename || '');
+                setFileSizeBytes(data.pcap.file_size_bytes || 0);
+                setDurationSeconds(data.pcap.duration_seconds || 0);
+                if (data.pcap.packets.length > 0) {
+                    setSelectedPacketNo(data.pcap.packets[0].no);
+                }
+                setTraceEvidenceTab('packets');
+            } else {
+                setPackets([]);
+                setTotalPackets(0);
+                setActivePcapFile('');
+                setSelectedPacketNo(null);
+                setTraceEvidenceTab('flows');
+            }
+            setShowTraceHistoryModal(false);
+        } catch (e: any) {
+            toast.error(`Could not load saved trace run: ${e.message}`);
+        }
+    };
 
     const fetchTraceSites = async (force = false) => {
         try {
@@ -613,6 +1014,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         protocol?: 'tcp' | 'udp' | 'icmp';
         srcIp?: string;
         sourceSite?: string;
+        probeLabel?: string;
     }) => {
         if (tracingFlow) return;
         const effDst = (overrideParams?.destination ?? traceDestination).trim();
@@ -620,6 +1022,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
         const effProto = overrideParams?.protocol ?? traceProtocol;
         const effSrcIp = (overrideParams?.srcIp ?? traceSrcIp).trim();
         const effSite = (overrideParams?.sourceSite ?? traceSourceSite).trim() || detectedLocalSite || localSiteName || 'BR8';
+        const effProbeLabel = (overrideParams?.probeLabel ?? activeProbeLabel).trim();
 
         if (!effDst && !effSrcIp) {
             toast.error('Enter a destination IP/Domain or a Source IP to trace');
@@ -709,7 +1112,8 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     dstPort: effPort,
                     protocol: effProto,
                     generateProbe: traceGenerateProbe,
-                    interface: selectedInterface
+                    interface: selectedInterface,
+                    probeLabel: effProbeLabel || undefined
                 })
             });
             const data = await res.json();
@@ -721,6 +1125,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
             }
             setTraceResult(data);
             setTraceProgress(null);
+            fetchTraceHistory();
 
             // Smart auto-selection of the most relevant hop for the detail panel
             const hopsList: any[] = Array.isArray(data.hops) ? data.hops : [];
@@ -1590,14 +1995,34 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </button>
                             </>
                         ) : (
-                            <button
-                                onClick={handleOpenHistory}
-                                className="h-9 px-3.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
-                                title="Open saved PCAP capture history"
-                            >
-                                <HardDrive size={13} className="shrink-0" />
-                                <span>Captures</span>
-                            </button>
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        fetchTraceHistory();
+                                        setShowTraceHistoryModal(true);
+                                    }}
+                                    className="h-9 px-3.5 bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/35 rounded-xl text-xs font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
+                                    title="Open E2E Flow Trace History (7-day auto-retention, Pin baselines, Compare Before/After)"
+                                >
+                                    <Clock size={13} className="shrink-0" />
+                                    <span>Trace History ({traceHistory.length})</span>
+                                    {traceHistory.some(t => t.pinned) && (
+                                        <span className="px-1.5 py-0.2 rounded bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold flex items-center gap-0.5">
+                                            <Pin size={9} />
+                                            <span>{traceHistory.filter(t => t.pinned).length}</span>
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={handleOpenHistory}
+                                    className="h-9 px-3.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-black uppercase tracking-wider text-text-muted hover:text-text-primary transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0"
+                                    title="Open saved PCAP capture history"
+                                >
+                                    <HardDrive size={13} className="shrink-0" />
+                                    <span>Captures</span>
+                                </button>
+                            </>
                         )}
                     </div>
                 </div>
@@ -1890,6 +2315,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                 setTraceDstPort(fav.port);
                                                 setTraceProtocol(fav.proto);
                                                 setTraceSrcIp('');
+                                                setActiveProbeLabel(fav.label);
                                             }}
                                             className={`px-2.5 py-0.5 rounded-lg border font-mono font-bold transition-all cursor-pointer ${
                                                 isFavActive
@@ -1901,6 +2327,60 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                         </button>
                                     );
                                 })}
+
+                                {/* Quick Selector for Configured DEM Connectivity & Failover Probes */}
+                                {configuredProbes.length > 0 && (() => {
+                                    const demGroup = configuredProbes
+                                        .filter(p => p.category === 'DEM Connectivity')
+                                        .map((p): StigixSelectOption => ({
+                                            value: p.id,
+                                            label: p.name,
+                                            sublabel: `${p.destination}${p.protocol === 'icmp' ? '' : `:${p.dstPort}`}`,
+                                            badge: p.badge
+                                        }));
+                                    const convGroup = configuredProbes
+                                        .filter(p => p.category === 'Failover / Convergence')
+                                        .map((p): StigixSelectOption => ({
+                                            value: p.id,
+                                            label: p.name,
+                                            sublabel: `${p.destination}${p.protocol === 'icmp' ? '' : `:${p.dstPort}`}`,
+                                            badge: p.badge
+                                        }));
+                                    const probeGroups: StigixSelectGroup[] = [];
+                                    if (demGroup.length > 0) probeGroups.push({ label: 'DEM Connectivity Probes', options: demGroup });
+                                    if (convGroup.length > 0) probeGroups.push({ label: 'Failover / Convergence Targets', options: convGroup });
+
+                                    const activeMatchedProbe = configuredProbes.find(
+                                        p =>
+                                            p.destination.toLowerCase() === traceDestination.trim().toLowerCase() &&
+                                            p.protocol === traceProtocol &&
+                                            (p.protocol === 'icmp' || p.dstPort === traceDstPort)
+                                    );
+
+                                    return (
+                                        <div className="inline-flex items-center gap-1 ml-1 pl-1.5 border-l border-border/60">
+                                            <StigixSelect
+                                                value={activeMatchedProbe?.id || ''}
+                                                placeholder="Probes ▾"
+                                                onChange={(val) => {
+                                                    const chosen = configuredProbes.find(p => p.id === val);
+                                                    if (!chosen) return;
+                                                    setTraceDestination(chosen.destination);
+                                                    setTraceDstPort(chosen.dstPort);
+                                                    setTraceProtocol(chosen.protocol);
+                                                    setTraceSrcIp('');
+                                                    setActiveProbeLabel(chosen.name);
+                                                }}
+                                                groups={probeGroups}
+                                                disabled={tracingFlow}
+                                                accent="cyan"
+                                                size="sm"
+                                                menuMinWidth={300}
+                                                triggerClassName="bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/35 rounded-lg h-6 px-2 text-[10px] font-mono font-bold text-cyan-700 dark:text-cyan-300"
+                                            />
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Collapsible Advanced Options Toggle + Persistent Summary */}
@@ -2554,36 +3034,100 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     )}
                                 </div>
 
-                                {/* Right side: SD-WAN Classification Triad Badges */}
-                                {!tracingFlow && verdictObj && (
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        {verdictObj.app_id && (
-                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30 flex items-center gap-1">
-                                                <Cpu size={11} />
-                                                <span>App-ID: {verdictObj.app_id}</span>
-                                            </span>
-                                        )}
-                                        {verdictObj.sec_action && (
-                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black border ${
-                                                String(verdictObj.sec_action).toUpperCase() === 'ALLOW'
-                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
-                                                    : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 dark:border-rose-500/30'
-                                            }`}>
-                                                ZBFW: {verdictObj.sec_action}
-                                            </span>
-                                        )}
-                                        {verdictObj.egress_path && (
-                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-cyan-500/15 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30">
-                                                {verdictObj.egress_path}
-                                            </span>
-                                        )}
-                                        {traceResult?.duration_ms && (
-                                            <span className="text-[10px] font-mono text-text-muted">
-                                                ({(traceResult.duration_ms / 1000).toFixed(1)}s)
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
+                                {/* Right side: SD-WAN Classification Triad Badges + Pin & Compare Actions */}
+                                {!tracingFlow && verdictObj && (() => {
+                                    const currentTraceIdVal = traceResult?.trace_id || '';
+                                    const currentHistEntry = traceHistory.find(t => t.trace_id === currentTraceIdVal);
+                                    const isCurrentPinned = Boolean(currentHistEntry?.pinned);
+                                    // Find a candidate previous run for quick 1-click compare (prefer pinned baseline for same destination, else latest previous run)
+                                    const candidatePrevious = traceHistory.find(
+                                        t =>
+                                            t.trace_id !== currentTraceIdVal &&
+                                            t.pinned &&
+                                            t.destination.toLowerCase() === String(traceResult?.query?.destination_input || traceDestination).toLowerCase()
+                                    ) || traceHistory.find(
+                                        t =>
+                                            t.trace_id !== currentTraceIdVal &&
+                                            t.destination.toLowerCase() === String(traceResult?.query?.destination_input || traceDestination).toLowerCase()
+                                    ) || traceHistory.find(t => t.trace_id !== currentTraceIdVal);
+
+                                    return (
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {verdictObj.app_id && (
+                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30 flex items-center gap-1">
+                                                    <Cpu size={11} />
+                                                    <span>App-ID: {verdictObj.app_id}</span>
+                                                </span>
+                                            )}
+                                            {verdictObj.sec_action && (
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black border ${
+                                                    String(verdictObj.sec_action).toUpperCase() === 'ALLOW'
+                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
+                                                        : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 dark:border-rose-500/30'
+                                                }`}>
+                                                    ZBFW: {verdictObj.sec_action}
+                                                </span>
+                                            )}
+                                            {verdictObj.egress_path && (
+                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-cyan-500/15 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30">
+                                                    {verdictObj.egress_path}
+                                                </span>
+                                            )}
+                                            {traceResult?.duration_ms && (
+                                                <span className="text-[10px] font-mono text-text-muted">
+                                                    ({(traceResult.duration_ms / 1000).toFixed(1)}s)
+                                                </span>
+                                            )}
+
+                                            {currentTraceIdVal && (
+                                                <div className="inline-flex items-center gap-1.5 pl-1.5 border-l border-border/60">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleTogglePinTrace(currentTraceIdVal, !isCurrentPinned)}
+                                                        title={isCurrentPinned ? 'Unpin this trace run' : 'Pin this trace run as a baseline (exempt from 7-day auto-retention & purge)'}
+                                                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
+                                                            isCurrentPinned
+                                                                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/45 shadow-xs'
+                                                                : 'bg-card-secondary hover:bg-amber-500/10 text-text-muted hover:text-amber-700 dark:hover:text-amber-300 border-border'
+                                                        }`}
+                                                    >
+                                                        <Pin size={10} className={isCurrentPinned ? 'fill-current' : ''} />
+                                                        <span>{isCurrentPinned ? 'Pinned' : 'Pin'}</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (compareBaseline) {
+                                                                setCompareBaseline(null);
+                                                            } else if (candidatePrevious) {
+                                                                setCompareBaseline(candidatePrevious);
+                                                            } else {
+                                                                fetchTraceHistory();
+                                                                setShowTraceHistoryModal(true);
+                                                            }
+                                                        }}
+                                                        title={
+                                                            compareBaseline
+                                                                ? 'Close Before/After comparison'
+                                                                : candidatePrevious
+                                                                ? `Compare current trace against baseline from ${candidatePrevious.created_at}`
+                                                                : 'Open Trace History to compare runs'
+                                                        }
+                                                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
+                                                            compareBaseline
+                                                                ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-500/45 shadow-xs'
+                                                                : 'bg-card-secondary hover:bg-indigo-500/10 text-text-muted hover:text-indigo-700 dark:hover:text-indigo-300 border-border'
+                                                        }`}
+                                                    >
+                                                        <ArrowLeftRight size={10} />
+                                                        <span>{compareBaseline ? 'Comparing Δ' : 'Compare'}</span>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* ── SECTION C: CONNECTED HORIZONTAL PROGRESSION TIMELINE (●──────●──────●──────●) ──
@@ -2852,6 +3396,151 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 </div>
                             )}
 
+                            {/* ── BEFORE / AFTER COMPARISON BANNER (Δ) ── */}
+                            {!tracingFlow && traceResult && compareBaseline && (() => {
+                                const curWf: any = traceResult.waterfall || traceResult.hops?.[0]?.metrics?.waterfall || {};
+                                const curFx: any = traceResult.forensics || traceResult.hops?.[0]?.metrics?.forensics || {};
+                                const baseWf: any = compareBaseline.waterfall || {};
+                                const baseFx: any = compareBaseline.forensics || {};
+
+                                const curVerdict = String(verdictObj?.status || 'UNKNOWN');
+                                const baseVerdict = String(compareBaseline.verdict_status || 'UNKNOWN');
+                                const isCurOk = curVerdict === 'VERIFIED_E2E' || curVerdict === 'FLOW_ACTIVE';
+                                const isBaseOk = baseVerdict === 'VERIFIED_E2E' || baseVerdict === 'FLOW_ACTIVE';
+                                const verdictDelta =
+                                    !isBaseOk && isCurOk
+                                        ? { label: 'RESOLVED', cls: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40' }
+                                        : isBaseOk && !isCurOk
+                                        ? { label: 'REGRESSED', cls: 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40' }
+                                        : { label: 'UNCHANGED', cls: 'bg-slate-500/15 text-text-muted border-border' };
+
+                                const curRtt = curWf.transport_rtt_ms ?? curWf.probe_total_ms ?? null;
+                                const baseRtt = baseWf.transport_rtt_ms ?? baseWf.probe_total_ms ?? null;
+                                const rttDiff = curRtt !== null && baseRtt !== null ? +(curRtt - baseRtt).toFixed(2) : null;
+
+                                const curPath = verdictObj?.egress_path || '-';
+                                const basePath = compareBaseline.egress_path || '-';
+                                const pathChanged = curPath !== basePath;
+
+                                return (
+                                    <div className="mt-2 rounded-xl p-3 bg-indigo-500/[0.06] dark:bg-indigo-500/[0.05] border border-indigo-500/35 space-y-2.5 animate-in fade-in duration-150">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-indigo-500/20">
+                                            <div className="flex items-center gap-2 flex-wrap text-xs">
+                                                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 flex items-center gap-1">
+                                                    <ArrowLeftRight size={10} />
+                                                    <span>Before / After Comparison (Δ)</span>
+                                                </span>
+                                                <span className="font-mono text-[11px] text-text-secondary">
+                                                    Baseline: <strong className="text-text-primary">{compareBaseline.label || compareBaseline.probe_label || compareBaseline.destination}</strong> ({compareBaseline.created_at})
+                                                </span>
+                                                {compareBaseline.pinned && (
+                                                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/35 text-[9px] font-mono font-bold flex items-center gap-0.5">
+                                                        <Pin size={9} className="fill-current" />
+                                                        <span>Pinned Baseline</span>
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        fetchTraceHistory();
+                                                        setShowTraceHistoryModal(true);
+                                                    }}
+                                                    className="px-2 py-0.5 rounded-lg bg-card hover:bg-card-hover border border-border text-[10px] font-mono font-bold text-text-secondary hover:text-text-primary cursor-pointer"
+                                                >
+                                                    Change Baseline…
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCompareBaseline(null)}
+                                                    className="p-1 rounded-lg bg-card hover:bg-card-hover border border-border text-text-muted hover:text-text-primary cursor-pointer"
+                                                    title="Close comparison banner"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-[11px] font-mono">
+                                            {/* 1. Verdict Delta */}
+                                            <div className="p-2 rounded-lg bg-card border border-border/60">
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span className="text-[9px] uppercase text-text-muted">E2E Verdict</span>
+                                                    <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase border ${verdictDelta.cls}`}>
+                                                        {verdictDelta.label}
+                                                    </span>
+                                                </div>
+                                                <div className="font-bold text-text-primary mt-1 truncate">
+                                                    <span className="text-text-muted">{baseVerdict.replace(/_/g, ' ')}</span>
+                                                    {' → '}
+                                                    <span className={isCurOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                                                        {curVerdict.replace(/_/g, ' ')}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* 2. SD-WAN Egress Path Delta */}
+                                            <div className="p-2 rounded-lg bg-card border border-border/60">
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span className="text-[9px] uppercase text-text-muted">SD-WAN Egress Path</span>
+                                                    <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase border ${
+                                                        pathChanged
+                                                            ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                                                            : 'bg-slate-500/15 text-text-muted border-border'
+                                                    }`}>
+                                                        {pathChanged ? 'PATH SHIFTED' : 'SAME PATH'}
+                                                    </span>
+                                                </div>
+                                                <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-1 truncate" title={`${basePath} → ${curPath}`}>
+                                                    {pathChanged ? `${basePath} → ${curPath}` : curPath}
+                                                </div>
+                                            </div>
+
+                                            {/* 3. Transport RTT / Waterfall Delta */}
+                                            <div className="p-2 rounded-lg bg-card border border-border/60">
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span className="text-[9px] uppercase text-text-muted">Transport RTT (Δ)</span>
+                                                    {rttDiff !== null && (
+                                                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase border ${
+                                                            rttDiff < -1
+                                                                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                                                : rttDiff > 2
+                                                                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                                                                : 'bg-slate-500/15 text-text-muted border-border'
+                                                        }`}>
+                                                            {rttDiff > 0 ? `+${rttDiff}ms` : `${rttDiff}ms`}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="font-bold text-text-primary mt-1">
+                                                    {baseRtt !== null ? `${baseRtt}ms` : '-'}
+                                                    {' → '}
+                                                    <span className="text-indigo-600 dark:text-indigo-300">
+                                                        {curRtt !== null ? `${curRtt}ms` : '-'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* 4. L3/L4 Forensics Delta (MSS / DSCP / Hops) */}
+                                            <div className="p-2 rounded-lg bg-card border border-border/60">
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span className="text-[9px] uppercase text-text-muted">MSS / DSCP / Hops</span>
+                                                    <span className="text-[8px] font-mono text-text-muted">
+                                                        App: {compareBaseline.app_id || '-'} → {verdictObj?.app_id || '-'}
+                                                    </span>
+                                                </div>
+                                                <div className="font-bold text-text-primary mt-1 truncate">
+                                                    MSS: {baseFx.tcp_mss_rx || baseFx.tcp_mss_tx || '-'}→{curFx.tcp_mss_rx || curFx.tcp_mss_tx || '-'}
+                                                    {' • '}
+                                                    DSCP: {baseFx.dscp_tx_label?.split(' ')[0] || '-'}→{curFx.dscp_tx_label?.split(' ')[0] || '-'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* ── SECTION D: SELECTED POINT DETAIL PANEL ── */}
                             {selectedHop && (
                                 <div className="mt-2 pt-3 border-t border-border/60 bg-card-secondary/35 rounded-xl p-3.5 border border-border/50 space-y-2.5">
@@ -2927,6 +3616,128 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                                             Port :{selectedHop.metrics.local_port || '-'} • {selectedHop.metrics.pcap_file || 'No PCAP'}
                                                         </div>
                                                     </div>
+
+                                                    {/* Wave 1 Enrichments: Timing Waterfall & L3/L4 PCAP Forensics */}
+                                                    {(selectedHop.metrics.waterfall || selectedHop.metrics.forensics) && (() => {
+                                                        const wf = selectedHop.metrics.waterfall || {};
+                                                        const fx = selectedHop.metrics.forensics || {};
+                                                        return (
+                                                            <>
+                                                                {/* 5. Phase Timing Waterfall */}
+                                                                <div className="p-2 rounded-lg bg-card border border-indigo-500/25">
+                                                                    <div className="flex items-center justify-between gap-1">
+                                                                        <span className="text-[9px] uppercase text-text-muted">Phase Timing Waterfall</span>
+                                                                        {wf.transport_rtt_ms !== null && wf.transport_rtt_ms !== undefined && (
+                                                                            <span className="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[9px] font-bold">
+                                                                                RTT {wf.transport_rtt_ms}ms
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="font-bold text-text-primary mt-1 flex items-center gap-1.5 flex-wrap text-[10px]">
+                                                                        {wf.dns_ms !== null && wf.dns_ms !== undefined && (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                DNS: <strong className="text-cyan-600 dark:text-cyan-300">{wf.dns_ms}ms</strong>
+                                                                            </span>
+                                                                        )}
+                                                                        {wf.tcp_connect_rtt_ms !== null && wf.tcp_connect_rtt_ms !== undefined && (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                TCP: <strong className="text-emerald-600 dark:text-emerald-400">{wf.tcp_connect_rtt_ms}ms</strong>
+                                                                            </span>
+                                                                        )}
+                                                                        {wf.tls_handshake_ms !== null && wf.tls_handshake_ms !== undefined && (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                TLS: <strong className="text-purple-600 dark:text-purple-300">{wf.tls_handshake_ms}ms</strong>
+                                                                            </span>
+                                                                        )}
+                                                                        {wf.app_ttfb_ms !== null && wf.app_ttfb_ms !== undefined && (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                TTFB: <strong className="text-amber-600 dark:text-amber-300">{wf.app_ttfb_ms}ms</strong>
+                                                                            </span>
+                                                                        )}
+                                                                        {wf.dns_ms === null && wf.tcp_connect_rtt_ms === null && wf.transport_rtt_ms !== null && (
+                                                                            <span>Wire RTT: <strong className="text-emerald-600 dark:text-emerald-400">{wf.transport_rtt_ms}ms</strong></span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* 6. TCP MSS & MTU Forensics */}
+                                                                <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                    <div className="flex items-center justify-between gap-1">
+                                                                        <span className="text-[9px] uppercase text-text-muted">TCP MSS &amp; MTU Clamping</span>
+                                                                        {fx.mss_clamped ? (
+                                                                            <span
+                                                                                title="Return SYN-ACK MSS was clamped by SD-WAN IPSec tunnel interface to prevent fragmentation"
+                                                                                className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/35 text-[8px] font-black uppercase"
+                                                                            >
+                                                                                Clamped -{fx.mss_clamped_delta}B
+                                                                            </span>
+                                                                        ) : fx.tcp_mss_tx ? (
+                                                                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[8px] font-black uppercase">
+                                                                                Unclamped
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </div>
+                                                                    <div className="font-bold text-text-primary mt-1">
+                                                                        {fx.tcp_mss_tx || fx.tcp_mss_rx ? (
+                                                                            <>
+                                                                                TX {fx.tcp_mss_tx ?? '-'}B → RX <span className={fx.mss_clamped ? 'text-amber-600 dark:text-amber-300' : 'text-cyan-700 dark:text-cyan-300'}>{fx.tcp_mss_rx ?? '-'}B</span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="text-text-muted">Max Frame: {fx.max_frame_bytes ?? '-'}B</span>
+                                                                        )}
+                                                                        {' • '}
+                                                                        <span className="text-text-muted text-[10px]">
+                                                                            DF: {fx.df_bit_tx === true ? 'Set' : fx.df_bit_tx === false ? 'Clear' : '-'}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* 7. DSCP QoS Marking */}
+                                                                <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                    <div className="flex items-center justify-between gap-1">
+                                                                        <span className="text-[9px] uppercase text-text-muted">DSCP QoS Marking (TX → RX)</span>
+                                                                        {fx.dscp_preserved !== null && fx.dscp_preserved !== undefined && (
+                                                                            <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${
+                                                                                fx.dscp_preserved
+                                                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                                                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                                                            }`}>
+                                                                                {fx.dscp_preserved ? 'Preserved' : 'Remarked'}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="font-bold text-text-primary mt-1 truncate">
+                                                                        TX: <span className="text-purple-700 dark:text-purple-300">{fx.dscp_tx_label || 'CS0 (0)'}</span>
+                                                                        {' → '}
+                                                                        RX: <span className="text-cyan-700 dark:text-cyan-300">{fx.dscp_rx_label || '-'}</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* 8. Return TTL, L3 Distance & TCP Health */}
+                                                                <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                    <div className="flex items-center justify-between gap-1">
+                                                                        <span className="text-[9px] uppercase text-text-muted">Return TTL &amp; L3 Distance</span>
+                                                                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${
+                                                                            (fx.tcp_retransmissions || 0) > 0
+                                                                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                                                                                : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                                        }`}>
+                                                                            Retrans: {fx.tcp_retransmissions ?? 0}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="font-bold text-text-primary mt-1">
+                                                                        {fx.ttl_rx !== null && fx.ttl_rx !== undefined ? (
+                                                                            <>
+                                                                                RX TTL {fx.ttl_rx} <span className="text-cyan-700 dark:text-cyan-300">(~{fx.estimated_return_hops ?? 0} L3 hops)</span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="text-text-muted">TX TTL {fx.ttl_tx ?? '-'} (No return frame)</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </>
                                             )}
 
@@ -4144,6 +4955,242 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                     </div>
                 </div>
             )}
+
+            {/* E2E Trace History & Baselines Modal (7-day auto-retention, Pin, Delete, Purge, Compare) */}
+            {showTraceHistoryModal && (() => {
+                const pinnedCount = traceHistory.filter(t => t.pinned).length;
+                const unpinnedCount = traceHistory.length - pinnedCount;
+                const filteredHistory = traceHistory.filter(t => {
+                    if (traceHistoryFilter === 'pinned') return t.pinned;
+                    if (traceHistoryFilter === 'anomalies') {
+                        return t.verdict_status !== 'VERIFIED_E2E' && t.verdict_status !== 'FLOW_ACTIVE';
+                    }
+                    return true;
+                });
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-card border border-border rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl p-6 space-y-4">
+                            <div className="flex items-center justify-between pb-3 border-b border-border/60 shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-indigo-500/15 rounded-xl text-indigo-400 border border-indigo-500/30">
+                                        <Clock size={20} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h3 className="text-base font-black text-text-primary">E2E Flow Trace History &amp; Baselines</h3>
+                                            <span className="px-2 py-0.5 rounded-md bg-card-secondary border border-border text-[10px] font-mono text-text-muted">
+                                                7-day default retention • Pinned exempt
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-text-muted">
+                                            Inspect past E2E trace runs, pin golden baselines, or compare Before / After network changes
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowTraceHistoryModal(false)}
+                                    className="p-1.5 text-text-muted hover:text-text-primary rounded-xl hover:bg-card-hover transition-colors cursor-pointer"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            {/* Filter Pills & Purge Unpinned Toolbar */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    {[
+                                        { id: 'all' as const, label: `All Runs (${traceHistory.length})` },
+                                        { id: 'pinned' as const, label: `Pinned Baselines (${pinnedCount})` },
+                                        {
+                                            id: 'anomalies' as const,
+                                            label: `Anomalies (${traceHistory.filter(t => t.verdict_status !== 'VERIFIED_E2E' && t.verdict_status !== 'FLOW_ACTIVE').length})`
+                                        }
+                                    ].map(f => (
+                                        <button
+                                            key={f.id}
+                                            type="button"
+                                            onClick={() => setTraceHistoryFilter(f.id)}
+                                            className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-colors cursor-pointer ${
+                                                traceHistoryFilter === f.id
+                                                    ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-500/45 shadow-xs'
+                                                    : 'bg-card-secondary text-text-muted hover:text-text-primary border-border'
+                                            }`}
+                                        >
+                                            {f.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handlePurgeUnpinnedTraces}
+                                        disabled={unpinnedCount === 0}
+                                        title="Delete all unpinned trace runs while keeping pinned baselines safe"
+                                        className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-rose-600 dark:text-rose-300 text-[10px] font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        <Trash2 size={12} />
+                                        <span>Purge Unpinned ({unpinnedCount})</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Trace History List */}
+                            <div className="flex-1 overflow-y-auto space-y-2 pr-1 font-mono text-xs scrollbar-thin scrollbar-thumb-border">
+                                {loadingTraceHistory ? (
+                                    <div className="py-12 text-center text-text-muted">Loading E2E trace history...</div>
+                                ) : filteredHistory.length === 0 ? (
+                                    <div className="py-12 text-center text-text-muted">
+                                        No E2E trace runs match this filter.
+                                    </div>
+                                ) : (
+                                    filteredHistory.map(item => {
+                                        const isOk = item.verdict_status === 'VERIFIED_E2E' || item.verdict_status === 'FLOW_ACTIVE';
+                                        const isCurrentActive = traceResult?.trace_id === item.trace_id;
+                                        const isCompared = compareBaseline?.trace_id === item.trace_id;
+                                        const rttVal = item.waterfall?.transport_rtt_ms ?? item.waterfall?.probe_total_ms ?? null;
+                                        const portStr = String(item.protocol).toUpperCase() === 'ICMP' ? 'ICMP' : `${item.protocol}/${item.dst_port || '*'}`;
+
+                                        return (
+                                            <div
+                                                key={item.trace_id}
+                                                className={`p-3 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-3 transition-colors ${
+                                                    item.pinned
+                                                        ? 'bg-amber-500/[0.04] border-amber-500/35 hover:border-amber-500/60'
+                                                        : isCurrentActive
+                                                        ? 'bg-indigo-500/[0.06] border-indigo-500/45'
+                                                        : 'bg-card-secondary/30 border-border/60 hover:border-indigo-500/35'
+                                                }`}
+                                            >
+                                                <div className="space-y-1 min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        {item.pinned && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase flex items-center gap-1">
+                                                                <Pin size={9} className="fill-current" />
+                                                                <span>Pinned</span>
+                                                            </span>
+                                                        )}
+                                                        {item.probe_label && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-[9px] font-bold">
+                                                                {item.probe_label}
+                                                            </span>
+                                                        )}
+                                                        <span className="font-black text-text-primary text-xs">
+                                                            {item.source_site} → {item.destination} ({portStr})
+                                                        </span>
+                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                                            isOk
+                                                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35'
+                                                                : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/35'
+                                                        }`}>
+                                                            {item.verdict_status.replace(/_/g, ' ')}
+                                                        </span>
+                                                        {isCurrentActive && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[9px] font-bold">
+                                                                Active View
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 text-[10px] text-text-muted flex-wrap">
+                                                        <span>{item.created_at}</span>
+                                                        {item.egress_path && (
+                                                            <>
+                                                                <span>•</span>
+                                                                <span className="text-cyan-700 dark:text-cyan-300 font-bold">{item.egress_path}</span>
+                                                            </>
+                                                        )}
+                                                        {item.app_id && (
+                                                            <>
+                                                                <span>•</span>
+                                                                <span className="text-purple-700 dark:text-purple-300">App: {item.app_id}</span>
+                                                            </>
+                                                        )}
+                                                        {rttVal !== null && (
+                                                            <>
+                                                                <span>•</span>
+                                                                <span className="text-emerald-600 dark:text-emerald-400 font-bold">RTT: {rttVal}ms</span>
+                                                            </>
+                                                        )}
+                                                        {item.forensics?.mss_clamped && (
+                                                            <>
+                                                                <span>•</span>
+                                                                <span className="text-amber-600 dark:text-amber-300">MSS {item.forensics.tcp_mss_rx}B (Clamped)</span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleLoadSavedTraceRun(item.trace_id)}
+                                                        className="px-2.5 py-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/35 text-indigo-700 dark:text-indigo-300 rounded-xl text-[10px] font-black uppercase transition-colors cursor-pointer"
+                                                        title="Load this saved E2E trace run and its PCAP into the workspace"
+                                                    >
+                                                        Inspect
+                                                    </button>
+
+                                                    {traceResult && !isCurrentActive && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setCompareBaseline(isCompared ? null : item);
+                                                                setShowTraceHistoryModal(false);
+                                                            }}
+                                                            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase border transition-colors flex items-center gap-1 cursor-pointer ${
+                                                                isCompared
+                                                                    ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                                                    : 'bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border-border'
+                                                            }`}
+                                                            title="Use this run as the Before baseline to compare against the active trace"
+                                                        >
+                                                            <ArrowLeftRight size={11} />
+                                                            <span>{isCompared ? 'Baseline Active' : 'Compare Δ'}</span>
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleTogglePinTrace(item.trace_id, !item.pinned)}
+                                                        className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+                                                            item.pinned
+                                                                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40'
+                                                                : 'bg-card-secondary hover:bg-amber-500/15 text-text-muted hover:text-amber-500 border-border'
+                                                        }`}
+                                                        title={item.pinned ? 'Unpin baseline' : 'Pin baseline (protect from 7-day auto-expiry & purge)'}
+                                                    >
+                                                        <Pin size={13} className={item.pinned ? 'fill-current' : ''} />
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteTraceHistoryItem(item.trace_id)}
+                                                        className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 rounded-xl border border-rose-500/20 transition-colors cursor-pointer"
+                                                        title="Delete this trace run"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            <div className="pt-3 border-t border-border/60 flex justify-end shrink-0">
+                                <button
+                                    onClick={() => setShowTraceHistoryModal(false)}
+                                    className="px-5 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-xs font-bold text-text-primary transition-all cursor-pointer"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }

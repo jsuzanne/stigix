@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePeerContext } from './PeerContext';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, Square, TrendingUp, Pencil, Route, Grid, Trash2, Copy, Terminal, Check } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, Square, TrendingUp, Pencil, Route, Grid, Trash2, Copy, Terminal, Check, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
@@ -8,6 +8,7 @@ import { ReachabilityMatrix } from './components/ReachabilityMatrix';
 import { DEMSkeleton } from './components/skeletons/DEMSkeleton';
 import { ProbeScoreCard, InteractiveScoreBadge } from './components/health/ProbeScoreExplainer';
 import { StigixSelect } from './components/common/StigixSelect';
+import { parseEndpointToTraceTarget, type InitialFlowTraceRequest } from './PacketCapture';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -166,6 +167,7 @@ interface ConnectivityPerformanceProps {
     isLeader?: boolean;
     initialViewMode?: 'catalog' | 'matrix';
     onSwitchViewMode?: (mode: 'catalog' | 'matrix') => void;
+    onTraceFlow?: (req: InitialFlowTraceRequest) => void;
 }
 
 // Component for individual endpoint type graph
@@ -503,8 +505,25 @@ function ProbeScoreChart({ results, range, probeType, data: externalData, syncId
     );
 }
 
-export default function ConnectivityPerformance({ token, uiConfig, onManage, isLeader: propIsLeader, initialViewMode = 'catalog', onSwitchViewMode }: ConnectivityPerformanceProps) {
+export default function ConnectivityPerformance({ token, uiConfig, onManage, isLeader: propIsLeader, initialViewMode = 'catalog', onSwitchViewMode, onTraceFlow }: ConnectivityPerformanceProps) {
     const maxCaptures = uiConfig?.maxCaptures || 10;
+
+    const handleTriggerE2ETrace = (endpoint: any) => {
+        if (!onTraceFlow) return;
+        const parsed = parseEndpointToTraceTarget({
+            name: endpoint.name,
+            type: endpoint.type,
+            target: getResolvedFullUrl(endpoint) || endpoint.target || endpoint.lastResult?.url || ''
+        });
+        if (!parsed) return;
+        onTraceFlow({
+            destination: parsed.destination,
+            dstPort: parsed.dstPort,
+            protocol: parsed.protocol,
+            probeLabel: endpoint.name || parsed.destination,
+            autoRun: true
+        });
+    };
     const [results, setResults] = useState<any[]>([]);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);      // Phase 1: probes config (fast)
@@ -1889,6 +1908,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 </td>
                                 <td className="px-6 py-4 px-8">
                                     <div className="flex justify-end items-center gap-2">
+                                        {onTraceFlow && (
+                                            <button
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    handleTriggerE2ETrace(e);
+                                                }}
+                                                className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-indigo-500/15 hover:text-indigo-500 dark:hover:text-indigo-400 hover:border-indigo-500/30"
+                                                title="Run E2E Flow & Path Trace (PCAP + SD-WAN vION Flow Table)"
+                                            >
+                                                <Sparkles size={16} />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={(ev) => {
                                                 ev.stopPropagation();
@@ -2051,6 +2082,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                 </td>
                                 <td className="px-6 py-4 px-8">
                                     <div className="flex justify-end items-center gap-2">
+                                        {onTraceFlow && (
+                                            <button
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    handleTriggerE2ETrace(e);
+                                                }}
+                                                className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-indigo-500/15 hover:text-indigo-500 dark:hover:text-indigo-400 hover:border-indigo-500/30"
+                                                title="Run E2E Flow & Path Trace (PCAP + SD-WAN vION Flow Table)"
+                                            >
+                                                <Sparkles size={16} />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={(ev) => {
                                                 ev.stopPropagation();

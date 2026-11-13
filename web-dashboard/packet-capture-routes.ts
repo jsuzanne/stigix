@@ -547,6 +547,244 @@ export function createCaptureApiRouter(
     });
 
     // 11b. Live Progress Endpoint for End-to-End Flow & Path Trace
+    const traceHistoryDir = path.join(capturesDir, 'trace-runs');
+    const traceHistoryIndexFile = path.join(capturesDir, 'trace-history.json');
+    const TRACE_DEFAULT_RETENTION_DAYS = 7;
+
+    if (!fs.existsSync(traceHistoryDir)) {
+        try { fs.mkdirSync(traceHistoryDir, { recursive: true }); } catch {}
+    }
+
+    const formatDscpName = (dscp: number | null): string | null => {
+        if (dscp === null || dscp === undefined || Number.isNaN(dscp)) return null;
+        const names: Record<number, string> = {
+            0: 'CS0 (0)',
+            8: 'CS1 (8)',
+            10: 'AF11 (10)',
+            12: 'AF12 (12)',
+            14: 'AF13 (14)',
+            16: 'CS2 (16)',
+            18: 'AF21 (18)',
+            20: 'AF22 (20)',
+            22: 'AF23 (22)',
+            24: 'CS3 (24)',
+            26: 'AF31 (26)',
+            28: 'AF32 (28)',
+            30: 'AF33 (30)',
+            32: 'CS4 (32)',
+            34: 'AF41 (34)',
+            36: 'AF42 (36)',
+            38: 'AF43 (38)',
+            40: 'CS5 (40)',
+            46: 'EF (46)',
+            48: 'CS6 (48)',
+            56: 'CS7 (56)'
+        };
+        return names[dscp] || `DSCP ${dscp}`;
+    };
+
+    const readAndCleanTraceHistory = (): any[] => {
+        try {
+            if (!fs.existsSync(traceHistoryIndexFile)) return [];
+            const raw = JSON.parse(fs.readFileSync(traceHistoryIndexFile, 'utf8'));
+            if (!Array.isArray(raw)) return [];
+            const cutoffMs = Date.now() - TRACE_DEFAULT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+            let modified = false;
+            const kept: any[] = [];
+            for (const entry of raw) {
+                const ts = Number(entry?.timestamp_ms || 0);
+                const isPinned = Boolean(entry?.pinned);
+                if (!isPinned && ts > 0 && ts < cutoffMs) {
+                    modified = true;
+                    // Remove expired full trace json and optional unpinned pcap
+                    try {
+                        const detailPath = path.join(traceHistoryDir, `${path.basename(String(entry.trace_id))}.json`);
+                        if (fs.existsSync(detailPath)) fs.unlinkSync(detailPath);
+                    } catch {}
+                    continue;
+                }
+                kept.push(entry);
+            }
+            if (modified) {
+                try {
+                    fs.writeFileSync(traceHistoryIndexFile, JSON.stringify(kept, null, 2));
+                } catch {}
+            }
+            return kept;
+        } catch {
+            return [];
+        }
+    };
+
+    const saveTraceRunToHistory = (fullResult: any, labelInput?: string) => {
+        try {
+            if (!fullResult || !fullResult.trace_id) return;
+            const traceIdSafe = path.basename(String(fullResult.trace_id));
+            const detailPath = path.join(traceHistoryDir, `${traceIdSafe}.json`);
+            const nowMs = Date.now();
+            const nowIso = new Date(nowMs).toISOString();
+
+            const hop1Metrics = fullResult.hops?.[0]?.metrics || {};
+            const summaryItem = {
+                trace_id: traceIdSafe,
+                timestamp: nowIso,
+                timestamp_ms: nowMs,
+                retention_days: TRACE_DEFAULT_RETENTION_DAYS,
+                pinned: false,
+                label: labelInput ? String(labelInput).trim() : '',
+                source_site: fullResult.query?.source_site || 'Local',
+                source_mode: fullResult.query?.source_mode || 'stigix_plus_ion',
+                src_ip: fullResult.flow_identity?.src_ip || fullResult.query?.src_ip || 'Auto',
+                destination: fullResult.query?.destination || fullResult.flow_identity?.dst_ip || '',
+                resolved_dst_ip: fullResult.query?.resolved_dst_ip || fullResult.flow_identity?.dst_ip || '',
+                dst_port: fullResult.query?.dst_port ?? fullResult.flow_identity?.dst_port ?? 0,
+                protocol: String(fullResult.query?.protocol || fullResult.flow_identity?.protocol || 'tcp').toUpperCase(),
+                probe_5tuple: fullResult.flow_identity?.probe_5tuple || '',
+                verdict_status: fullResult.verdict?.status || 'UNKNOWN',
+                forwarding_mode: fullResult.verdict?.forwarding_mode || null,
+                app_id: fullResult.verdict?.app_id || null,
+                net_policy: fullResult.verdict?.net_policy || null,
+                pri_policy: fullResult.verdict?.pri_policy || null,
+                sec_policy: fullResult.verdict?.sec_policy || null,
+                sec_action: fullResult.verdict?.sec_action || null,
+                egress_path: fullResult.verdict?.egress_path || null,
+                peer_site_name: fullResult.verdict?.peer_site_name || null,
+                connectivity_headline: fullResult.synthesis?.connectivity_headline || '',
+                visibility_headline: fullResult.synthesis?.visibility_headline || '',
+                pcap_filename: fullResult.pcap?.filename || hop1Metrics.pcap_file || null,
+                tx_packets: hop1Metrics.tx_packets ?? 0,
+                rx_packets: hop1Metrics.rx_packets ?? 0,
+                waterfall: fullResult.waterfall || hop1Metrics.waterfall || null,
+                forensics: fullResult.forensics || hop1Metrics.forensics || null,
+                duration_ms: fullResult.duration_ms || 0
+            };
+
+            const enrichedResult = {
+                ...fullResult,
+                timestamp: nowIso,
+                timestamp_ms: nowMs,
+                pinned: false,
+                label: summaryItem.label
+            };
+            fs.writeFileSync(detailPath, JSON.stringify(enrichedResult, null, 2));
+
+            const existing = readAndCleanTraceHistory().filter((item) => item.trace_id !== traceIdSafe);
+            const updated = [summaryItem, ...existing].slice(0, 120);
+            fs.writeFileSync(traceHistoryIndexFile, JSON.stringify(updated, null, 2));
+        } catch (err) {
+            console.error('Failed to persist E2E trace run:', err);
+        }
+    };
+
+    // 11c. List E2E Trace History (auto-cleans unpinned entries older than 7 days)
+    router.get('/trace-history', (_req: Request, res: Response) => {
+        const list = readAndCleanTraceHistory();
+        res.json({
+            success: true,
+            retention_days: TRACE_DEFAULT_RETENTION_DAYS,
+            items: list
+        });
+    });
+
+    // 11d. Load a specific saved E2E Trace Run (including its dissected PCAP packets if still on disk)
+    router.get('/trace-history/:traceId', async (req: Request, res: Response) => {
+        try {
+            const safeId = path.basename(String(req.params.traceId || ''));
+            const detailPath = path.join(traceHistoryDir, `${safeId}.json`);
+            if (!fs.existsSync(detailPath)) {
+                return res.status(404).json({ success: false, error: 'Saved trace run not found' });
+            }
+            const doc = JSON.parse(fs.readFileSync(detailPath, 'utf8'));
+            // Ensure latest pin/label state from index
+            const list = readAndCleanTraceHistory();
+            const idxMeta = list.find((i) => i.trace_id === safeId);
+            if (idxMeta) {
+                doc.pinned = Boolean(idxMeta.pinned);
+                doc.label = idxMeta.label || doc.label || '';
+            }
+            res.json(doc);
+        } catch (e: any) {
+            res.status(500).json({ success: false, error: e.message || 'Failed to load trace run' });
+        }
+    });
+
+    // 11e. Pin / Unpin or Label a saved E2E Trace Run (protects from 7-day auto-expiry & purge)
+    router.post('/trace-history/:traceId/pin', (req: Request, res: Response) => {
+        try {
+            const safeId = path.basename(String(req.params.traceId || ''));
+            const { pinned, label } = req.body || {};
+            const list = readAndCleanTraceHistory();
+            let found: any = null;
+            const updated = list.map((item) => {
+                if (item.trace_id === safeId) {
+                    const nextPinned = typeof pinned === 'boolean' ? pinned : !item.pinned;
+                    const nextLabel = typeof label === 'string' ? label.trim() : (item.label || '');
+                    found = { ...item, pinned: nextPinned, label: nextLabel };
+                    return found;
+                }
+                return item;
+            });
+            if (!found) {
+                return res.status(404).json({ success: false, error: 'Trace not found in history' });
+            }
+            fs.writeFileSync(traceHistoryIndexFile, JSON.stringify(updated, null, 2));
+            const detailPath = path.join(traceHistoryDir, `${safeId}.json`);
+            if (fs.existsSync(detailPath)) {
+                try {
+                    const doc = JSON.parse(fs.readFileSync(detailPath, 'utf8'));
+                    doc.pinned = found.pinned;
+                    doc.label = found.label;
+                    fs.writeFileSync(detailPath, JSON.stringify(doc, null, 2));
+                } catch {}
+            }
+            res.json({ success: true, item: found });
+        } catch (e: any) {
+            res.status(500).json({ success: false, error: e.message || 'Failed to update pin status' });
+        }
+    });
+
+    // 11f. Delete a single E2E Trace Run
+    router.delete('/trace-history/:traceId', (req: Request, res: Response) => {
+        try {
+            const safeId = path.basename(String(req.params.traceId || ''));
+            const list = readAndCleanTraceHistory();
+            const target = list.find((i) => i.trace_id === safeId);
+            const remaining = list.filter((i) => i.trace_id !== safeId);
+            fs.writeFileSync(traceHistoryIndexFile, JSON.stringify(remaining, null, 2));
+            const detailPath = path.join(traceHistoryDir, `${safeId}.json`);
+            if (fs.existsSync(detailPath)) {
+                try { fs.unlinkSync(detailPath); } catch {}
+            }
+            res.json({ success: true, deleted: safeId, removed_item: target || null });
+        } catch (e: any) {
+            res.status(500).json({ success: false, error: e.message || 'Failed to delete trace run' });
+        }
+    });
+
+    // 11g. Purge all unpinned E2E Trace Runs (keeps pinned baselines safe!)
+    router.delete('/trace-history', (_req: Request, res: Response) => {
+        try {
+            const list = readAndCleanTraceHistory();
+            const pinnedItems = list.filter((i) => Boolean(i.pinned));
+            const unpinnedItems = list.filter((i) => !i.pinned);
+            for (const item of unpinnedItems) {
+                try {
+                    const detailPath = path.join(traceHistoryDir, `${path.basename(String(item.trace_id))}.json`);
+                    if (fs.existsSync(detailPath)) fs.unlinkSync(detailPath);
+                } catch {}
+            }
+            fs.writeFileSync(traceHistoryIndexFile, JSON.stringify(pinnedItems, null, 2));
+            res.json({
+                success: true,
+                purged_count: unpinnedItems.length,
+                kept_pinned_count: pinnedItems.length,
+                items: pinnedItems
+            });
+        } catch (e: any) {
+            res.status(500).json({ success: false, error: e.message || 'Failed to purge trace history' });
+        }
+    });
+
     router.get('/trace-flow/progress', async (req: Request, res: Response) => {
         if (activeDelegatedPeer && req.headers['x-stigix-delegated'] !== '1') {
             try {
@@ -651,10 +889,12 @@ export function createCaptureApiRouter(
                         } catch {}
                         delete delegatedRes.data.pcap.raw_pcap_b64;
                     }
-                    return res.json({
+                    const finalDelegated = {
                         ...delegatedRes.data,
                         delegated_to_peer: remoteStigixPeer
-                    });
+                    };
+                    saveTraceRunToHistory(finalDelegated, req.body?.probeLabel || req.body?.label);
+                    return res.json(finalDelegated);
                 }
             } catch {
                 activeDelegatedPeer = null;
@@ -1165,11 +1405,13 @@ export function createCaptureApiRouter(
             const dstPackets = resolvedDstIp
                 ? pcapPackets.filter((p) => p.source === resolvedDstIp || p.destination === resolvedDstIp)
                 : pcapPackets;
-            const txCount = resolvedDstIp ? dstPackets.filter((p) => p.destination === resolvedDstIp).length : 0;
-            const rxCount = resolvedDstIp ? dstPackets.filter((p) => p.source === resolvedDstIp).length : 0;
+            const txPacketsList = resolvedDstIp ? dstPackets.filter((p) => p.destination === resolvedDstIp) : [];
+            const rxPacketsList = resolvedDstIp ? dstPackets.filter((p) => p.source === resolvedDstIp) : [];
+            const txCount = txPacketsList.length;
+            const rxCount = rxPacketsList.length;
             const seenSynAck = dstPackets.some((p) => String(p.info || '').includes('SYN') && String(p.info || '').includes('ACK'));
             const seenRst = dstPackets.some((p) => String(p.info || '').includes('RST'));
-            const pcapTxPacket = resolvedDstIp ? dstPackets.find((p) => p.destination === resolvedDstIp) : null;
+            const pcapTxPacket = txPacketsList[0] || null;
             const pcapTxSrcIp = pcapTxPacket?.source || '';
             if (!probeInfo.localIp && pcapTxSrcIp) {
                 probeInfo.localIp = pcapTxSrcIp;
@@ -1185,6 +1427,190 @@ export function createCaptureApiRouter(
             if (!probeInfo.localPort && pcapPorts.length > 0) {
                 probeInfo.localPort = pcapPorts[0];
             }
+
+            // ── Deep Packet Forensics & Timing Waterfall Extraction (Zero Extra Latency) ──
+            let synEpoch: number | null = null;
+            let synAckEpoch: number | null = null;
+            let tlsClientHelloEpoch: number | null = null;
+            let tlsServerHelloEpoch: number | null = null;
+            let firstAppTxEpoch: number | null = null;
+            let firstAppRxEpoch: number | null = null;
+            let icmpReqEpoch: number | null = null;
+            let icmpReplyEpoch: number | null = null;
+            let udpReqEpoch: number | null = null;
+            let udpReplyEpoch: number | null = null;
+
+            let tcpMssTx: number | null = null;
+            let tcpMssRx: number | null = null;
+            let dscpTxVal: number | null = null;
+            let dscpRxVal: number | null = null;
+            let ttlTx: number | null = null;
+            let ttlRx: number | null = null;
+            let dfBitTx: boolean | null = null;
+            let maxFrameBytes = 0;
+            let tcpRetransmissions = 0;
+            let zeroWindowEvents = 0;
+            const seenTxSeqs = new Set<string>();
+
+            const parseDscpFromField = (fieldStr: any): number | null => {
+                const m = String(fieldStr || '').match(/DSCP:\s*(\d+)/i);
+                return m ? parseInt(m[1], 10) : null;
+            };
+            const parseMssFromPacket = (pkt: any): number | null => {
+                const tcpTree = pkt?.tree?.['Transmission Control Protocol'];
+                if (tcpTree && tcpTree['Maximum Segment Size (MSS)'] !== undefined) {
+                    const v = parseInt(String(tcpTree['Maximum Segment Size (MSS)']), 10);
+                    if (!Number.isNaN(v) && v > 0) return v;
+                }
+                const mInfo = String(pkt?.info || '').match(/MSS=(\d+)/i);
+                return mInfo ? parseInt(mInfo[1], 10) : null;
+            };
+
+            for (const pkt of dstPackets) {
+                const isTx = Boolean(resolvedDstIp && pkt.destination === resolvedDstIp);
+                const isRx = Boolean(resolvedDstIp && pkt.source === resolvedDstIp);
+                const ep = typeof pkt.epoch === 'number' && pkt.epoch > 0 ? pkt.epoch : (typeof pkt.time === 'number' ? pkt.time : null);
+                const infoStr = String(pkt.info || '');
+                const lenNum = Number(pkt.length || 0);
+                if (lenNum > maxFrameBytes) maxFrameBytes = lenNum;
+
+                const ipTree = pkt?.tree?.['Internet Protocol Version 4'] || {};
+                const tcpTree = pkt?.tree?.['Transmission Control Protocol'] || {};
+                const pktDscp = parseDscpFromField(ipTree['Differentiated Services Field']);
+                const pktTtl = ipTree['Time to Live (TTL)'] !== undefined ? parseInt(String(ipTree['Time to Live (TTL)']), 10) : null;
+                const hasDf = String(ipTree['Flags'] || '').includes('DF');
+
+                if (isTx) {
+                    if (dscpTxVal === null && pktDscp !== null) dscpTxVal = pktDscp;
+                    if (ttlTx === null && pktTtl !== null && !Number.isNaN(pktTtl)) ttlTx = pktTtl;
+                    if (dfBitTx === null && ipTree['Flags'] !== undefined) dfBitTx = hasDf;
+                } else if (isRx) {
+                    if (dscpRxVal === null && pktDscp !== null) dscpRxVal = pktDscp;
+                    if (ttlRx === null && pktTtl !== null && !Number.isNaN(pktTtl)) ttlRx = pktTtl;
+                }
+
+                // TCP forensics & timing
+                if (protoNum === 6) {
+                    const isSynOnly = infoStr.includes('[SYN]') || (infoStr.includes('SYN') && !infoStr.includes('ACK'));
+                    const isSynAck = infoStr.includes('SYN') && infoStr.includes('ACK');
+                    if (isTx && isSynOnly) {
+                        if (synEpoch === null && ep !== null) synEpoch = ep;
+                        const mss = parseMssFromPacket(pkt);
+                        if (tcpMssTx === null && mss !== null) tcpMssTx = mss;
+                    }
+                    if (isRx && isSynAck) {
+                        if (synAckEpoch === null && ep !== null) synAckEpoch = ep;
+                        const mss = parseMssFromPacket(pkt);
+                        if (tcpMssRx === null && mss !== null) tcpMssRx = mss;
+                    }
+                    if (isTx && infoStr.includes('Client Hello') && tlsClientHelloEpoch === null && ep !== null) {
+                        tlsClientHelloEpoch = ep;
+                    }
+                    if (isRx && infoStr.includes('Server Hello') && tlsServerHelloEpoch === null && ep !== null) {
+                        tlsServerHelloEpoch = ep;
+                    }
+                    const lenMatch = infoStr.match(/Len=(\d+)/);
+                    const payloadBytesCount = lenMatch ? parseInt(lenMatch[1], 10) : (pkt?.tree?.['Payload Data'] ? 1 : 0);
+                    if (isTx && payloadBytesCount > 0 && !infoStr.includes('Client Hello') && firstAppTxEpoch === null && ep !== null) {
+                        firstAppTxEpoch = ep;
+                    }
+                    if (isRx && payloadBytesCount > 0 && !infoStr.includes('Server Hello') && firstAppRxEpoch === null && ep !== null) {
+                        firstAppRxEpoch = ep;
+                    }
+                    // Retransmission check (same sport, seq, and positive payload or SYN)
+                    if (isTx && tcpTree['Sequence Number'] !== undefined && (payloadBytesCount > 0 || isSynOnly)) {
+                        const seqKey = `${pkt.sport || 0}:${tcpTree['Sequence Number']}:${isSynOnly ? 'S' : payloadBytesCount}`;
+                        if (seenTxSeqs.has(seqKey)) {
+                            tcpRetransmissions += 1;
+                        } else {
+                            seenTxSeqs.add(seqKey);
+                        }
+                    }
+                    if (tcpTree['Window Size'] === 0 && !infoStr.includes('RST')) {
+                        zeroWindowEvents += 1;
+                    }
+                } else if (protoNum === 1) {
+                    if (isTx && infoStr.toLowerCase().includes('request') && icmpReqEpoch === null && ep !== null) {
+                        icmpReqEpoch = ep;
+                    }
+                    if (isRx && infoStr.toLowerCase().includes('reply') && icmpReplyEpoch === null && ep !== null) {
+                        icmpReplyEpoch = ep;
+                    }
+                } else if (protoNum === 17) {
+                    if (isTx && udpReqEpoch === null && ep !== null) udpReqEpoch = ep;
+                    if (isRx && udpReplyEpoch === null && ep !== null) udpReplyEpoch = ep;
+                }
+            }
+
+            const roundMs = (deltaSec: number | null): number | null => {
+                if (deltaSec === null || deltaSec < 0 || deltaSec > 30) return null;
+                return Math.max(0.1, Math.round(deltaSec * 10000) / 10);
+            };
+
+            const tcpConnectRttMs =
+                synEpoch !== null && synAckEpoch !== null && synAckEpoch >= synEpoch
+                    ? roundMs(synAckEpoch - synEpoch)
+                    : null;
+            const icmpEchoRttMs =
+                icmpReqEpoch !== null && icmpReplyEpoch !== null && icmpReplyEpoch >= icmpReqEpoch
+                    ? roundMs(icmpReplyEpoch - icmpReqEpoch)
+                    : null;
+            const udpResponseRttMs =
+                udpReqEpoch !== null && udpReplyEpoch !== null && udpReplyEpoch >= udpReqEpoch
+                    ? roundMs(udpReplyEpoch - udpReqEpoch)
+                    : null;
+            const transportRttMs =
+                tcpConnectRttMs ?? icmpEchoRttMs ?? udpResponseRttMs ?? (probeInfo.reachable ? probeInfo.rttMs : null);
+            const tlsHandshakeMs =
+                tlsClientHelloEpoch !== null && tlsServerHelloEpoch !== null && tlsServerHelloEpoch >= tlsClientHelloEpoch
+                    ? roundMs(tlsServerHelloEpoch - tlsClientHelloEpoch)
+                    : null;
+            const appTtfbMs =
+                firstAppTxEpoch !== null && firstAppRxEpoch !== null && firstAppRxEpoch >= firstAppTxEpoch
+                    ? roundMs(firstAppRxEpoch - firstAppTxEpoch)
+                    : null;
+
+            // Estimate return path L3 hop count from RX TTL (standard initial TTLs: 64, 128, 255)
+            let estimatedReturnHops: number | null = null;
+            let initialTtlGuess: number | null = null;
+            if (ttlRx !== null && ttlRx > 0) {
+                initialTtlGuess = ttlRx <= 64 ? 64 : ttlRx <= 128 ? 128 : 255;
+                estimatedReturnHops = Math.max(0, initialTtlGuess - ttlRx);
+            }
+
+            const mssClampedDelta =
+                tcpMssTx !== null && tcpMssRx !== null && tcpMssRx < tcpMssTx
+                    ? tcpMssTx - tcpMssRx
+                    : null;
+
+            const waterfallMetrics = {
+                dns_ms: dnsResolutionMs,
+                transport_rtt_ms: transportRttMs,
+                tcp_connect_rtt_ms: tcpConnectRttMs,
+                tls_handshake_ms: tlsHandshakeMs,
+                app_ttfb_ms: appTtfbMs,
+                probe_total_ms: probeInfo.rttMs
+            };
+
+            const forensicsMetrics = {
+                tcp_mss_tx: tcpMssTx,
+                tcp_mss_rx: tcpMssRx,
+                mss_clamped: Boolean(mssClampedDelta && mssClampedDelta > 0),
+                mss_clamped_delta: mssClampedDelta,
+                df_bit_tx: dfBitTx,
+                max_frame_bytes: maxFrameBytes || null,
+                dscp_tx: dscpTxVal,
+                dscp_tx_label: formatDscpName(dscpTxVal),
+                dscp_rx: dscpRxVal,
+                dscp_rx_label: formatDscpName(dscpRxVal),
+                dscp_preserved: dscpTxVal !== null && dscpRxVal !== null ? dscpTxVal === dscpRxVal : null,
+                ttl_tx: ttlTx,
+                ttl_rx: ttlRx,
+                initial_ttl_guess: initialTtlGuess,
+                estimated_return_hops: estimatedReturnHops,
+                tcp_retransmissions: tcpRetransmissions,
+                zero_window_events: zeroWindowEvents
+            };
             const effectiveSrcIp =
                 cleanSrcIp ||
                 (isLocalStigixSite && probeInfo.attempted
@@ -1447,7 +1873,9 @@ export function createCaptureApiRouter(
                         probe_rtt_ms: probeInfo.rttMs,
                         probe_detail: probeInfo.detail,
                         local_port: primaryProbePort || null,
-                        pcap_ports: pcapPorts
+                        pcap_ports: pcapPorts,
+                        waterfall: waterfallMetrics,
+                        forensics: forensicsMetrics
                     }
                 });
             } else if (hasRemoteStigixPeer && remoteStigixPeer) {
@@ -1863,9 +2291,13 @@ export function createCaptureApiRouter(
                 phase_label: 'Trace complete'
             };
 
-            res.json({
+            const finalPayload = {
                 success: true,
                 trace_id: traceId,
+                timestamp: new Date().toISOString(),
+                timestamp_ms: Date.now(),
+                pinned: false,
+                label: req.body?.probeLabel || req.body?.label || '',
                 duration_ms: Date.now() - t0,
                 query: {
                     source_site: effectiveSourceSite,
@@ -1920,6 +2352,8 @@ export function createCaptureApiRouter(
                     raw_path_type: primaryFlow?.raw_path_type || null,
                     peer_site_name: ionTrace?.peer_site_name || null
                 },
+                waterfall: waterfallMetrics,
+                forensics: forensicsMetrics,
                 hops,
                 ingress_flows: annotatedIngressFlows,
                 transit_flows: annotatedTransitFlows,
@@ -1943,7 +2377,13 @@ export function createCaptureApiRouter(
                               : {})
                       }
                     : null
-            });
+            };
+
+            if (req.headers['x-stigix-delegated'] !== '1') {
+                saveTraceRunToHistory(finalPayload, req.body?.probeLabel || req.body?.label);
+            }
+
+            res.json(finalPayload);
         } catch (e: any) {
             stopProbeKeepalive();
             activeFlowTraceProgress = null;

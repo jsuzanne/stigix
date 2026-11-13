@@ -15,7 +15,7 @@ import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
 import { MulticastOverlayTab } from './components/custom-tcp/MulticastOverlayTab';
 import { PcapReplay } from './PcapReplay';
-import PacketCapture from './PacketCapture';
+import PacketCapture, { type InitialFlowTraceRequest } from './PacketCapture';
 import ChangeGuard from './ChangeGuard';
 import Copilot from './Copilot';
 import Fleet from './Fleet';
@@ -573,6 +573,15 @@ export default function App() {
   const [registryStatus, setRegistryStatus] = useState<any>(null);
   const [uiConfig, setUiConfig] = useState<{ refreshInterval: number, maxCaptures: number, globalScoreTypes?: string[], enablePcapReplay?: boolean }>({ refreshInterval: 1000, maxCaptures: 10 });
   const isPcapEnabled = Boolean(uiConfig?.enablePcapReplay);
+  const [pendingFlowTrace, setPendingFlowTrace] = useState<InitialFlowTraceRequest | null>(null);
+
+  const handleNavigateToFlowTrace = (req: InitialFlowTraceRequest) => {
+    setPendingFlowTrace(req);
+    setView('packet_capture');
+    try {
+      localStorage.setItem('activeView', 'packet_capture');
+    } catch { }
+  };
   const [healthData, setHealthData] = useState<any | null>(null);
   const [isHealthLoading, setIsHealthLoading] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
@@ -2114,6 +2123,7 @@ export default function App() {
             setInitialSettingsTab('probes');
             setView('settings');
           }}
+          onTraceFlow={handleNavigateToFlowTrace}
         />
       )}
       {view === 'topology' && <Topology token={token!} theme={theme} />}
@@ -2126,7 +2136,7 @@ export default function App() {
       {view === 'vyos' && <Vyos token={token!} />}
       {view === 'iot' && <Iot token={token!} />}
       {view === 'voice' && <Voice token={token!} externalStatus={globalVoiceStatus} />}
-      {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
+      {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} onTraceFlow={handleNavigateToFlowTrace} />}
       {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} initialSubSection={initialSettingsSubSection} onOpenNodeRoleModal={() => setShowNodeRoleModal(true)} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'multicast' && (
@@ -2137,7 +2147,15 @@ export default function App() {
         />
       )}
       {view === 'pcap_replay' && isPcapEnabled && <PcapReplay token={token!} />}
-      {view === 'packet_capture' && <PacketCapture token={token!} localSiteName={siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')} onNavigateToReplay={() => setView('pcap_replay')} />}
+      {view === 'packet_capture' && (
+        <PacketCapture
+          token={token!}
+          localSiteName={siteInfo?.detected_site_name || registryStatus?.site_name || (isLeader ? 'DC1' : 'BR8')}
+          onNavigateToReplay={() => setView('pcap_replay')}
+          initialTraceRequest={pendingFlowTrace}
+          onClearInitialTraceRequest={() => setPendingFlowTrace(null)}
+        />
+      )}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'snapshots' && <ChangeGuard token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
