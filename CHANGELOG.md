@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.20] - 2026-11-13
+
+### Changed
+- **Neutralized Proprietary Acronym in E2E Flow & Path Trace (`web-dashboard/src/PacketCapture.tsx`, `web-dashboard/packet-capture-routes.ts`, `README.md`, `site/index.html`, `site/faq.html`)**:
+  - Removed the third-party acronym from the Packet Capture mode switcher tab (`E2E Flow & Path Trace`), packet decoder tooltips, and public documentation.
+
 ## [3.2.19] - 2026-11-13
 
 ### Changed & Fixed
@@ -19,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.2.18] - 2026-11-13
 
 ### Changed & Fixed
-- **E2E Flow & Path Trace (NWPI) UI Streamlining & Evidence Semantics (`web-dashboard/packet-capture-routes.ts`, `web-dashboard/src/PacketCapture.tsx`)**:
+- **E2E Flow & Path Trace UI Streamlining & Evidence Semantics (`web-dashboard/packet-capture-routes.ts`, `web-dashboard/src/PacketCapture.tsx`)**:
   - **Source Probe (`SOURCE_STIGIX`) 4-Card Single-Row Layout**: Consolidated the 8 source detail cards into 4 cards on a single desktop row (`Timing & Probe`, `TCP MSS` / `L3 Frame & DF`, `QoS / DSCP`, `Return & TCP Health` / `Return TTL`) with accessible contextual help (`?`) and an expandable `Socket & PCAP Info` disclosure drawer.
   - **Non-Speculative Forensics & Timing Accuracy**:
     - Distinguished kernel PCAP timestamp delta (`TCP connect (PCAP)`, `ICMP Echo (PCAP)`, `UDP reply (PCAP)`, `TLS (PCAP)`) from userspace `Socket connect` duration, eliminating duplicate/conflicting RTT labels.
@@ -32,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.2.17] - 2026-11-13
 
 ### Added & Enhanced
-- **E2E Flow & Path Trace (NWPI) Wave 1 Enrichments (`engines/pcap_capture_engine.py`, `web-dashboard/packet-capture-routes.ts`, `web-dashboard/src/PacketCapture.tsx`)**:
+- **E2E Flow & Path Trace Wave 1 Enrichments (`engines/pcap_capture_engine.py`, `web-dashboard/packet-capture-routes.ts`, `web-dashboard/src/PacketCapture.tsx`)**:
   - **Phase Timing Waterfall (+0 ms overhead)**: Extracts `DNS Resolution ms`, `TCP 3-Way Handshake RTT ms`, `TLS Handshake ms`, `App TTFB ms`, and `Wire RTT ms` directly from captured Hop 1 PCAP frame timestamps (`pkt.epoch`).
   - **L3/L4 PCAP Forensics at Hop 1 (`SOURCE_STIGIX`)**: Dissects TCP `MSS` (`Maximum Segment Size`) and `Window Scale` options on `SYN` / `SYN-ACK` frames to automatically detect **SD-WAN IPSec MSS Clamping** (`TX MSS → RX MSS` with clamped byte delta), `DF Bit / Max Frame Bytes`, **DSCP QoS Marking (`TX → RX`)** preservation vs remarking, **Return TTL & Estimated L3 Hops**, and **TCP Retransmissions / Zero Window** events.
   - **E2E Trace History, 7-Day Auto-Retention (`Pin 📌`, `Delete 🗑️`, `Purge 🧹`) & Before/After Comparison ($\Delta$)**: Persists every E2E trace run (`trace-history.json` + `trace-runs/<trace_id>.json`) with 7-day automatic expiry for unpinned runs, 1-click baseline pinning (`📌`), selective purge of unpinned runs (`Purge Unpinned`), and an interactive **Before / After Comparison Banner ($\Delta$)** comparing `E2E Verdict`, `SD-WAN Egress Path`, `Transport RTT`, and `MSS / DSCP / App-ID` between a baseline and the current trace.
@@ -88,8 +94,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.2.10] - 2026-11-11
 
 ### Changed & Enhanced
-- **UX Polish Pass on Packet Capture → E2E Flow & Path Trace (NWPI) (`web-dashboard/src/PacketCapture.tsx`, `web-dashboard/packet-capture-routes.ts`)**:
-  - Reorganized the top bar into a sober module header (`Packet Capture` + `Local PCAP | E2E Flow & Path Trace (NWPI)` + discrete `Captures` access) and a streamlined diagnostic composer (`From · Source Site` → `To · Destination` → `Test · Protocol / Port` → `Run trace`).
+- **UX Polish Pass on Packet Capture → E2E Flow & Path Trace (`web-dashboard/src/PacketCapture.tsx`, `web-dashboard/packet-capture-routes.ts`)**:
+  - Reorganized the top bar into a sober module header (`Packet Capture` + `Local PCAP | E2E Flow & Path Trace` + discrete `Captures` access) and a streamlined diagnostic composer (`From · Source Site` → `To · Destination` → `Test · Protocol / Port` → `Run trace`).
   - Added protocol-aware Port input handling: when `ICMP` is selected, displays `Not applicable` instead of `0` while preserving the previous TCP/UDP port in state when switching back to `TCP` or `UDP`.
   - Moved `Collection Mode` (`Probe + PCAP`, `Passive + PCAP`, `ION CLI only`) and `Source IP (Optional LAN Host)` into a collapsible **`Advanced options ▸`** drawer paired with a persistent summary pill (`Probe + PCAP · Source IP: Auto`).
   - Compacted **Favorites** (`DC1 App`, `OnPrem App`, `O365 via DC2`, `Microsoft 365`, `BR5 DIA`) with full details on hover (`title`) and active highlight state only while form inputs match that favorite.
@@ -123,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.2.8] - 2026-11-11
 
 ### Added
-- **End-to-End SD-WAN Flow & Path Trace ("NWPI-like" Path & App-ID Insight) (`web-dashboard/src/PacketCapture.tsx`, `web-dashboard/packet-capture-routes.ts`, `engines/sdwan_ion_cli.py`, `engines/pcap_capture_engine.py`, `web-dashboard/src/components/common/StigixSelect.tsx`)**:
+- **End-to-End SD-WAN Flow & Path Trace (Path & App-ID Insight) (`web-dashboard/src/PacketCapture.tsx`, `web-dashboard/packet-capture-routes.ts`, `engines/sdwan_ion_cli.py`, `engines/pcap_capture_engine.py`, `web-dashboard/src/components/common/StigixSelect.tsx`)**:
   - Added the **End-to-End Flow & Path Trace** tab inside **Packet Capture & Web Analyzer**, correlating local L2–L7 packet capture (`pcap_capture_engine.py`) and synthetic probe generation (TCP/TLS with SNI, RFC 1035 DNS A queries on UDP port 53, and ICMP Echo) with live Prisma SD-WAN WebSocket Device Toolkit CLI (`inspect flow brief` and `dump servicelink summary all`).
   - Automatically chains hop inspection across **Local Stigix Probe** $\rightarrow$ **Ingress Branch ION** (`App-ID`, `Network Policy`, `Priority/QoS Policy`, `Security Zone/Policy/Action`, `Egress WAN Path`) $\rightarrow$ **Transit / Backhaul Hub ION** (`DC1-R1`/`DC1-R2`, `DC2-R1`/`DC2-R2`) or **Remote Branch ION** (`BR5` Agentless ION-Only mode) or **ServiceLink SSE Tunnel** (`Prisma Access` / `Zscaler`) $\rightarrow$ **Destination**.
   - Added 1-click **Load into Live Capture & Analyzer** button to open the captured E2E trace `.pcap` directly in the 3-pane Wireshark packet analyzer with a pre-populated display filter.

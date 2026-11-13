@@ -2,7 +2,7 @@
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-3.2.19-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Version](https://img.shields.io/badge/Version-3.2.20-blue.svg)](https://github.com/jsuzanne/stigix/releases)
 [![Last Updated](https://img.shields.io/badge/Updated-2026--11--13-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -125,9 +125,9 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
 
-### 🚀 Stigix 3.2 — End-to-End SD-WAN Path Trace (NWPI), Live vION WebSocket CLI & Fleet Bulk Orchestration *(v3.2.10)*
+### 🚀 Stigix 3.2 — End-to-End SD-WAN Path Trace, Live vION WebSocket CLI & Fleet Bulk Orchestration *(v3.2.20)*
 
-- **🔎 End-to-End SD-WAN Flow & Path Trace (NWPI)** — Correlates local `tcpdump --immediate-mode` packet captures and synthetic probes (TCP/TLS SNI, DNS, ICMP) with live Prisma SD-WAN Device Toolkit WebSocket CLI (`inspect flow brief`, `dump servicelink summary all`) across Branch ION, Hub HA (`DC1-R1/R2`, `DC2-R1/R2`), and SASE ServiceLinks. Features an interactive horizontal path timeline, 5-tuple / ICMP flow matching, unidirectional drop diagnosis (`TX > 0 / 0 RX`), and remote Spoke PCAP delegation.
+- **🔎 End-to-End SD-WAN Flow & Path Trace** — Correlates local `tcpdump --immediate-mode` packet captures and synthetic probes (TCP/TLS SNI, DNS, ICMP) with live Prisma SD-WAN Device Toolkit WebSocket CLI (`inspect flow brief`, `dump servicelink summary all`) across Branch ION, Hub HA (`DC1-R1/R2`, `DC2-R1/R2`), and SASE ServiceLinks. Features an interactive horizontal path timeline, 5-tuple / ICMP flow matching, unidirectional drop diagnosis (`TX > 0 / 0 RX`), and remote Spoke PCAP delegation.
 - **⚡ On-Demand Live SD-WAN Path Inspection (`vION WebSocket CLI`)** — Sub-2s SSH-free dataplane flow resolution across **Failover Lab** (`CONV-*`), **Voice** (`CALL-*` via `Inspect Paths`), and **Speedtest** (`XFR-*` via `Inspect Live Path`), with cross-version ION OS (`6.5`, `6.8`, `7.x`) and hardware (`ION 1200-S` / `3102v`) support.
 - **🤖 93 FastMCP & AI Copilot Tools** — Added read-only Prisma SD-WAN Controller operational & config views (`get_prisma_ops_view`, `get_prisma_site_config`, `get_prisma_object`), `run_prisma_ion_cli`, and an embedded SD-WAN diagnostic playbook with executive verdict scorecards.
 - **🎛️ Fleet Bulk Orchestration, Live Timeline & 100% WebSocket Strict Mode** — Parallel multi-node start/stop controls (Traffic, Voice, IoT, DEM Probes, Force Sync), real-time Fleet Live Timeline drawer, perpetual WebSocket JWT renewal, and out-of-band heartbeat auto-heal.

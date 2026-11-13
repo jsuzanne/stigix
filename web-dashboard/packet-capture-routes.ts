@@ -813,7 +813,7 @@ export function createCaptureApiRouter(
         });
     });
 
-    // 12. Execute End-to-End Flow & Path Trace (NWPI-style Stigix PCAP + ION CLI Flow Trace)
+    // 12. Execute End-to-End Flow & Path Trace (Stigix PCAP + ION CLI Flow Trace)
     router.post('/trace-flow', async (req: Request, res: Response) => {
         const t0 = Date.now();
         const {

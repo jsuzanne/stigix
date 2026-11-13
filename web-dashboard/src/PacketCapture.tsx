@@ -564,7 +564,7 @@ export default function PacketCapture({
     const [showVirtualInterfaces, setShowVirtualInterfaces] = useState<boolean>(false);
     const dropdownBarRef = useRef<HTMLDivElement>(null);
 
-    // ── E2E Flow & Path Trace (NWPI) State ──
+    // ── E2E Flow & Path Trace State ──
     const [captureMode, setCaptureMode] = useState<'local' | 'trace'>('local');
     const [traceSites, setTraceSites] = useState<Array<{
         site_id: string;
@@ -1848,7 +1848,7 @@ export default function PacketCapture({
                         <div className="flex items-center gap-3 flex-nowrap">
                             <h2 className="text-lg font-black text-text-primary tracking-tight whitespace-nowrap">Packet Capture</h2>
 
-                            {/* Mode Switcher: Local PCAP vs E2E Flow & Path Trace (NWPI) */}
+                            {/* Mode Switcher: Local PCAP vs E2E Flow & Path Trace */}
                             <div className="inline-flex items-center bg-card-secondary border border-border rounded-xl p-0.5 text-[11px] font-black shrink-0">
                                 <button
                                     type="button"
@@ -1872,7 +1872,7 @@ export default function PacketCapture({
                                     }`}
                                 >
                                     <Sparkles size={12} />
-                                    <span>E2E Flow &amp; Path Trace (NWPI)</span>
+                                    <span>E2E Flow &amp; Path Trace</span>
                                 </button>
                             </div>
                         </div>
@@ -2792,7 +2792,7 @@ export default function PacketCapture({
                 )}
             </div>
 
-            {/* ── E2E FLOW & PATH TRACE PIPELINE (NWPI COMPACT TIMELINE & EVIDENCE VIEW) ── */}
+            {/* ── E2E FLOW & PATH TRACE PIPELINE (COMPACT TIMELINE & EVIDENCE VIEW) ── */}
             {captureMode === 'trace' && (tracingFlow || traceResult) && (() => {
                 const activeHops: any[] = tracingFlow
                     ? (traceProgress?.hops || [])
@@ -4991,7 +4991,7 @@ export default function PacketCapture({
                                                 protocol: mappedProto
                                             });
                                         }}
-                                        title="Trace this packet's 5-tuple across Branch & DC IONs (NWPI E2E Flow Trace)"
+                                        title="Trace this packet's 5-tuple across Branch & DC IONs (E2E Flow Trace)"
                                         className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 transition-colors cursor-pointer"
                                     >
                                         <Sparkles size={10} />
