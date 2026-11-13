@@ -1132,271 +1132,154 @@ export default function Voice(props: VoiceProps) {
                             </div>
                         </div>
 
-                        <div className="flex flex-col xl:flex-row items-start gap-4">
-                            {/* Left: Targets Table (Single-line compact, fits all columns alongside Radar) */}
-                            <div className="flex-1 min-w-0 w-full overflow-x-auto">
-                                <table className="w-full text-sm whitespace-nowrap">
-                                    <thead>
-                                        <tr className="border-b border-border">
-                                            <th className="pb-2.5 px-1.5 w-7" />
-                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Site</th>
-                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Endpoint</th>
-                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Calls</th>
-                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Avg MOS</th>
-                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Loss</th>
-                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">RTT / Jitter</th>
-                                            <th className="pb-2.5 pl-2 pr-1 text-[9px] font-black text-text-muted uppercase tracking-widest text-right">Quality</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border/30">
-                                        {targetRows.map(row => {
-                                            const targetKey = `${row.host}:${row.port}`;
-                                            const stat = perTargetStatsMap.get(targetKey);
-                                            const activeRadarStat = (activeRadarTargetKey && perTargetStatsMap.get(activeRadarTargetKey)) || perTargetStats[0];
-                                            const isRadarFocused = stat && activeRadarStat?.target === targetKey;
-                                            return (
-                                                <tr
-                                                    key={row.id}
-                                                    onMouseEnter={() => stat && setActiveRadarTargetKey(targetKey)}
-                                                    className={cn(
-                                                        "group transition-all hover:bg-card-secondary/30",
-                                                        isRadarFocused && "bg-blue-500/5"
-                                                    )}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm whitespace-nowrap">
+                                <thead>
+                                    <tr className="border-b border-border">
+                                        <th className="pb-3 px-2 w-10" />
+                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Site</th>
+                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Endpoint</th>
+                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Calls</th>
+                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Avg MOS</th>
+                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Loss</th>
+                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">RTT / Jitter</th>
+                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-right">Quality</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/30">
+                                    {targetRows.map(row => {
+                                        const targetKey = `${row.host}:${row.port}`;
+                                        const stat = perTargetStatsMap.get(targetKey);
+                                        return (
+                                            <tr
+                                                key={row.id}
+                                                onClick={() => stat && setSelectedStat(stat)}
+                                                title={stat ? "Click row to open 5-Axis QoS Pentagon Radar" : "Enable target with checkbox to start collecting QoS telemetry"}
+                                                className={cn(
+                                                    "group transition-all hover:bg-card-secondary/30",
+                                                    stat && "cursor-pointer"
+                                                )}
+                                            >
+                                                {/* Checkbox — only clicking the checkbox toggles the target */}
+                                                <td
+                                                    className="py-3.5 px-2"
+                                                    onClick={e => { e.stopPropagation(); toggleRow(row.id); }}
                                                 >
-                                                    {/* Checkbox */}
-                                                    <td className="py-2.5 px-1.5">
-                                                        <button
-                                                            onClick={() => toggleRow(row.id)}
-                                                            className={cn(
-                                                                'w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer',
-                                                                row.enabled
-                                                                    ? 'bg-blue-600 border-blue-600 text-white'
-                                                                    : 'border-slate-400 dark:border-slate-600 bg-card-secondary/30 hover:border-blue-500 hover:bg-blue-500/10'
-                                                            )}
-                                                        >
-                                                            {row.enabled && <CheckSquare size={9} />}
-                                                        </button>
-                                                    </td>
-
-                                                    {/* Site name + reachability dot */}
-                                                    <td
-                                                        className={cn("py-2.5 px-2 transition-opacity duration-200 cursor-pointer select-none", !row.enabled && "opacity-45")}
-                                                        onClick={() => toggleRow(row.id)}
+                                                    <button
+                                                        type="button"
+                                                        title={row.enabled ? "Disable target" : "Enable target"}
+                                                        className={cn(
+                                                            'w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer',
+                                                            row.enabled
+                                                                ? 'bg-blue-600 border-blue-600 text-white'
+                                                                : 'border-slate-400 dark:border-slate-600 bg-card-secondary/30 hover:border-blue-500 hover:bg-blue-500/10'
+                                                        )}
                                                     >
-                                                        <div className="flex items-center gap-1.5">
-                                                            {reachability[row.id] === 'loading' || reachability[row.id] === undefined ? (
-                                                                <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
-                                                            ) : reachability[row.id] ? (
-                                                                <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
-                                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
-                                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
-                                                            )}
-                                                            <span className="text-xs font-black text-text-primary group-hover:text-blue-500 transition-colors">
-                                                                {row.name}
-                                                            </span>
+                                                        {row.enabled && <CheckSquare size={11} />}
+                                                    </button>
+                                                </td>
+
+                                                {/* Site name + reachability dot */}
+                                                <td className={cn("py-3.5 px-3 transition-opacity duration-200 select-none", !row.enabled && "opacity-45")}>
+                                                    <div className="flex items-center gap-2">
+                                                        {reachability[row.id] === 'loading' || reachability[row.id] === undefined ? (
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                                        ) : reachability[row.id] ? (
+                                                            <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                        )}
+                                                        <span className="text-xs font-black text-text-primary group-hover:text-blue-500 transition-colors">
+                                                            {row.name}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                {/* Host:Port */}
+                                                <td className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                    <span className="text-[11px] font-mono font-bold text-text-muted">{targetKey}</span>
+                                                </td>
+
+                                                {/* Calls */}
+                                                <td className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                    {stat ? (
+                                                        <span className="text-xs font-black text-text-primary">{stat.totalCalls}</span>
+                                                    ) : (
+                                                        <span className="text-xs text-text-muted opacity-30">—</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Avg MOS */}
+                                                <td className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                    {stat ? (
+                                                        <span className={cn(
+                                                            'text-[10px] font-black px-2 py-0.5 rounded-lg border',
+                                                            stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 4
+                                                                ? 'bg-green-600/10 text-green-500 border-green-500/20'
+                                                                : stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 3
+                                                                    ? 'bg-orange-600/10 text-orange-500 border-orange-500/20'
+                                                                    : 'bg-red-600/10 text-red-500 border-red-500/20'
+                                                        )}>{stat.avgMos}</span>
+                                                    ) : (
+                                                        <span className="text-xs text-text-muted opacity-30">—</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Avg Loss */}
+                                                <td className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                    {stat ? (
+                                                        <span className={cn('text-xs font-black',
+                                                            parseFloat(stat.avgLoss) < 1 ? 'text-green-500' : parseFloat(stat.avgLoss) < 5 ? 'text-orange-500' : 'text-red-500'
+                                                        )}>{stat.avgLoss}%</span>
+                                                    ) : (
+                                                        <span className="text-xs text-text-muted opacity-30">—</span>
+                                                    )}
+                                                </td>
+
+                                                {/* RTT / Jitter */}
+                                                <td className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                    {stat ? (
+                                                        <div className="flex items-center gap-1.5 text-xs">
+                                                            <span className="font-black text-text-primary">{stat.avgRtt}ms</span>
+                                                            <span className="text-text-muted opacity-40">/</span>
+                                                            <span className="text-[10px] font-bold text-text-muted">{stat.avgJitter}ms</span>
                                                         </div>
-                                                    </td>
+                                                    ) : (
+                                                        <span className="text-xs text-text-muted opacity-30">—</span>
+                                                    )}
+                                                </td>
 
-                                                    {/* Host:Port */}
-                                                    <td className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45")}>
-                                                        <span className="text-[10px] font-mono font-bold text-text-muted">{targetKey}</span>
-                                                    </td>
-
-                                                    {/* Calls */}
-                                                    <td
-                                                        onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                    >
-                                                        {stat ? (
-                                                            <span className="text-xs font-black text-text-primary">{stat.totalCalls}</span>
-                                                        ) : (
-                                                            <span className="text-xs text-text-muted opacity-30">—</span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Avg MOS */}
-                                                    <td
-                                                        onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                    >
-                                                        {stat ? (
-                                                            <span className={cn(
-                                                                'text-[10px] font-black px-1.5 py-0.5 rounded-lg border',
-                                                                stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 4
-                                                                    ? 'bg-green-600/10 text-green-500 border-green-500/20'
-                                                                    : stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 3
-                                                                        ? 'bg-orange-600/10 text-orange-500 border-orange-500/20'
-                                                                        : 'bg-red-600/10 text-red-500 border-red-500/20'
-                                                            )}>{stat.avgMos}</span>
-                                                        ) : (
-                                                            <span className="text-xs text-text-muted opacity-30">—</span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Avg Loss */}
-                                                    <td
-                                                        onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                    >
-                                                        {stat ? (
-                                                            <span className={cn('text-xs font-black',
-                                                                parseFloat(stat.avgLoss) < 1 ? 'text-green-500' : parseFloat(stat.avgLoss) < 5 ? 'text-orange-500' : 'text-red-500'
-                                                            )}>{stat.avgLoss}%</span>
-                                                        ) : (
-                                                            <span className="text-xs text-text-muted opacity-30">—</span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* RTT / Jitter */}
-                                                    <td
-                                                        onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                    >
-                                                        {stat ? (
-                                                            <div className="flex items-center gap-1 text-xs">
-                                                                <span className="font-black text-text-primary">{stat.avgRtt}ms</span>
-                                                                <span className="text-text-muted opacity-40">/</span>
-                                                                <span className="text-[10px] font-bold text-text-muted">{stat.avgJitter}ms</span>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-xs text-text-muted opacity-30">—</span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Quality badge + radar modal trigger */}
-                                                    <td
-                                                        onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-2.5 pl-2 pr-1 text-right transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                        title={stat ? "Hover to preview in Pentagon Radar • Click to zoom" : undefined}
-                                                    >
-                                                        {stat ? (
-                                                            <div className="inline-flex items-center justify-end gap-1 px-1.5 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
-                                                                <div className={cn('h-1.5 w-1.5 rounded-full', qualityDotClass(stat.quality))} />
-                                                                <span className={cn('text-[9px] font-black uppercase tracking-wider', qualityTextClass(stat.quality))}>
-                                                                    {stat.quality}
-                                                                </span>
-                                                                <BarChart2 size={10} className="text-blue-500 opacity-60" />
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-xs text-text-muted opacity-30">—</span>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-
-                                        {/* Empty state */}
-                                        {targetRows.length === 0 && !loading && (
-                                            <tr>
-                                                <td colSpan={8} className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
-                                                    No voice-capable Stigix targets enabled in Registry
+                                                {/* Quality badge + radar modal trigger */}
+                                                <td className={cn("py-3.5 px-3 text-right transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                    {stat ? (
+                                                        <div className="inline-flex items-center justify-end gap-1.5 px-2 py-0.5 rounded-lg group-hover:bg-blue-500/10 transition-colors">
+                                                            <div className={cn('h-2 w-2 rounded-full', qualityDotClass(stat.quality))} />
+                                                            <span className={cn('text-[9px] font-black uppercase tracking-widest', qualityTextClass(stat.quality))}>
+                                                                {stat.quality}
+                                                            </span>
+                                                            <BarChart2 size={11} className="text-blue-500 opacity-60 ml-0.5" />
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-text-muted opacity-30">—</span>
+                                                    )}
                                                 </td>
                                             </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
+                                        );
+                                    })}
 
-                            {/* Right: Compact Top-Aligned 5-Branch Pentagon Radar (Zero label overlap, no vertical stretching) */}
-                            {perTargetStats.length > 0 && (() => {
-                                const activeRadarStat = (activeRadarTargetKey && perTargetStatsMap.get(activeRadarTargetKey)) || perTargetStats[0];
-                                const miniRadarData = buildPentagonRadarData(activeRadarStat);
-                                const rColor = activeRadarStat.quality === 'excellent' ? '#3b82f6' : activeRadarStat.quality === 'fair' ? '#f97316' : '#ef4444';
-                                return (
-                                    <div
-                                        onClick={() => setSelectedStat(activeRadarStat)}
-                                        title="Hover any target row to inspect its 5-axis QoS pentagon • Click to expand"
-                                        className="w-full xl:w-[235px] shrink-0 self-start bg-card-secondary/35 border border-border/70 hover:border-blue-500/40 rounded-2xl p-3 space-y-2 cursor-pointer transition-all"
-                                    >
-                                        <div className="flex items-center justify-between gap-1.5">
-                                            <div className="min-w-0">
-                                                <div className="text-[8px] font-black uppercase tracking-widest text-text-muted opacity-60">
-                                                    QoS Radar
-                                                </div>
-                                                <div className="text-xs font-black text-text-primary truncate">
-                                                    {activeRadarStat.name}
-                                                </div>
-                                            </div>
-                                            <span className={cn(
-                                                "px-2 py-0.5 rounded-md text-[10px] font-mono font-black border shrink-0",
-                                                activeRadarStat.avgMos !== 'N/A' && parseFloat(activeRadarStat.avgMos) >= 4
-                                                    ? "bg-green-600/10 text-green-500 border-green-500/20"
-                                                    : "bg-blue-500/10 text-blue-500 border-blue-500/20"
-                                            )}>
-                                                MOS {activeRadarStat.avgMos}
-                                            </span>
-                                        </div>
-
-                                        {perTargetStats.length > 1 && (
-                                            <div className="flex items-center gap-1 flex-wrap" onClick={e => e.stopPropagation()}>
-                                                {perTargetStats.map(s => {
-                                                    const isSel = s.target === activeRadarStat.target;
-                                                    const shortLabel = s.name.replace(/-Ubuntu$/i, '');
-                                                    return (
-                                                        <button
-                                                            key={s.target}
-                                                            type="button"
-                                                            onClick={() => setActiveRadarTargetKey(s.target)}
-                                                            className={cn(
-                                                                "px-1.5 py-0.5 rounded text-[8.5px] font-black tracking-tight transition-all cursor-pointer border",
-                                                                isSel
-                                                                    ? "bg-blue-600 text-white border-blue-500 shadow-xs"
-                                                                    : "bg-card text-text-muted hover:text-text-primary border-border/60"
-                                                            )}
-                                                        >
-                                                            {shortLabel}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-
-                                        <div className="h-[176px] w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <RadarChart data={miniRadarData} outerRadius="60%">
-                                                    <PolarGrid stroke="var(--border)" strokeOpacity={0.65} />
-                                                    <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                                                    <PolarAngleAxis
-                                                        dataKey="metric"
-                                                        tick={({ x, y, cx, cy, payload }: any) => {
-                                                            const dx = x - cx;
-                                                            const dy = y - cy;
-                                                            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                                                            const ox = x + (dx / dist) * 8;
-                                                            const oy = y + (dy / dist) * 7;
-                                                            const anchor = dx > 12 ? 'start' : dx < -12 ? 'end' : 'middle';
-                                                            return (
-                                                                <text
-                                                                    x={ox}
-                                                                    y={oy}
-                                                                    textAnchor={anchor}
-                                                                    dominantBaseline="central"
-                                                                    fill="var(--text-secondary)"
-                                                                    fontSize={9}
-                                                                    fontWeight={800}
-                                                                >
-                                                                    {payload.value}
-                                                                </text>
-                                                            );
-                                                        }}
-                                                    />
-                                                    <Radar
-                                                        dataKey="value"
-                                                        stroke={rColor}
-                                                        strokeWidth={2}
-                                                        strokeDasharray="3 2"
-                                                        fill={rColor}
-                                                        fillOpacity={0.28}
-                                                    />
-                                                </RadarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
+                                    {/* Empty state */}
+                                    {targetRows.length === 0 && !loading && (
+                                        <tr>
+                                            <td colSpan={8} className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
+                                                No voice-capable Stigix targets enabled in Registry
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>{/* end RIGHT col */}
@@ -1799,6 +1682,30 @@ export default function Voice(props: VoiceProps) {
                                     <X size={14} />
                                 </button>
                             </div>
+
+                            {perTargetStats.length > 1 && (
+                                <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                                    {perTargetStats.map(s => {
+                                        const isSel = s.target === selectedStat.target;
+                                        const shortLabel = s.name.replace(/-Ubuntu$/i, '');
+                                        return (
+                                            <button
+                                                key={s.target}
+                                                type="button"
+                                                onClick={() => setSelectedStat(s)}
+                                                className={cn(
+                                                    "px-2.5 py-1 rounded-lg text-[10px] font-black tracking-tight transition-all cursor-pointer border",
+                                                    isSel
+                                                        ? "bg-blue-600 text-white border-blue-500 shadow-xs"
+                                                        : "bg-card-secondary/60 text-text-muted hover:text-text-primary border-border"
+                                                )}
+                                            >
+                                                {shortLabel}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
 
                             {/* 5-Branch Pentagon Radar chart (Radial label offset -> zero overlap) */}
                             <div className="h-64">

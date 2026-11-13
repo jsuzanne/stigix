@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.15] - 2026-11-13
+
+### Changed & Enhanced
+- **Full-Width Voice Targets Table & Row-Click 5-Axis Pentagon Radar Modal (`web-dashboard/src/Voice.tsx`)**:
+  - Restored full horizontal width to the **Stigix Voice Targets & QoS Telemetry** table so all columns (`SITE`, `ENDPOINT`, `CALLS`, `AVG MOS`, `LOSS`, `RTT / JITTER`, `QUALITY`) fit cleanly on a single line without clipping.
+  - Separated target selection (clicking the checkbox toggles the target) from telemetry inspection (clicking anywhere else on a target row opens the **5-Axis Pentagon QoS Radar Modal** with quick target-switcher pills inside the modal).
+
 ## [3.2.14] - 2026-11-13
 
 ### Changed & Enhanced
