@@ -2489,15 +2489,15 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
 
                 return (
                     <div className="space-y-3 animate-in fade-in duration-200">
-                        {/* ── SECTION B: DIAGNOSTIC SYNTHESIS & ANALYZED FLOW IDENTITY ── */}
+                        {/* ── SECTION B: ANALYZED FLOW IDENTITY, 4-HOP PIPELINE & DIAGNOSTIC SYNTHESIS ── */}
                         <div className="bg-card border border-indigo-500/30 rounded-2xl p-4 shadow-sm space-y-3">
-                            {/* Top Row: Flow 5-Tuple Identity + Match Scope + SD-WAN Triad */}
-                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-3 border-b border-border/60">
+                            {/* Top Row: Flow 5-Tuple Identity + Match Scope + SD-WAN Triad (locked min-h-[34px] to prevent any vertical shift) */}
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-3 min-h-[38px] border-b border-border/60">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">
                                         Analyzed Flow:
                                     </span>
-                                    <span className="px-2.5 py-1 rounded-lg bg-card-secondary border border-indigo-500/30 font-mono text-xs font-black text-text-primary flex items-center gap-1.5">
+                                    <span className="px-2.5 py-0.5 rounded-lg bg-card-secondary border border-indigo-500/30 font-mono text-xs font-black text-text-primary flex items-center gap-1.5">
                                         <Zap size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                                         <span>{flowIdObj?.probe_5tuple || `${traceSrcIp || 'Auto'} → ${traceDestination}:${traceDstPort} · ${traceProtocol.toUpperCase()}`}</span>
                                     </span>
@@ -2558,13 +2558,13 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 {!tracingFlow && verdictObj && (
                                     <div className="flex items-center gap-2 flex-wrap">
                                         {verdictObj.app_id && (
-                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30 flex items-center gap-1">
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30 flex items-center gap-1">
                                                 <Cpu size={11} />
                                                 <span>App-ID: {verdictObj.app_id}</span>
                                             </span>
                                         )}
                                         {verdictObj.sec_action && (
-                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-mono font-black border ${
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black border ${
                                                 String(verdictObj.sec_action).toUpperCase() === 'ALLOW'
                                                     ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
                                                     : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 dark:border-rose-500/30'
@@ -2573,7 +2573,7 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                             </span>
                                         )}
                                         {verdictObj.egress_path && (
-                                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-cyan-500/15 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30">
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-cyan-500/15 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30">
                                                 {verdictObj.egress_path}
                                             </span>
                                         )}
@@ -2586,119 +2586,9 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                 )}
                             </div>
 
-                            {/* Diagnostic Synthesis Sentences (Level 1 Outcome + Level 2 Path Summary + Compact Scope/Boundary) */}
-                            {!tracingFlow && synthesisObj && (() => {
-                                const vSt = String(verdictObj?.status || '');
-                                const isAnomaly =
-                                    vSt === 'UNIDIRECTIONAL_NO_REPLY' ||
-                                    vSt === 'NO_RESPONSE' ||
-                                    vSt === 'UNREACHABLE' ||
-                                    vSt === 'BLOCKED' ||
-                                    vSt === 'DNS_ERROR' ||
-                                    vSt === 'NO_MATCHING_FLOW';
-                                const badgeLabel =
-                                    vSt === 'VERIFIED_E2E'
-                                        ? 'REPLY RECEIVED'
-                                        : vSt === 'FLOW_ACTIVE'
-                                        ? 'FLOW OBSERVED'
-                                        : vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE' || vSt === 'UNREACHABLE'
-                                        ? 'NO RESPONSE'
-                                        : vSt === 'BLOCKED'
-                                        ? 'BLOCKED BY ZBFW'
-                                        : vSt.replace(/_/g, ' ') || 'DIAGNOSTIC';
-
-                                return (
-                                    <div className="space-y-2">
-                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
-                                            {/* Level 1 — Primary Test Outcome */}
-                                            <div className="flex items-center gap-2.5 flex-wrap">
-                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shrink-0 ${
-                                                    vSt === 'VERIFIED_E2E'
-                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
-                                                        : vSt === 'FLOW_ACTIVE'
-                                                        ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40'
-                                                        : vSt === 'BLOCKED' || vSt === 'DNS_ERROR'
-                                                        ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
-                                                        : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/40'
-                                                }`}>
-                                                    {badgeLabel}
-                                                </span>
-                                                <span className="text-sm font-black text-text-primary leading-snug">
-                                                    {synthesisObj.connectivity_headline}
-                                                </span>
-                                            </div>
-
-                                            {/* Compact 1-Line Scope Pill in Normal Cases */}
-                                            {!isAnomaly && synthesisObj.limit_or_diagnosis && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTraceEvidenceTab('limits')}
-                                                    title="View full diagnostic collection scope & limits"
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/80 hover:bg-card-hover border border-border/60 text-[10px] font-mono text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0 self-start lg:self-auto"
-                                                >
-                                                    <Info size={11} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
-                                                    <span>{synthesisObj.limit_or_diagnosis}</span>
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Level 2 — Path Summary */}
-                                        <p className="text-xs text-text-secondary leading-relaxed">
-                                            {synthesisObj.visibility_headline}
-                                        </p>
-
-                                        {/* Highlighted Callout Only When Anomaly or Partial Visibility */}
-                                        {isAnomaly && synthesisObj.limit_or_diagnosis && (
-                                            <div className="rounded-xl px-3 py-2 border bg-amber-500/10 border-amber-500/35 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
-                                                <Info size={13} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                                                <div>
-                                                    <span className="font-black uppercase text-[9px] tracking-wider mr-1.5">
-                                                        {vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE'
-                                                            ? 'Observation Boundary & Suggested Checks:'
-                                                            : 'Diagnostic Scope:'}
-                                                    </span>
-                                                    <span>{synthesisObj.limit_or_diagnosis}</span>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })()}
-
-                            {/* Active Associated Flow Override Banner (if user clicked another flow in the table) */}
-                            {selectedTraceFlow && (
-                                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-[11px]">
-                                    <div className="flex items-center gap-2 flex-wrap font-mono">
-                                        <span className="font-black uppercase text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">
-                                            Selected Flow Filter
-                                        </span>
-                                        <span className="text-text-primary font-bold">
-                                            {selectedTraceFlow.source_ip}:{selectedTraceFlow.source_port} → {selectedTraceFlow.destination_ip}:{selectedTraceFlow.destination_port}
-                                        </span>
-                                        <span className="text-text-muted">
-                                            ({selectedTraceFlow.match_label || selectedTraceFlow.match_scope})
-                                        </span>
-                                        {selectedTraceFlow.match_scope !== 'EXACT_PCAP_5TUPLE' && (
-                                            <span className="text-amber-700 dark:text-amber-300 text-[10px]">
-                                                • Note: This flow used port :{selectedTraceFlow.client_port || selectedTraceFlow.source_port} outside the initial 3s PCAP snapshot.
-                                            </span>
-                                        )}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setSelectedTraceFlow(null);
-                                            setDisplayFilter('');
-                                        }}
-                                        className="px-2 py-0.5 rounded-lg bg-card hover:bg-card-hover border border-border text-[10px] font-bold text-text-secondary hover:text-text-primary cursor-pointer shrink-0"
-                                    >
-                                        Reset to Probe Flow
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* ── SECTION C: CONNECTED HORIZONTAL PROGRESSION TIMELINE (●──────●──────●──────●) ── */}
-                            <div className="pt-2">
+                            {/* ── SECTION C: CONNECTED HORIZONTAL PROGRESSION TIMELINE (●──────●──────●──────●) ──
+                                Positioned immediately under Analyzed Flow so the 4 hop cards NEVER shift down when synthesis arrives */}
+                            <div className="pt-1">
                                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                                     {activeHops.map((hop: any, idx: number) => {
                                         const theme = getNodeTheme(hop.status, hop.role);
@@ -2849,6 +2739,118 @@ export default function PacketCapture({ token, localSiteName, onNavigateToReplay
                                     })}
                                 </div>
                             </div>
+
+                            {/* Diagnostic Synthesis Sentences (Level 1 Outcome + Level 2 Path Summary + Compact Scope/Boundary)
+                                Placed BELOW the 4 hop cards so completing the trace updates hop cards in-place with zero layout shift */}
+                            {!tracingFlow && synthesisObj && (() => {
+                                const vSt = String(verdictObj?.status || '');
+                                const isAnomaly =
+                                    vSt === 'UNIDIRECTIONAL_NO_REPLY' ||
+                                    vSt === 'NO_RESPONSE' ||
+                                    vSt === 'UNREACHABLE' ||
+                                    vSt === 'BLOCKED' ||
+                                    vSt === 'DNS_ERROR' ||
+                                    vSt === 'NO_MATCHING_FLOW';
+                                const badgeLabel =
+                                    vSt === 'VERIFIED_E2E'
+                                        ? 'REPLY RECEIVED'
+                                        : vSt === 'FLOW_ACTIVE'
+                                        ? 'FLOW OBSERVED'
+                                        : vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE' || vSt === 'UNREACHABLE'
+                                        ? 'NO RESPONSE'
+                                        : vSt === 'BLOCKED'
+                                        ? 'BLOCKED BY ZBFW'
+                                        : vSt.replace(/_/g, ' ') || 'DIAGNOSTIC';
+
+                                return (
+                                    <div className="pt-2.5 border-t border-border/50 space-y-1.5 animate-in fade-in duration-200">
+                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                                            {/* Level 1 — Primary Test Outcome */}
+                                            <div className="flex items-center gap-2.5 flex-wrap">
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shrink-0 ${
+                                                    vSt === 'VERIFIED_E2E'
+                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                                        : vSt === 'FLOW_ACTIVE'
+                                                        ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40'
+                                                        : vSt === 'BLOCKED' || vSt === 'DNS_ERROR'
+                                                        ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
+                                                        : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/40'
+                                                }`}>
+                                                    {badgeLabel}
+                                                </span>
+                                                <span className="text-xs font-black text-text-primary leading-snug">
+                                                    {synthesisObj.connectivity_headline}
+                                                </span>
+                                            </div>
+
+                                            {/* Compact 1-Line Scope Pill in Normal Cases */}
+                                            {!isAnomaly && synthesisObj.limit_or_diagnosis && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTraceEvidenceTab('limits')}
+                                                    title="View full diagnostic collection scope & limits"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/80 hover:bg-card-hover border border-border/60 text-[10px] font-mono text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0 self-start lg:self-auto"
+                                                >
+                                                    <Info size={11} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
+                                                    <span>{synthesisObj.limit_or_diagnosis}</span>
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Level 2 — Path Summary */}
+                                        <p className="text-xs text-text-secondary leading-relaxed">
+                                            {synthesisObj.visibility_headline}
+                                        </p>
+
+                                        {/* Highlighted Callout Only When Anomaly or Partial Visibility */}
+                                        {isAnomaly && synthesisObj.limit_or_diagnosis && (
+                                            <div className="rounded-xl px-3 py-2 border bg-amber-500/10 border-amber-500/35 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
+                                                <Info size={13} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                                <div>
+                                                    <span className="font-black uppercase text-[9px] tracking-wider mr-1.5">
+                                                        {vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE'
+                                                            ? 'Observation Boundary & Suggested Checks:'
+                                                            : 'Diagnostic Scope:'}
+                                                    </span>
+                                                    <span>{synthesisObj.limit_or_diagnosis}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Active Associated Flow Override Banner (if user clicked another flow in the table) */}
+                            {selectedTraceFlow && (
+                                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-[11px]">
+                                    <div className="flex items-center gap-2 flex-wrap font-mono">
+                                        <span className="font-black uppercase text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">
+                                            Selected Flow Filter
+                                        </span>
+                                        <span className="text-text-primary font-bold">
+                                            {selectedTraceFlow.source_ip}:{selectedTraceFlow.source_port} → {selectedTraceFlow.destination_ip}:{selectedTraceFlow.destination_port}
+                                        </span>
+                                        <span className="text-text-muted">
+                                            ({selectedTraceFlow.match_label || selectedTraceFlow.match_scope})
+                                        </span>
+                                        {selectedTraceFlow.match_scope !== 'EXACT_PCAP_5TUPLE' && (
+                                            <span className="text-amber-700 dark:text-amber-300 text-[10px]">
+                                                • Note: This flow used port :{selectedTraceFlow.client_port || selectedTraceFlow.source_port} outside the initial 3s PCAP snapshot.
+                                            </span>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedTraceFlow(null);
+                                            setDisplayFilter('');
+                                        }}
+                                        className="px-2 py-0.5 rounded-lg bg-card hover:bg-card-hover border border-border text-[10px] font-bold text-text-secondary hover:text-text-primary cursor-pointer shrink-0"
+                                    >
+                                        Reset to Probe Flow
+                                    </button>
+                                </div>
+                            )}
 
                             {/* ── SECTION D: SELECTED POINT DETAIL PANEL ── */}
                             {selectedHop && (

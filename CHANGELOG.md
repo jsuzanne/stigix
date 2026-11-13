@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.16] - 2026-11-13
+
+### Changed & Enhanced
+- **Zero-Vertical-Shift E2E Flow & Path Trace Timeline (`web-dashboard/src/PacketCapture.tsx`)**:
+  - Anchored the 4-hop horizontal progression timeline (`1. SOURCE PROBE`, `2. INGRESS ION`, `3. TRANSIT HUB ION`, `4. DESTINATION`) immediately below the fixed-height `ANALYZED FLOW:` header row (`min-h-[38px]`) and moved the **Diagnostic Synthesis / Verdict** block (`REPLY RECEIVED — Reply received...`) directly below the 4 hop cards so completing a trace illuminates the 4 hops in-place without shifting the pipeline down by a single pixel.
+
 ## [3.2.15] - 2026-11-13
 
 ### Changed & Enhanced
