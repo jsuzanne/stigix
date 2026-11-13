@@ -55,6 +55,7 @@ export class IoTManager extends EventEmitter {
     private runningDevices: Map<string, IoTDeviceConfig> = new Map();  // in daemon
     private statsCache: Map<string, any> = new Map();
     private logsCache: Map<string, any[]> = new Map();
+    private fleetLogsCache: any[] = [];
     // Traffic rate tracking — snapshot of last received stats per device
     private lastStatsSnapshot: Map<string, { packets: number; bytes: number; ts: number }> = new Map();
     // Per-device pps/bps (refreshed on each stats message, ~every 5s)
@@ -650,7 +651,17 @@ export class IoTManager extends EventEmitter {
                 logs.push(msg);
                 if (logs.length > 100) logs.shift();
                 this.logsCache.set(device_id, logs);
-                this.emit('device:log', msg);
+
+                const cfg = this.managedDevices.get(device_id);
+                const enriched = {
+                    ...msg,
+                    device_name: cfg?.name || device_id,
+                    vendor: cfg?.vendor || '',
+                };
+                this.fleetLogsCache.push(enriched);
+                if (this.fleetLogsCache.length > 150) this.fleetLogsCache.shift();
+
+                this.emit('device:log', enriched);
                 break;
             }
             case 'dhcp_offer':
@@ -699,15 +710,49 @@ export class IoTManager extends EventEmitter {
     }
 
     getDeviceStatus(id: string, includeLogs: boolean = false): any {
+        const logs = this.logsCache.get(id) || [];
+        const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
         const status: any = {
             running: this.runningDevices.has(id),
             state: this.deviceStates.get(id) || 'STOPPED',
             stats: this.statsCache.get(id) || null,
+            lastLog: lastLog ? {
+                timestamp: lastLog.timestamp,
+                level: lastLog.level,
+                message: lastLog.message,
+            } : null,
         };
         if (includeLogs) {
-            status.logs = this.logsCache.get(id) || [];
+            status.logs = logs;
         }
         return status;
+    }
+
+    getFleetLogs(limit: number = 100): any[] {
+        return this.fleetLogsCache.slice(-limit);
+    }
+
+    getProtocolBreakdown(): Record<string, number> {
+        const totals: Record<string, number> = {};
+        for (const [id, stats] of this.cumulativeStats.entries()) {
+            const protos = stats?.protocols || {};
+            for (const [p, count] of Object.entries(protos)) {
+                if (typeof count === 'number' && count > 0) {
+                    totals[p] = (totals[p] || 0) + count;
+                }
+            }
+        }
+        // Also merge live statsCache for devices whose cumulativeStats might be newer
+        for (const [id, stats] of this.statsCache.entries()) {
+            if (this.cumulativeStats.has(id)) continue;
+            const protos = stats?.protocols || {};
+            for (const [p, count] of Object.entries(protos)) {
+                if (typeof count === 'number' && count > 0) {
+                    totals[p] = (totals[p] || 0) + count;
+                }
+            }
+        }
+        return totals;
     }
 
     getRunningDevices(): string[] { return Array.from(this.runningDevices.keys()); }

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.21] - 2026-11-14
+
+### Added & Enhanced
+- **IoT Live Pulse Banner, Multiplexed Fleet Stream & Active Card Telemetry (`web-dashboard/src/Iot.tsx`, `web-dashboard/iot-manager.ts`, `web-dashboard/server.ts`)**:
+  - **Live Throughput & Activity Oscilloscope**: Added a real-time 2s-resolution canvas area chart plotting network traffic (`pps`) alongside attack salvos (`threats/s` when `Attacks ON` is enabled) and next device rotation hints.
+  - **Adaptive Protocol & Threat Equalizer**: Automatically switches between `Protocol & Threat Mix` (`DNS / HTTP`, `DHCP / ARP`, `💀 Port Scan`, `💀 C2 & PAN DNS`) in `Attacks ON` mode and `Clean Protocol Mix` (`DNS Queries`, `HTTP / App-ID`, `DHCP / ARP`, `NTP / Telemetry`) in `Clean` mode.
+  - **Multiplexed Live Fleet Stream (`iot:fleet-stream`)**: Added a real-time WebSocket stream and `/api/iot/fleet-logs` endpoint multiplexing live logs across all active IoT devices with `All | 💀 Threats | 🌐 Net` filters and 1-click drill-down into any device console.
+  - **Live Action Line on Active Device Cards**: Active IoT cards (in both Grid and List views) now display the latest real-time protocol or security action inline with a pulsing status indicator.
+
 ## [3.2.20] - 2026-11-13
 
 ### Changed

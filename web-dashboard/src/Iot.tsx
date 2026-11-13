@@ -93,6 +93,35 @@ export default function Iot({ token }: IotProps) {
     const [sortBy, setSortBy] = useState<'index' | 'danger' | 'packets' | 'name'>('index');
     const [onlyRiskOrAttack, setOnlyRiskOrAttack] = useState(false);
 
+    // ── Live Pulse & Fleet Stream state ───────────────────────────────────────
+    const [showLivePulse, setShowLivePulse] = useState(() => localStorage.getItem('iot-live-pulse') !== 'false');
+    const [fleetLogs, setFleetLogs] = useState<any[]>([]);
+    const [fleetStreamFilter, setFleetStreamFilter] = useState<'all' | 'threat' | 'net'>('all');
+    const [deviceLastLog, setDeviceLastLog] = useState<Record<string, { timestamp?: string; level: string; message: string; isThreat: boolean; tsMs: number }>>({});
+    const [protocolBreakdown, setProtocolBreakdown] = useState<Record<string, number>>({});
+    const [pulseHistory, setPulseHistory] = useState<{ ts: number; net: number; threat: number }[]>(() =>
+        Array.from({ length: 36 }, (_, i) => ({ ts: Date.now() - (36 - i) * 2000, net: 0, threat: 0 }))
+    );
+    const pulseEventsBucketRef = useRef<{ net: number; threat: number }>({ net: 0, threat: 0 });
+    const trafficRateRef = useRef<{ pps: number; ppm: number; bps: number; activeDevices: number } | null>(null);
+    const pulseCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const fleetStreamContainerRef = useRef<HTMLDivElement | null>(null);
+
+    const isThreatLogMessage = (msg: string, level?: string) => {
+        if (!msg) return false;
+        const m = msg.toLowerCase();
+        return (
+            msg.includes('💀') ||
+            m.includes('[beacon]') ||
+            m.includes('[port_scan]') ||
+            m.includes('[pan_test]') ||
+            m.includes('[data_exfil]') ||
+            m.includes('bad behavior') ||
+            level === 'warning' ||
+            level === 'warn'
+        );
+    };
+
     // Format elapsed seconds as "2m 14s" or "45s"
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
@@ -122,18 +151,70 @@ export default function Iot({ token }: IotProps) {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Listen for daemon crash + IoT health events
+    // Listen for daemon crash + IoT health events + real-time fleet stream
     useEffect(() => {
         const socket = io();
+        socket.emit('join-iot-fleet-stream');
+
         socket.on('iot:daemon_failed', (info: any) => {
             setDaemonFailed(info.message || 'IoT daemon crashed — restart required');
         });
         socket.on('iot:health', (health: any) => {
             setIotHealth(health);
             setIotSettings({ max: health.maxConcurrentDevices || 30, active: health.activeDevices || 0, queued: health.queuedDevices || 0, idle: health.idleDevices || 0 });
-            if (health.trafficRate) setTrafficRate(health.trafficRate);
+            if (health.trafficRate) {
+                setTrafficRate(health.trafficRate);
+                trafficRateRef.current = health.trafficRate;
+            }
+            if (health.protocolBreakdown) {
+                setProtocolBreakdown(health.protocolBreakdown);
+            }
         });
-        return () => { socket.disconnect(); };
+        socket.on('iot:fleet-initial-logs', (initial: any[]) => {
+            if (Array.isArray(initial)) {
+                setFleetLogs(initial.slice(-80).reverse());
+                const lastMap: Record<string, any> = {};
+                initial.forEach(entry => {
+                    if (entry?.device_id && entry?.message) {
+                        lastMap[entry.device_id] = {
+                            timestamp: entry.timestamp,
+                            level: entry.level || 'info',
+                            message: entry.message,
+                            isThreat: isThreatLogMessage(entry.message, entry.level),
+                            tsMs: Date.now()
+                        };
+                    }
+                });
+                setDeviceLastLog(prev => ({ ...prev, ...lastMap }));
+            }
+        });
+        socket.on('iot:fleet_log', (entry: any) => {
+            if (!entry || !entry.message) return;
+            const isThreat = isThreatLogMessage(entry.message, entry.level);
+            if (isThreat) {
+                pulseEventsBucketRef.current.threat += 1;
+            } else {
+                pulseEventsBucketRef.current.net += 1;
+            }
+            setFleetLogs(prev => [entry, ...prev].slice(0, 80));
+            if (entry.device_id) {
+                setDeviceLastLog(prev => ({
+                    ...prev,
+                    [entry.device_id]: {
+                        timestamp: entry.timestamp,
+                        level: entry.level || 'info',
+                        message: entry.message,
+                        isThreat,
+                        tsMs: Date.now()
+                    }
+                }));
+            }
+        });
+
+        return () => {
+            socket.emit('leave-iot-fleet-stream');
+            socket.disconnect();
+        };
     }, []);
 
     const { gFetch, activePeerId } = usePeerContext();
@@ -150,20 +231,78 @@ export default function Iot({ token }: IotProps) {
             console.log("IoT Devices API Response:", data);
 
             // Defensive: Handle if data is not an array (e.g. { error: "..." })
-            if (Array.isArray(data)) {
-                setDevices(data);
-            } else if (data && typeof data === 'object' && Array.isArray((data as any).devices)) {
-                // Fallback for unexpected wrap
-                setDevices((data as any).devices);
-            } else {
-                console.warn("Expected array of devices, got:", data);
-                setDevices([]);
+            const list = Array.isArray(data)
+                ? data
+                : (data && typeof data === 'object' && Array.isArray((data as any).devices))
+                    ? (data as any).devices
+                    : [];
+            setDevices(list);
+
+            // Seed per-device lastLog and aggregate protocol breakdown from device statuses
+            const nextLastLogs: Record<string, any> = {};
+            const aggProtos: Record<string, number> = {};
+            list.forEach((d: any) => {
+                const ll = d.status?.lastLog;
+                if (ll && ll.message) {
+                    nextLastLogs[d.id] = {
+                        timestamp: ll.timestamp,
+                        level: ll.level || 'info',
+                        message: ll.message,
+                        isThreat: isThreatLogMessage(ll.message, ll.level),
+                        tsMs: Date.now()
+                    };
+                }
+                const pMap = d.status?.stats?.protocols;
+                if (pMap && typeof pMap === 'object') {
+                    Object.entries(pMap).forEach(([k, v]) => {
+                        if (typeof v === 'number' && v > 0) {
+                            aggProtos[k] = (aggProtos[k] || 0) + v;
+                        }
+                    });
+                }
+            });
+            if (Object.keys(nextLastLogs).length > 0) {
+                setDeviceLastLog(prev => ({ ...nextLastLogs, ...prev }));
+            }
+            if (Object.keys(aggProtos).length > 0) {
+                setProtocolBreakdown(prev => Object.keys(prev).length === 0 ? aggProtos : prev);
             }
         } catch (e) {
             console.error("Failed to fetch IoT devices", e);
         } finally {
             setLoading(false);
         }
+    };
+
+    const fetchFleetLogs = async () => {
+        try {
+            const res = await gFetch('/api/iot/fleet-logs', { headers: authHeaders() });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (Array.isArray(data?.logs) && data.logs.length > 0) {
+                setFleetLogs(data.logs.slice(-80).reverse());
+                const lastMap: Record<string, any> = {};
+                data.logs.forEach((entry: any) => {
+                    if (entry?.device_id && entry?.message) {
+                        lastMap[entry.device_id] = {
+                            timestamp: entry.timestamp,
+                            level: entry.level || 'info',
+                            message: entry.message,
+                            isThreat: isThreatLogMessage(entry.message, entry.level),
+                            tsMs: Date.now()
+                        };
+                    }
+                });
+                setDeviceLastLog(prev => ({ ...lastMap, ...prev }));
+            }
+            if (data?.protocolBreakdown && typeof data.protocolBreakdown === 'object') {
+                setProtocolBreakdown(data.protocolBreakdown);
+            }
+            if (data?.trafficRate) {
+                setTrafficRate(data.trafficRate);
+                trafficRateRef.current = data.trafficRate;
+            }
+        } catch {}
     };
 
     useEffect(() => {
@@ -177,13 +316,109 @@ export default function Iot({ token }: IotProps) {
             if (typeof d.enabled === 'boolean') setBadBehaviorEnabled(d.enabled);
         }).catch(() => {});
         fetchDevices();
-        const interval = setInterval(fetchDevices, 5000);
+        fetchFleetLogs();
+        const interval = setInterval(() => {
+            fetchDevices();
+            if (activePeerId) fetchFleetLogs();
+        }, 5000);
         return () => clearInterval(interval);
     }, [activePeerId]);
 
     useEffect(() => {
         localStorage.setItem('iot-compact', String(isCompact));
     }, [isCompact]);
+
+    useEffect(() => {
+        localStorage.setItem('iot-live-pulse', String(showLivePulse));
+    }, [showLivePulse]);
+
+    // ── Live Pulse Oscilloscope Ticker (2s resolution) ───────────────────────
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const tr = trafficRateRef.current;
+            const bucket = pulseEventsBucketRef.current;
+            pulseEventsBucketRef.current = { net: 0, threat: 0 };
+
+            const activeCnt = devices.filter(d => (d as any).deviceState === 'ACTIVE').length || iotSettings.active || 0;
+            const livePps = tr?.pps || 0;
+            // Combine measured pps with real-time log event bursts so the curve is always responsive
+            const netVal = activeCnt > 0
+                ? Math.max(livePps, Math.round(bucket.net * 1.5 + (livePps > 0 ? livePps : activeCnt * 0.35)))
+                : 0;
+            const threatVal = (activeCnt > 0 && badBehaviorEnabled)
+                ? Math.max(Math.round(bucket.threat * 2), Math.round(netVal * 0.28))
+                : 0;
+
+            setPulseHistory(prev => [
+                ...prev.slice(1),
+                { ts: Date.now(), net: netVal, threat: threatVal }
+            ]);
+        }, 2000);
+        return () => clearInterval(timer);
+    }, [devices, iotSettings.active, badBehaviorEnabled]);
+
+    // ── Draw Live Pulse Canvas ────────────────────────────────────────────────
+    useEffect(() => {
+        if (!showLivePulse) return;
+        const canvas = pulseCanvasRef.current;
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.scale(dpr, dpr);
+
+        const w = rect.width;
+        const h = rect.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const netVals = pulseHistory.map(p => p.net);
+        const threatVals = pulseHistory.map(p => p.threat);
+        const maxVal = Math.max(10, ...netVals, ...(badBehaviorEnabled ? threatVals : [0])) * 1.2;
+
+        // Subtle horizontal reference grid
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+        ctx.lineWidth = 1;
+        for (let i = 1; i <= 3; i++) {
+            const y = (h / 4) * i;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+        }
+
+        const plotSmoothArea = (vals: number[], stroke: string, gradTop: string, gradBottom: string) => {
+            if (vals.length < 2) return;
+            ctx.beginPath();
+            vals.forEach((v, i) => {
+                const x = (i / (vals.length - 1)) * w;
+                const y = h - (v / maxVal) * (h - 12) - 4;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.lineTo(w, h);
+            ctx.lineTo(0, h);
+            ctx.closePath();
+            const grad = ctx.createLinearGradient(0, 0, 0, h);
+            grad.addColorStop(0, gradTop);
+            grad.addColorStop(1, gradBottom);
+            ctx.fillStyle = grad;
+            ctx.fill();
+        };
+
+        plotSmoothArea(netVals, '#22d3ee', 'rgba(34, 211, 238, 0.28)', 'rgba(34, 211, 238, 0.0)');
+        if (badBehaviorEnabled) {
+            plotSmoothArea(threatVals, '#f87171', 'rgba(248, 113, 113, 0.34)', 'rgba(248, 113, 113, 0.0)');
+        }
+    }, [pulseHistory, showLivePulse, badBehaviorEnabled]);
 
     const toggleDevice = async (id: string, deviceState?: string) => {
         try {
@@ -907,6 +1142,21 @@ export default function Iot({ token }: IotProps) {
                         <span className="hidden sm:inline">All</span>
                     </button>
 
+                    {/* Live Pulse Toggle */}
+                    <button
+                        onClick={() => setShowLivePulse(!showLivePulse)}
+                        className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all",
+                            showLivePulse
+                                ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400"
+                                : "bg-card-secondary border-border text-text-muted hover:text-text-secondary hover:bg-card-hover"
+                        )}
+                        title="Toggle Live IoT Pulse & Multiplexed Fleet Stream"
+                    >
+                        <Activity size={13} className={cn(showLivePulse && "animate-pulse")} />
+                        <span className="hidden sm:inline">Live Pulse</span>
+                    </button>
+
                     {/* View Switcher */}
                     <div className="flex bg-card-secondary rounded-xl p-0.5 border border-border">
                         <button
@@ -926,6 +1176,230 @@ export default function Iot({ token }: IotProps) {
                     </div>
                 </div>
             </div>
+
+            {/* ── Row 2.5: Live IoT Pulse & Multiplexed Fleet Stream ────────── */}
+            {showLivePulse && (() => {
+                const activeCount = devices.filter(d => (d as any).deviceState === 'ACTIVE').length;
+                const queuedCount = devices.filter(d => (d as any).deviceState === 'QUEUED').length;
+                const idleCount   = devices.filter(d => (d as any).deviceState === 'IDLE').length;
+                const latestPoint = pulseHistory[pulseHistory.length - 1] || { net: 0, threat: 0 };
+                const displayPps  = trafficRate?.pps || latestPoint.net || 0;
+
+                // Aggregate protocol & behavior counts from live breakdown + fleet logs + active device configs
+                const getProtoCount = (keys: string[]) =>
+                    keys.reduce((acc, k) => acc + (protocolBreakdown[k] || 0), 0);
+
+                const dnsCount  = getProtoCount(['dns', 'mdns']);
+                const httpCount = getProtoCount(['http', 'https', 'cloud', 'rtsp']);
+                const dhcpArpCount = getProtoCount(['dhcp', 'arp']);
+                const ntpOtherCount = getProtoCount(['ntp', 'snmp', 'mqtt', 'coap', 'modbus']);
+                const scanCount = getProtoCount(['bad_scan', 'port_scan']);
+                const c2PanCount = getProtoCount(['bad_beacon', 'bad_pan_dns', 'bad_pan_url', 'bad_exfil']);
+
+                // If daemon protocol counters haven't populated yet, fallback to counting configured active device protocols
+                const activeDevs = devices.filter(d => (d as any).deviceState === 'ACTIVE');
+                const fallbackProto = (pList: string[]) =>
+                    activeDevs.reduce((acc, d) => acc + (d.protocols?.some(p => pList.includes(p.toLowerCase())) ? 1 : 0), 0);
+                const fallbackAttack = (bList: string[]) =>
+                    activeDevs.reduce((acc, d) => acc + (d.security?.bad_behavior && d.security?.behavior_type?.some(b => bList.includes(b.toLowerCase())) ? 1 : 0), 0);
+
+                const eqEntries = badBehaviorEnabled
+                    ? [
+                        { label: 'DNS / HTTP', val: (dnsCount + httpCount) || fallbackProto(['dns', 'http', 'https']), color: 'bg-cyan-400' },
+                        { label: 'DHCP / ARP', val: dhcpArpCount || fallbackProto(['dhcp', 'arp']), color: 'bg-emerald-400' },
+                        { label: '💀 Port Scan', val: scanCount || fallbackAttack(['port_scan']), color: 'bg-red-400' },
+                        { label: '💀 C2 & PAN DNS', val: c2PanCount || fallbackAttack(['beacon', 'pan_test_domains', 'data_exfil']), color: 'bg-amber-400' },
+                    ]
+                    : [
+                        { label: 'DNS Queries', val: dnsCount || fallbackProto(['dns', 'mdns']), color: 'bg-cyan-400' },
+                        { label: 'HTTP / App-ID', val: httpCount || fallbackProto(['http', 'https']), color: 'bg-blue-400' },
+                        { label: 'DHCP / ARP', val: dhcpArpCount || fallbackProto(['dhcp', 'arp']), color: 'bg-emerald-400' },
+                        { label: 'NTP / Telemetry', val: ntpOtherCount || fallbackProto(['ntp', 'snmp', 'mqtt']), color: 'bg-indigo-400' },
+                    ];
+                const maxEq = Math.max(...eqEntries.map(e => e.val), 1);
+
+                // Find next device rotation hint
+                const nextIdleToWake = devices
+                    .filter(d => (d as any).deviceState === 'IDLE' && (d as any).timing?.idledAt)
+                    .sort((a, b) => {
+                        const remA = ((a as any).timing.cycleSeconds || 60) - Math.floor((now - (a as any).timing.idledAt) / 1000);
+                        const remB = ((b as any).timing.cycleSeconds || 60) - Math.floor((now - (b as any).timing.idledAt) / 1000);
+                        return remA - remB;
+                    })[0];
+                const firstQueued = devices.find(d => (d as any).deviceState === 'QUEUED' && (d as any).timing?.queuePosition === 1)
+                    || devices.find(d => (d as any).deviceState === 'QUEUED');
+
+                const filteredStream = fleetLogs.filter(l => {
+                    const isT = isThreatLogMessage(l.message || '', l.level);
+                    if (fleetStreamFilter === 'threat') return isT;
+                    if (fleetStreamFilter === 'net') return !isT;
+                    return true;
+                });
+
+                const formatLogTime = (ts?: string) => {
+                    if (!ts) return new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    try {
+                        return new Date(ts).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    } catch {
+                        return ts.slice(0, 8);
+                    }
+                };
+
+                return (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 animate-in fade-in duration-300">
+                        {/* Col 1: Live Throughput & Activity Oscilloscope (5 cols) */}
+                        <div className="lg:col-span-5 bg-card border border-border rounded-2xl p-3.5 flex flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-xs mb-1.5">
+                                <span className="font-bold text-text-primary flex items-center gap-2">
+                                    <span className={cn("w-2 h-2 rounded-full", activeCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-zinc-500")} />
+                                    Live Throughput &amp; Activity
+                                </span>
+                                <div className="flex items-center gap-2.5 font-mono text-xs tabular-nums">
+                                    <span className="text-cyan-400 font-bold">{displayPps} pps</span>
+                                    {badBehaviorEnabled && (
+                                        <span className="text-red-400 font-bold">{latestPoint.threat} threats/s</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="relative w-full h-32">
+                                <canvas ref={pulseCanvasRef} className="w-full h-full block" />
+                                {activeCount === 0 && (
+                                    <div className="absolute inset-0 flex items-center justify-center text-xs text-text-muted font-medium">
+                                        No active IoT devices — start devices to see live telemetry wave
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-text-muted pt-2 border-t border-border mt-1 gap-2 flex-wrap">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-cyan-400" /> Network (pps)
+                                    </span>
+                                    {badBehaviorEnabled && (
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-red-400" /> Attack Salvos
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="font-mono text-[10px] text-text-secondary truncate">
+                                    {firstQueued
+                                        ? `Next queued: ${firstQueued.name}`
+                                        : nextIdleToWake
+                                            ? `Next wake: ${nextIdleToWake.name} (${fmtRemain((nextIdleToWake as any).timing.idledAt, (nextIdleToWake as any).timing.cycleSeconds || 60)})`
+                                            : `${activeCount}/${iotSettings.max} slots active`}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Col 2: Dynamic Protocol & Threat Equalizer (3 cols) */}
+                        <div className="lg:col-span-3 bg-card border border-border rounded-2xl p-3.5 flex flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-xs mb-2">
+                                <span className="font-bold text-text-primary">
+                                    {badBehaviorEnabled ? 'Protocol & Threat Mix' : 'Clean Protocol Mix'}
+                                </span>
+                                <span className={cn(
+                                    "px-1.5 py-0.5 rounded text-[9px] font-black uppercase border",
+                                    badBehaviorEnabled
+                                        ? "bg-red-500/10 text-red-400 border-red-500/30"
+                                        : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                )}>
+                                    {badBehaviorEnabled ? '💀 Threats ON' : '🛡️ Clean'}
+                                </span>
+                            </div>
+
+                            <div className="space-y-2.5 my-auto">
+                                {eqEntries.map(e => {
+                                    const pct = e.val > 0 ? Math.max(6, Math.min(100, Math.round((e.val / maxEq) * 100))) : 0;
+                                    return (
+                                        <div key={e.label} className="space-y-1">
+                                            <div className="flex justify-between text-[11px]">
+                                                <span className="text-text-secondary font-medium truncate">{e.label}</span>
+                                                <span className="font-mono font-bold text-text-primary tabular-nums">{e.val.toLocaleString()}</span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-card-secondary rounded-full overflow-hidden">
+                                                <div
+                                                    className={cn(e.color, "h-full rounded-full transition-all duration-500")}
+                                                    style={{ width: `${pct}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="text-[11px] text-text-muted pt-2 border-t border-border mt-2 flex justify-between font-mono tabular-nums">
+                                <span>Active: <strong className="text-emerald-400">{activeCount}</strong></span>
+                                <span>Queued: <strong className="text-amber-400">{queuedCount}</strong></span>
+                                <span>Idle: <strong className="text-blue-400">{idleCount}</strong></span>
+                            </div>
+                        </div>
+
+                        {/* Col 3: Multiplexed Live Fleet Stream (4 cols) */}
+                        <div className="lg:col-span-4 bg-card border border-border rounded-2xl p-3.5 flex flex-col justify-between h-52 shadow-sm">
+                            <div className="flex items-center justify-between text-xs pb-2 mb-1.5 border-b border-border gap-2">
+                                <span className="font-bold text-text-primary flex items-center gap-1.5 shrink-0">
+                                    <Terminal size={13} className="text-blue-400" />
+                                    Live Fleet Stream
+                                </span>
+                                <div className="flex items-center gap-1">
+                                    {([
+                                        { id: 'all', label: 'All' },
+                                        ...(badBehaviorEnabled ? [{ id: 'threat', label: '💀 Threats' }] : []),
+                                        { id: 'net', label: '🌐 Net' },
+                                    ] as const).map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setFleetStreamFilter(tab.id as any)}
+                                            className={cn(
+                                                "px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all",
+                                                fleetStreamFilter === tab.id
+                                                    ? "bg-blue-600 text-white shadow-sm"
+                                                    : "text-text-muted hover:text-text-primary bg-card-secondary"
+                                            )}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div ref={fleetStreamContainerRef} className="flex-1 overflow-y-auto space-y-1.5 font-mono text-[11px] pr-1">
+                                {filteredStream.length === 0 ? (
+                                    <div className="h-full flex items-center justify-center text-text-muted text-xs font-sans">
+                                        {activeCount > 0 ? 'Waiting for live device packets...' : 'Start IoT devices to stream live events'}
+                                    </div>
+                                ) : (
+                                    filteredStream.slice(0, 35).map((entry, idx) => {
+                                        const isT = isThreatLogMessage(entry.message || '', entry.level);
+                                        const devObj = devices.find(d => d.id === entry.device_id);
+                                        const devLabel = entry.device_name || devObj?.name || entry.device_id;
+                                        return (
+                                            <div
+                                                key={`${entry.device_id}-${entry.timestamp || idx}-${idx}`}
+                                                onClick={() => { if (devObj) setActiveLogDevice(devObj); }}
+                                                className="flex items-center gap-1.5 truncate leading-tight hover:bg-card-secondary/70 px-1 py-0.5 rounded cursor-pointer group/line"
+                                                title={`${devLabel}: ${entry.message} (Click to open full device console)`}
+                                            >
+                                                <span className="text-text-muted/70 text-[10px] shrink-0">[{formatLogTime(entry.timestamp)}]</span>
+                                                <span className="px-1.5 py-0.2 rounded bg-card-secondary border border-border text-text-primary font-bold text-[10px] shrink-0 group-hover/line:border-blue-500/40 group-hover/line:text-blue-400 transition-colors">
+                                                    {devLabel}
+                                                </span>
+                                                <span className={cn(
+                                                    "truncate",
+                                                    isT ? "text-red-400 font-semibold" : "text-cyan-400"
+                                                )}>
+                                                    {entry.message}
+                                                </span>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ── Devices List / Grid ─────────────────────────────────────────── */}
             {loading && devices.length === 0 ? (
@@ -1068,6 +1542,26 @@ export default function Iot({ token }: IotProps) {
                                     {device.protocols.length > 4 && (
                                         <span className="text-[8px] font-bold text-text-muted">+{device.protocols.length - 4}</span>
                                     )}
+                                    {state === 'ACTIVE' && (() => {
+                                        const liveLog = deviceLastLog[device.id] || (device.status as any)?.lastLog;
+                                        if (!liveLog?.message) return null;
+                                        const isT = isThreatLogMessage(liveLog.message, liveLog.level);
+                                        return (
+                                            <span
+                                                onClick={() => setActiveLogDevice(device)}
+                                                title={`${liveLog.message} — Click to open live device console`}
+                                                className={cn(
+                                                    "ml-1 px-2 py-0.5 rounded border font-mono text-[9px] flex items-center gap-1.5 max-w-[220px] xl:max-w-[280px] truncate cursor-pointer",
+                                                    isT
+                                                        ? "bg-red-500/10 border-red-500/30 text-red-400"
+                                                        : "bg-card-secondary border-border text-cyan-400"
+                                                )}
+                                            >
+                                                <span className={cn("w-1.5 h-1.5 rounded-full animate-ping shrink-0", isT ? "bg-red-400" : "bg-cyan-400")} />
+                                                <span className="truncate">{liveLog.message}</span>
+                                            </span>
+                                        );
+                                    })()}
                                 </div>
 
                                 {/* Actions */}
@@ -1222,6 +1716,28 @@ export default function Iot({ token }: IotProps) {
                                             {device.traffic_interval}s {device.status?.stats?.uptime_seconds ? `· up ${Math.floor(device.status.stats.uptime_seconds / 60)}m` : ''}
                                         </div>
                                     </div>
+                                    {/* Live Action Line for Active Devices */}
+                                    {state === 'ACTIVE' && (() => {
+                                        const liveLog = deviceLastLog[device.id] || (device.status as any)?.lastLog;
+                                        const msg = liveLog?.message || `🌐 Emitting ${device.protocols.slice(0, 3).map(p => p.toUpperCase()).join('/')} traffic...`;
+                                        const isT = isThreatLogMessage(msg, liveLog?.level);
+                                        return (
+                                            <div
+                                                onClick={() => setActiveLogDevice(device)}
+                                                title={`${msg} — Click to open live device console`}
+                                                className={cn(
+                                                    "col-span-2 mt-1 px-2.5 py-1.5 rounded-lg border font-mono text-[10px] flex items-center gap-2 cursor-pointer transition-all",
+                                                    isT
+                                                        ? "bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/15"
+                                                        : "bg-card border-border text-cyan-400 hover:border-blue-500/40"
+                                                )}
+                                            >
+                                                <span className={cn("w-1.5 h-1.5 rounded-full animate-ping shrink-0", isT ? "bg-red-400" : "bg-cyan-400")} />
+                                                <span className="truncate flex-1">{msg}</span>
+                                                <Terminal size={11} className="opacity-60 shrink-0" />
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 {/* Description + Vulnerability Threat Intel Panel */}

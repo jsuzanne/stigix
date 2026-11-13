@@ -2501,10 +2501,20 @@ io.on('connection', (socket) => {
     socket.on('leave-device-logs', (deviceId) => {
         socket.leave(`logs:${deviceId}`);
     });
+
+    socket.on('join-iot-fleet-stream', () => {
+        socket.join('iot:fleet-stream');
+        socket.emit('iot:fleet-initial-logs', iotManager.getFleetLogs(80));
+    });
+
+    socket.on('leave-iot-fleet-stream', () => {
+        socket.leave('iot:fleet-stream');
+    });
 });
 
 iotManager.on('device:log', (log) => {
     io.to(`logs:${log.device_id}`).emit('device:log', log);
+    io.to('iot:fleet-stream').emit('iot:fleet_log', log);
 });
 
 iotManager.on('daemon:failed', (info) => {
@@ -16743,9 +16753,19 @@ app.post('/api/iot/settings', authenticateToken, (req, res) => {
 // GET /api/iot/queue-status — per-device states + timing info + global traffic rate
 app.get('/api/iot/queue-status', authenticateToken, (req, res) => {
     res.json({
-        states:      iotManager.getDeviceStates(),
-        timings:     iotManager.getTimingInfo(),
-        trafficRate: iotManager.getTrafficRate(),
+        states:            iotManager.getDeviceStates(),
+        timings:           iotManager.getTimingInfo(),
+        trafficRate:       iotManager.getTrafficRate(),
+        protocolBreakdown: iotManager.getProtocolBreakdown(),
+    });
+});
+
+// GET /api/iot/fleet-logs — recent multiplexed fleet logs + protocol breakdown (supports Peer Context)
+app.get('/api/iot/fleet-logs', authenticateToken, (req, res) => {
+    res.json({
+        logs:              iotManager.getFleetLogs(80),
+        protocolBreakdown: iotManager.getProtocolBreakdown(),
+        trafficRate:       iotManager.getTrafficRate(),
     });
 });
 
@@ -16840,6 +16860,7 @@ function refreshIotHealth(): void {
         }
         // Traffic rate (packets/s, bits/s) aggregated from active IoT device stats
         iotHealthCache.trafficRate = iotManager.getTrafficRate();
+        iotHealthCache.protocolBreakdown = iotManager.getProtocolBreakdown();
     } catch (e) {
         log('SYSTEM', `IoT health refresh error: ${e}`, 'error');
     }
