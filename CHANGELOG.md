@@ -5,14 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.2.13] - 2026-11-13
+## [3.2.14] - 2026-11-13
 
 ### Changed & Enhanced
 - **VoIP Simulation UX Polish & 5-Axis Pentagon QoS Radar (`web-dashboard/src/Voice.tsx`)**:
-  - Removed redundant `Egress Interface` and `Source Ports` controls from the Global Call Profile UI (preserving automatic OS routing and deterministic `30000 + (CALL_ID % 10000)` source port correlation under the hood) so the Settings drawer is streamlined into 4 core fields (`Max Calls`, `Inter-Call (s)`, `RTP Codec`, `Call Duration (s)`).
+  - Removed redundant `Egress Interface`, `Source Ports`, and `+ Custom Target` controls from the Voice UI (preserving automatic OS routing and deterministic `30000 + (CALL_ID % 10000)` source port correlation under the hood) so the Settings drawer is streamlined into 4 core fields (`Max Calls`, `Inter-Call (s)`, `RTP Codec`, `Call Duration (s)`).
   - Stabilized the primary `Start / Stop Voice Simulation` button width (`w-[254px] justify-center whitespace-nowrap shrink-0`) for zero layout shift when starting or stopping the voice engine.
   - Surfaced the deterministic RTP source port (`:30000+N → <target_ip>:6100`) directly on each active stream card in **Live Streams** without requiring hover tooltips.
-  - Added an inline **5-Branch Pentagon QoS Radar** (`MOS`, `Delivery`, `Latency`, `Jitter`, `SLA` with `/10` normalized score) alongside the **Stigix Voice Targets & QoS Telemetry** table (zero extra vertical height, interactive on row hover/click, and expandable into a full 5-axis modal).
+  - Added a top-aligned (`self-start`) inline **5-Branch Pentagon QoS Radar** (`MOS`, `Delivery`, `Latency`, `Jitter`, `SLA` with radial outward label offset for zero overlap and real `MOS` badge) alongside the **Stigix Voice Targets & QoS Telemetry** table.
 
 ## [3.2.12] - 2026-11-12
 

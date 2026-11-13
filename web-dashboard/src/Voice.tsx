@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePeerContext } from './PeerContext';
 import { Phone, PhoneIncoming, PhoneOutgoing, Play, Pause, BarChart2, Save, Plus, Trash2, Clock, Activity, Wifi, Search, CheckSquare, AlertCircle, Hash, Download, Upload, X, Settings, RotateCw, ArrowRightLeft } from 'lucide-react';
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import toast from 'react-hot-toast';
@@ -1130,80 +1130,22 @@ export default function Voice(props: VoiceProps) {
                                     )}
                                 </p>
                             </div>
-                            <button
-                                onClick={() => setShowAddManual(v => !v)}
-                                className={cn(
-                                    "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer",
-                                    showAddManual
-                                        ? "bg-blue-600/15 text-blue-500 border-blue-500/40"
-                                        : "bg-card-secondary/50 hover:bg-card-secondary text-text-secondary hover:text-text-primary border-border"
-                                )}
-                            >
-                                <Plus size={12} /> Custom Target
-                            </button>
                         </div>
 
-                        {/* Collapsible Manual Target Bar */}
-                        {showAddManual && (
-                            <div className="mb-4 p-3 bg-card-secondary/40 border border-dashed border-blue-500/30 rounded-xl flex flex-wrap items-center justify-between gap-3">
-                                <div className="flex items-center gap-2 flex-1 min-w-[220px]">
-                                    <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest px-2 py-0.5 bg-blue-500/10 rounded">
-                                        Manual Endpoint
-                                    </span>
-                                    <input
-                                        type="text"
-                                        placeholder="IP or FQDN (e.g. 192.168.201.10)"
-                                        value={newRow.host}
-                                        onChange={e => setNewRow(p => ({ ...p, host: e.target.value }))}
-                                        onKeyDown={e => { if (e.key === 'Enter') addManualRow(); }}
-                                        className={cn(
-                                            'flex-1 bg-card border rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold focus:ring-1 focus:ring-blue-500 outline-none',
-                                            newRow.host && !isValidIpOrFqdn(newRow.host) ? 'border-red-500/60 text-red-400' : 'border-border text-text-primary'
-                                        )}
-                                    />
-                                    <span className="text-text-muted opacity-50 font-mono text-xs">:</span>
-                                    <input
-                                        type="text"
-                                        placeholder="6100"
-                                        value={newRow.port}
-                                        onChange={e => setNewRow(p => ({ ...p, port: e.target.value }))}
-                                        onKeyDown={e => { if (e.key === 'Enter') addManualRow(); }}
-                                        className="w-20 bg-card border border-border text-text-primary rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold focus:ring-1 focus:ring-blue-500 outline-none"
-                                    />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={addManualRow}
-                                        disabled={!newRow.host || !isValidIpOrFqdn(newRow.host)}
-                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
-                                    >
-                                        <Plus size={12} /> Add Target
-                                    </button>
-                                    <button
-                                        onClick={() => setShowAddManual(false)}
-                                        className="p-1.5 text-text-muted hover:text-text-primary rounded-lg"
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="flex flex-col xl:flex-row items-stretch gap-5">
-                            {/* Left: Targets Table (Single-line compact) */}
-                            <div className="flex-1 min-w-0 overflow-x-auto">
+                        <div className="flex flex-col xl:flex-row items-start gap-4">
+                            {/* Left: Targets Table (Single-line compact, fits all columns alongside Radar) */}
+                            <div className="flex-1 min-w-0 w-full overflow-x-auto">
                                 <table className="w-full text-sm whitespace-nowrap">
                                     <thead>
                                         <tr className="border-b border-border">
-                                            <th className="pb-2.5 px-2 w-8" />
-                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Site</th>
-                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Endpoint</th>
-                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Calls</th>
-                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Avg MOS</th>
-                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Loss</th>
-                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">RTT / Jitter</th>
-                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-right">Quality</th>
-                                            <th className="pb-2.5 px-1 w-6" />
+                                            <th className="pb-2.5 px-1.5 w-7" />
+                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Site</th>
+                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Endpoint</th>
+                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Calls</th>
+                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Avg MOS</th>
+                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Loss</th>
+                                            <th className="pb-2.5 px-2 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">RTT / Jitter</th>
+                                            <th className="pb-2.5 pl-2 pr-1 text-[9px] font-black text-text-muted uppercase tracking-widest text-right">Quality</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border/30">
@@ -1222,26 +1164,26 @@ export default function Voice(props: VoiceProps) {
                                                     )}
                                                 >
                                                     {/* Checkbox */}
-                                                    <td className="py-3 px-2">
+                                                    <td className="py-2.5 px-1.5">
                                                         <button
                                                             onClick={() => toggleRow(row.id)}
                                                             className={cn(
-                                                                'w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer',
+                                                                'w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer',
                                                                 row.enabled
                                                                     ? 'bg-blue-600 border-blue-600 text-white'
                                                                     : 'border-slate-400 dark:border-slate-600 bg-card-secondary/30 hover:border-blue-500 hover:bg-blue-500/10'
                                                             )}
                                                         >
-                                                            {row.enabled && <CheckSquare size={10} />}
+                                                            {row.enabled && <CheckSquare size={9} />}
                                                         </button>
                                                     </td>
 
                                                     {/* Site name + reachability dot */}
                                                     <td
-                                                        className={cn("py-3 px-2.5 transition-opacity duration-200 cursor-pointer select-none", !row.enabled && "opacity-45")}
+                                                        className={cn("py-2.5 px-2 transition-opacity duration-200 cursor-pointer select-none", !row.enabled && "opacity-45")}
                                                         onClick={() => toggleRow(row.id)}
                                                     >
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-1.5">
                                                             {reachability[row.id] === 'loading' || reachability[row.id] === undefined ? (
                                                                 <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
                                                             ) : reachability[row.id] ? (
@@ -1252,27 +1194,21 @@ export default function Voice(props: VoiceProps) {
                                                             ) : (
                                                                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
                                                             )}
-                                                            {row.isManual ? (
-                                                                <span className="text-[9px] text-orange-500 font-black uppercase tracking-wider px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/20 rounded">
-                                                                    Manual
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-xs font-black text-text-primary group-hover:text-blue-500 transition-colors">
-                                                                    {row.name}
-                                                                </span>
-                                                            )}
+                                                            <span className="text-xs font-black text-text-primary group-hover:text-blue-500 transition-colors">
+                                                                {row.name}
+                                                            </span>
                                                         </div>
                                                     </td>
 
                                                     {/* Host:Port */}
-                                                    <td className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45")}>
-                                                        <span className="text-[11px] font-mono font-bold text-text-muted">{targetKey}</span>
+                                                    <td className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                        <span className="text-[10px] font-mono font-bold text-text-muted">{targetKey}</span>
                                                     </td>
 
                                                     {/* Calls */}
                                                     <td
                                                         onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                        className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
                                                     >
                                                         {stat ? (
                                                             <span className="text-xs font-black text-text-primary">{stat.totalCalls}</span>
@@ -1284,11 +1220,11 @@ export default function Voice(props: VoiceProps) {
                                                     {/* Avg MOS */}
                                                     <td
                                                         onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                        className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
                                                     >
                                                         {stat ? (
                                                             <span className={cn(
-                                                                'text-[10px] font-black px-2 py-0.5 rounded-lg border',
+                                                                'text-[10px] font-black px-1.5 py-0.5 rounded-lg border',
                                                                 stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 4
                                                                     ? 'bg-green-600/10 text-green-500 border-green-500/20'
                                                                     : stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 3
@@ -1303,7 +1239,7 @@ export default function Voice(props: VoiceProps) {
                                                     {/* Avg Loss */}
                                                     <td
                                                         onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                        className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
                                                     >
                                                         {stat ? (
                                                             <span className={cn('text-xs font-black',
@@ -1317,7 +1253,7 @@ export default function Voice(props: VoiceProps) {
                                                     {/* RTT / Jitter */}
                                                     <td
                                                         onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                        className={cn("py-2.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
                                                     >
                                                         {stat ? (
                                                             <div className="flex items-center gap-1 text-xs">
@@ -1333,35 +1269,20 @@ export default function Voice(props: VoiceProps) {
                                                     {/* Quality badge + radar modal trigger */}
                                                     <td
                                                         onClick={() => stat && setSelectedStat(stat)}
-                                                        className={cn("py-3 px-2.5 text-right transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                        className={cn("py-2.5 pl-2 pr-1 text-right transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
                                                         title={stat ? "Hover to preview in Pentagon Radar • Click to zoom" : undefined}
                                                     >
                                                         {stat ? (
-                                                            <div className="inline-flex items-center justify-end gap-1.5 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
-                                                                <div className={cn('h-2 w-2 rounded-full', qualityDotClass(stat.quality))} />
-                                                                <span className={cn('text-[9px] font-black uppercase tracking-widest', qualityTextClass(stat.quality))}>
+                                                            <div className="inline-flex items-center justify-end gap-1 px-1.5 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
+                                                                <div className={cn('h-1.5 w-1.5 rounded-full', qualityDotClass(stat.quality))} />
+                                                                <span className={cn('text-[9px] font-black uppercase tracking-wider', qualityTextClass(stat.quality))}>
                                                                     {stat.quality}
                                                                 </span>
-                                                                <BarChart2 size={11} className="text-blue-500 opacity-60 ml-0.5" />
+                                                                <BarChart2 size={10} className="text-blue-500 opacity-60" />
                                                             </div>
                                                         ) : (
                                                             <span className="text-xs text-text-muted opacity-30">—</span>
                                                         )}
-                                                    </td>
-
-                                                    {/* Actions (Remove for manual target) */}
-                                                    <td className={cn("py-3 px-1 transition-opacity duration-200", !row.enabled && "opacity-45")}>
-                                                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            {row.isManual && (
-                                                                <button
-                                                                    onClick={() => removeRow(row.id)}
-                                                                    className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
-                                                                    title="Remove custom target"
-                                                                >
-                                                                    <Trash2 size={12} />
-                                                                </button>
-                                                            )}
-                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -1370,8 +1291,8 @@ export default function Voice(props: VoiceProps) {
                                         {/* Empty state */}
                                         {targetRows.length === 0 && !loading && (
                                             <tr>
-                                                <td colSpan={9} className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
-                                                    No voice-capable Stigix targets — click "+ Custom Target" above or enable Voice capability in Targets
+                                                <td colSpan={8} className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
+                                                    No voice-capable Stigix targets enabled in Registry
                                                 </td>
                                             </tr>
                                         )}
@@ -1379,36 +1300,38 @@ export default function Voice(props: VoiceProps) {
                                 </table>
                             </div>
 
-                            {/* Right: Compact 5-Branch Pentagon Radar (Zero extra vertical height) */}
+                            {/* Right: Compact Top-Aligned 5-Branch Pentagon Radar (Zero label overlap, no vertical stretching) */}
                             {perTargetStats.length > 0 && (() => {
                                 const activeRadarStat = (activeRadarTargetKey && perTargetStatsMap.get(activeRadarTargetKey)) || perTargetStats[0];
                                 const miniRadarData = buildPentagonRadarData(activeRadarStat);
-                                const avgScore10 = miniRadarData.length
-                                    ? (miniRadarData.reduce((acc, d) => acc + d.value, 0) / miniRadarData.length / 10).toFixed(1)
-                                    : '—';
                                 const rColor = activeRadarStat.quality === 'excellent' ? '#3b82f6' : activeRadarStat.quality === 'fair' ? '#f97316' : '#ef4444';
                                 return (
                                     <div
                                         onClick={() => setSelectedStat(activeRadarStat)}
                                         title="Hover any target row to inspect its 5-axis QoS pentagon • Click to expand"
-                                        className="xl:w-[215px] shrink-0 bg-card-secondary/35 border border-border/70 hover:border-blue-500/40 rounded-2xl p-3 flex flex-col justify-between cursor-pointer transition-all"
+                                        className="w-full xl:w-[235px] shrink-0 self-start bg-card-secondary/35 border border-border/70 hover:border-blue-500/40 rounded-2xl p-3 space-y-2 cursor-pointer transition-all"
                                     >
                                         <div className="flex items-center justify-between gap-1.5">
                                             <div className="min-w-0">
                                                 <div className="text-[8px] font-black uppercase tracking-widest text-text-muted opacity-60">
                                                     QoS Radar
                                                 </div>
-                                                <div className="text-[11px] font-black text-text-primary truncate">
+                                                <div className="text-xs font-black text-text-primary truncate">
                                                     {activeRadarStat.name}
                                                 </div>
                                             </div>
-                                            <span className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-black bg-blue-500/10 text-blue-500 border border-blue-500/20 shrink-0">
-                                                {avgScore10}/10
+                                            <span className={cn(
+                                                "px-2 py-0.5 rounded-md text-[10px] font-mono font-black border shrink-0",
+                                                activeRadarStat.avgMos !== 'N/A' && parseFloat(activeRadarStat.avgMos) >= 4
+                                                    ? "bg-green-600/10 text-green-500 border-green-500/20"
+                                                    : "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                            )}>
+                                                MOS {activeRadarStat.avgMos}
                                             </span>
                                         </div>
 
                                         {perTargetStats.length > 1 && (
-                                            <div className="flex items-center gap-1 flex-wrap mt-1.5" onClick={e => e.stopPropagation()}>
+                                            <div className="flex items-center gap-1 flex-wrap" onClick={e => e.stopPropagation()}>
                                                 {perTargetStats.map(s => {
                                                     const isSel = s.target === activeRadarStat.target;
                                                     const shortLabel = s.name.replace(/-Ubuntu$/i, '');
@@ -1418,7 +1341,7 @@ export default function Voice(props: VoiceProps) {
                                                             type="button"
                                                             onClick={() => setActiveRadarTargetKey(s.target)}
                                                             className={cn(
-                                                                "px-1.5 py-0.5 rounded text-[8px] font-black tracking-tight transition-all cursor-pointer border",
+                                                                "px-1.5 py-0.5 rounded text-[8.5px] font-black tracking-tight transition-all cursor-pointer border",
                                                                 isSel
                                                                     ? "bg-blue-600 text-white border-blue-500 shadow-xs"
                                                                     : "bg-card text-text-muted hover:text-text-primary border-border/60"
@@ -1431,17 +1354,34 @@ export default function Voice(props: VoiceProps) {
                                             </div>
                                         )}
 
-                                        <div className="h-[148px] w-full -my-1">
+                                        <div className="h-[176px] w-full">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <RadarChart data={miniRadarData} margin={{ top: 14, right: 24, bottom: 10, left: 24 }}>
-                                                    <PolarGrid stroke="var(--border)" strokeOpacity={0.6} />
+                                                <RadarChart data={miniRadarData} outerRadius="60%">
+                                                    <PolarGrid stroke="var(--border)" strokeOpacity={0.65} />
+                                                    <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
                                                     <PolarAngleAxis
                                                         dataKey="metric"
-                                                        tick={({ x, y, payload }: any) => (
-                                                            <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fill="var(--text-secondary)" fontSize={8.5} fontWeight={800}>
-                                                                {payload.value}
-                                                            </text>
-                                                        )}
+                                                        tick={({ x, y, cx, cy, payload }: any) => {
+                                                            const dx = x - cx;
+                                                            const dy = y - cy;
+                                                            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                                                            const ox = x + (dx / dist) * 8;
+                                                            const oy = y + (dy / dist) * 7;
+                                                            const anchor = dx > 12 ? 'start' : dx < -12 ? 'end' : 'middle';
+                                                            return (
+                                                                <text
+                                                                    x={ox}
+                                                                    y={oy}
+                                                                    textAnchor={anchor}
+                                                                    dominantBaseline="central"
+                                                                    fill="var(--text-secondary)"
+                                                                    fontSize={9}
+                                                                    fontWeight={800}
+                                                                >
+                                                                    {payload.value}
+                                                                </text>
+                                                            );
+                                                        }}
                                                     />
                                                     <Radar
                                                         dataKey="value"
@@ -1811,9 +1751,6 @@ export default function Voice(props: VoiceProps) {
             {/* ─── 5-Axis Pentagon QoS Radar Modal ─── */}
             {selectedStat && (() => {
                 const radarData = buildPentagonRadarData(selectedStat);
-                const avgScore10 = radarData.length
-                    ? (radarData.reduce((acc, d) => acc + d.value, 0) / radarData.length / 10).toFixed(1)
-                    : '—';
                 const quality      = selectedStat.quality;
                 const qualityColor = quality === 'excellent' ? '#22c55e' : quality === 'fair' ? '#f97316' : '#ef4444';
                 const radarColor   = quality === 'excellent' ? '#3b82f6' : quality === 'fair' ? '#f97316' : '#ef4444';
@@ -1835,8 +1772,13 @@ export default function Voice(props: VoiceProps) {
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <h4 className="text-sm font-black text-text-primary tracking-tight">{selectedStat.name}</h4>
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                                            {avgScore10} / 10
+                                        <span className={cn(
+                                            "px-2 py-0.5 rounded-md text-[10px] font-mono font-black border",
+                                            selectedStat.avgMos !== 'N/A' && parseFloat(selectedStat.avgMos) >= 4
+                                                ? "bg-green-600/10 text-green-500 border-green-500/20"
+                                                : "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                        )}>
+                                            MOS {selectedStat.avgMos}
                                         </span>
                                     </div>
                                     {selectedStat.name !== selectedStat.target && (
@@ -1858,19 +1800,26 @@ export default function Voice(props: VoiceProps) {
                                 </button>
                             </div>
 
-                            {/* 5-Branch Pentagon Radar chart */}
-                            <div className="h-60">
+                            {/* 5-Branch Pentagon Radar chart (Radial label offset -> zero overlap) */}
+                            <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <RadarChart data={radarData} margin={{ top: 14, right: 34, bottom: 14, left: 34 }}>
+                                    <RadarChart data={radarData} outerRadius="60%">
                                         <PolarGrid stroke="var(--border)" strokeOpacity={0.55} />
+                                        <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
                                         <PolarAngleAxis
                                             dataKey="metric"
-                                            tick={({ x, y, payload }: any) => {
+                                            tick={({ x, y, cx, cy, payload }: any) => {
                                                 const d = radarData.find(r => r.metric === payload.value);
+                                                const dx = x - cx;
+                                                const dy = y - cy;
+                                                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                                                const ox = x + (dx / dist) * 14;
+                                                const oy = y + (dy / dist) * 12 + (dy < -20 ? -6 : 0);
+                                                const anchor = dx > 16 ? 'start' : dx < -16 ? 'end' : 'middle';
                                                 return (
-                                                    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fill="var(--text-secondary)" fontSize={10} fontWeight={800}>
-                                                        <tspan x={x} dy="0">{payload.value}</tspan>
-                                                        <tspan x={x} dy={13} fontSize={9} opacity={0.65} fill="var(--text-muted)">{d?.raw}</tspan>
+                                                    <text x={ox} y={oy} textAnchor={anchor} dominantBaseline="central" fill="var(--text-secondary)" fontSize={10} fontWeight={800}>
+                                                        <tspan x={ox} dy="0">{payload.value}</tspan>
+                                                        <tspan x={ox} dy={13} fontSize={9} opacity={0.65} fill="var(--text-muted)">{d?.raw}</tspan>
                                                     </text>
                                                 );
                                             }}
@@ -1887,13 +1836,12 @@ export default function Voice(props: VoiceProps) {
                                 </ResponsiveContainer>
                             </div>
 
-                            {/* 5-Axis metric breakdown grid */}
-                            <div className="grid grid-cols-5 gap-1.5 mt-4">
+                            {/* 5-Axis metric breakdown grid (Real telecom metrics only) */}
+                            <div className="grid grid-cols-5 gap-1.5 mt-3">
                                 {radarData.map(d => (
                                     <div key={d.metric} className="bg-card-secondary/50 border border-border rounded-xl p-2 text-center">
                                         <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mb-1">{d.metric}</div>
                                         <div className="text-[11px] font-black text-text-primary">{d.raw}</div>
-                                        <div className="text-[8px] font-mono text-blue-500/80 font-bold mt-0.5">{(d.value / 10).toFixed(1)}/10</div>
                                     </div>
                                 ))}
                             </div>
