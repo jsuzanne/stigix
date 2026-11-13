@@ -7276,6 +7276,18 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
         }
     }
 
+    // Extract resolved target IP from traceroute header ("traceroute to meet.google.com (142.251.153.5), ...") or DNS lookup
+    let resolvedIp: string | null = (ipv4Regex.test(target) || ipv6Regex.test(target)) ? target : null;
+    const headerMatch = rawOutput.match(/traceroute to\s+\S+\s+\(([^)]+)\)/i);
+    if (headerMatch && headerMatch[1]) {
+        resolvedIp = headerMatch[1].trim();
+    } else if (!resolvedIp) {
+        try {
+            const lookedUp = await dns.promises.lookup(target);
+            if (lookedUp?.address) resolvedIp = lookedUp.address;
+        } catch {}
+    }
+
     // Parse hops
     const lines = rawOutput.split('\n');
     const hops: Array<{ hop: number; ip: string; rtt_ms: number | null; status: string }> = [];
@@ -7292,21 +7304,37 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
             const hopIp = isNoReply ? '*' : (match[2] || '*');
             const rtt = match[3] ? parseFloat(match[3]) : null;
             const isTimeout = hopIp === '*' || isNoReply || rtt === null;
+            const isTargetHop = !isTimeout && (
+                hopIp === target ||
+                hopIp.includes(target) ||
+                (resolvedIp !== null && hopIp === resolvedIp) ||
+                trimmed.toLowerCase().includes('reached')
+            );
+            if (isTargetHop) {
+                destReached = true;
+            }
             hops.push({
                 hop: hopNum,
                 ip: isTimeout ? '*' : hopIp,
                 rtt_ms: rtt,
-                status: isTimeout ? 'timeout' : 'ok'
+                status: isTimeout ? 'timeout' : isTargetHop ? 'reached' : 'ok'
             });
-            if (!isTimeout && (hopIp === target || hopIp.includes(target) || trimmed.toLowerCase().includes('reached'))) {
-                destReached = true;
-            }
+        }
+    }
+
+    // If traceroute stopped before maxHops and the final hop responded with a valid RTT, the destination replied
+    if (hops.length > 0) {
+        const lastHop = hops[hops.length - 1];
+        if (lastHop.status !== 'timeout' && (destReached || lastHop.hop < maxHops)) {
+            destReached = true;
+            lastHop.status = 'reached';
         }
     }
 
     res.json({
         success: true,
         target,
+        resolved_ip: resolvedIp,
         method,
         port: method === 'tcp' ? port : undefined,
         max_hops: maxHops,

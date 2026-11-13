@@ -14,6 +14,8 @@ interface HopData {
 interface TracerouteResponse {
     success: boolean;
     target?: string;
+    resolved_ip?: string | null;
+    method?: string;
     max_hops?: number;
     destination_reached?: boolean;
     total_hops?: number;
@@ -70,6 +72,7 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState<boolean>(false);
     const [showRaw, setShowRaw] = useState<boolean>(false);
+    const [expandedSilentRanges, setExpandedSilentRanges] = useState<Record<string, boolean>>({});
 
     // Sync initial target whenever modal opens
     useEffect(() => {
@@ -79,6 +82,7 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
             setResult(null);
             setError(null);
             setShowRaw(false);
+            setExpandedSilentRanges({});
             if (cleaned) {
                 // Auto-run when opened with a specific target
                 executeTrace(cleaned, maxHops, method, port);
@@ -98,6 +102,7 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
         setLoading(true);
         setError(null);
         setResult(null);
+        setExpandedSilentRanges({});
 
         try {
             const effectiveToken = token || localStorage.getItem('token') || '';
@@ -172,11 +177,14 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
                             <Route size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-text-primary tracking-tight flex items-center gap-2">
+                            <h3 className="text-sm font-bold text-text-primary tracking-tight flex items-center gap-2 flex-wrap">
                                 {title}
                                 {target && (
                                     <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-card-secondary text-text-secondary border border-border">
                                         {target}
+                                        {result?.resolved_ip && result.resolved_ip.toLowerCase() !== target.trim().toLowerCase()
+                                            ? ` → ${result.resolved_ip}`
+                                            : ''}
                                     </span>
                                 )}
                             </h3>
@@ -392,64 +400,197 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
                                 </div>
                             </div>
 
-                            {/* Hops Table */}
-                            {result.hops && result.hops.length > 0 ? (
-                                <div className="border border-border/80 rounded-xl overflow-hidden shadow-sm bg-card">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead className="bg-card-secondary/60 border-b border-border text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                                            <tr>
-                                                <th className="py-2.5 px-4 w-16 text-center">Hop</th>
-                                                <th className="py-2.5 px-4">Node / Gateway IP</th>
-                                                <th className="py-2.5 px-4 text-right">Round-Trip Time</th>
-                                                <th className="py-2.5 px-4 text-right">Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-border text-xs font-mono">
-                                            {result.hops.map((h) => {
-                                                const isFinal = h.hop === result.hops?.length;
-                                                const isTargetMatch = h.ip.trim() === target.trim();
-                                                return (
-                                                    <tr 
-                                                        key={h.hop}
-                                                        className={twMerge(
-                                                            "hover:bg-card-secondary/30 transition-colors",
-                                                            isTargetMatch ? "bg-blue-500/5 font-semibold" : ""
-                                                        )}
-                                                    >
-                                                        <td className="py-2.5 px-4 text-center text-text-muted font-bold">
-                                                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-card-secondary text-[10px] border border-border">
-                                                                {h.hop < 10 ? `0${h.hop}` : h.hop}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-2.5 px-4">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={h.ip === '*' ? "text-text-muted" : "text-text-primary"}>
-                                                                    {h.ip}
-                                                                </span>
-                                                                {isTargetMatch && (
-                                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                                                                        Target
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="py-2.5 px-4 text-right">
-                                                            {getLatencyBadge(h.rtt_ms)}
-                                                        </td>
-                                                        <td className="py-2.5 px-4 text-right text-[10px] font-bold uppercase">
-                                                            {h.status === 'reached' ? (
-                                                                <span className="text-emerald-500">Reached</span>
-                                                            ) : (
-                                                                <span className="text-text-muted/60">Timeout</span>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                            {/* UDP High-Port Silent Drop Hint Banner */}
+                            {!result.destination_reached && method === 'udp' && (
+                                <div className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] font-mono text-amber-700 dark:text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <span>
+                                        <strong>Note:</strong> UDP traceroute uses high ports (33434+) which many cloud/SaaS edges silently drop without returning ICMP Port Unreachable.
+                                    </span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setMethod('tcp');
+                                                executeTrace(target, maxHops, 'tcp', port);
+                                            }}
+                                            className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold uppercase cursor-pointer"
+                                        >
+                                            Retry with TCP :{port}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setMethod('icmp');
+                                                executeTrace(target, maxHops, 'icmp', port);
+                                            }}
+                                            className="px-2.5 py-1 rounded-lg bg-card-secondary hover:bg-card border border-border text-text-primary text-[10px] font-bold uppercase cursor-pointer"
+                                        >
+                                            Retry with ICMP
+                                        </button>
+                                    </div>
                                 </div>
-                            ) : (
+                            )}
+
+                            {/* Hops Table (with automatic grouping of consecutive silent '*' hops) */}
+                            {result.hops && result.hops.length > 0 ? (() => {
+                                type HopSegment =
+                                    | { kind: 'single'; hop: HopData }
+                                    | { kind: 'silent_group'; key: string; startHop: number; endHop: number; hops: HopData[] };
+
+                                const segments: HopSegment[] = [];
+                                const allHops = result.hops;
+                                let idx = 0;
+                                while (idx < allHops.length) {
+                                    const cur = allHops[idx];
+                                    const isSilent = cur.ip === '*' || cur.rtt_ms === null || cur.status === 'timeout';
+                                    if (!isSilent) {
+                                        segments.push({ kind: 'single', hop: cur });
+                                        idx++;
+                                    } else {
+                                        const group: HopData[] = [cur];
+                                        let nextIdx = idx + 1;
+                                        while (nextIdx < allHops.length) {
+                                            const nxt = allHops[nextIdx];
+                                            if (nxt.ip === '*' || nxt.rtt_ms === null || nxt.status === 'timeout') {
+                                                group.push(nxt);
+                                                nextIdx++;
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                        if (group.length >= 2) {
+                                            const startHop = group[0].hop;
+                                            const endHop = group[group.length - 1].hop;
+                                            segments.push({
+                                                kind: 'silent_group',
+                                                key: `${startHop}-${endHop}`,
+                                                startHop,
+                                                endHop,
+                                                hops: group
+                                            });
+                                        } else {
+                                            segments.push({ kind: 'single', hop: cur });
+                                        }
+                                        idx = nextIdx;
+                                    }
+                                }
+
+                                const renderHopRow = (h: HopData) => {
+                                    const isFinal = h.hop === result.hops?.length;
+                                    const resolvedIp = result.resolved_ip?.trim() || '';
+                                    const isTargetMatch =
+                                        h.ip !== '*' &&
+                                        (h.status === 'reached' ||
+                                            h.ip.trim() === target.trim() ||
+                                            (resolvedIp !== '' && h.ip.trim() === resolvedIp) ||
+                                            (isFinal && h.rtt_ms !== null && Boolean(result.destination_reached)));
+                                    const isOkHop = !isTargetMatch && h.ip !== '*' && h.rtt_ms !== null;
+
+                                    return (
+                                        <tr
+                                            key={h.hop}
+                                            className={twMerge(
+                                                'hover:bg-card-secondary/30 transition-colors',
+                                                isTargetMatch ? 'bg-emerald-500/[0.06] font-semibold' : ''
+                                            )}
+                                        >
+                                            <td className="py-2.5 px-4 text-center text-text-muted font-bold">
+                                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-card-secondary text-[10px] border border-border">
+                                                    {h.hop < 10 ? `0${h.hop}` : h.hop}
+                                                </span>
+                                            </td>
+                                            <td className="py-2.5 px-4">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={h.ip === '*' ? 'text-text-muted' : 'text-text-primary'}>
+                                                        {h.ip}
+                                                    </span>
+                                                    {isTargetMatch && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                                                            Target
+                                                        </span>
+                                                    )}
+                                                    {h.hop === 1 && isOkHop && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                                                            First Hop
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="py-2.5 px-4 text-right">
+                                                {getLatencyBadge(h.rtt_ms)}
+                                            </td>
+                                            <td className="py-2.5 px-4 text-right text-[10px] font-bold uppercase">
+                                                {isTargetMatch ? (
+                                                    <span className="text-emerald-500">Target Reached</span>
+                                                ) : isOkHop ? (
+                                                    <span className="text-cyan-500 dark:text-cyan-400">OK</span>
+                                                ) : (
+                                                    <span className="text-text-muted/60">No ICMP TTL Reply</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                };
+
+                                return (
+                                    <div className="border border-border/80 rounded-xl overflow-hidden shadow-sm bg-card">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-card-secondary/60 border-b border-border text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                                                <tr>
+                                                    <th className="py-2.5 px-4 w-20 text-center">Hop</th>
+                                                    <th className="py-2.5 px-4">Node / Gateway IP</th>
+                                                    <th className="py-2.5 px-4 text-right">Round-Trip Time</th>
+                                                    <th className="py-2.5 px-4 text-right">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border text-xs font-mono">
+                                                {segments.map((seg) => {
+                                                    if (seg.kind === 'single') {
+                                                        return renderHopRow(seg.hop);
+                                                    }
+                                                    const isExpanded = Boolean(expandedSilentRanges[seg.key]);
+                                                    const startLabel = seg.startHop < 10 ? `0${seg.startHop}` : String(seg.startHop);
+                                                    const endLabel = seg.endHop < 10 ? `0${seg.endHop}` : String(seg.endHop);
+                                                    return (
+                                                        <React.Fragment key={seg.key}>
+                                                            <tr
+                                                                onClick={() =>
+                                                                    setExpandedSilentRanges((prev) => ({
+                                                                        ...prev,
+                                                                        [seg.key]: !prev[seg.key]
+                                                                    }))
+                                                                }
+                                                                className="bg-card-secondary/25 hover:bg-card-secondary/50 transition-colors cursor-pointer select-none"
+                                                            >
+                                                                <td className="py-2 px-4 text-center text-text-muted font-bold">
+                                                                    <span className="inline-flex items-center justify-center px-1.5 h-6 rounded-md bg-card-secondary text-[10px] border border-border">
+                                                                        {startLabel}–{endLabel}
+                                                                    </span>
+                                                                </td>
+                                                                <td colSpan={2} className="py-2 px-4 text-[11px] text-text-muted">
+                                                                    <span className="font-bold text-text-secondary">
+                                                                        {seg.hops.length} silent transit hops
+                                                                    </span>{' '}
+                                                                    <span className="opacity-75">
+                                                                        (ICMP Time Exceeded filtered in transit or tunnel-encapsulated)
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2 px-4 text-right text-[10px] font-bold uppercase text-blue-500 dark:text-blue-400">
+                                                                    <span className="inline-flex items-center gap-1 justify-end">
+                                                                        <span>{isExpanded ? 'Hide' : `Show ${seg.hops.length} hops`}</span>
+                                                                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                            {isExpanded && seg.hops.map(renderHopRow)}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })() : (
                                 <div className="text-xs text-text-muted italic py-4 text-center">
                                     No hop details returned.
                                 </div>

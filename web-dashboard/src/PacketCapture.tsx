@@ -55,21 +55,25 @@ export interface TraceHistoryItem {
     forensics?: {
         tcp_mss_tx: number | null;
         tcp_mss_rx: number | null;
+        mss_status?: string | null;
         mss_clamped: boolean;
         mss_clamped_delta: number | null;
         df_bit_tx: boolean | null;
+        df_bit_rx?: boolean | null;
         max_frame_bytes: number | null;
         dscp_tx: number | null;
         dscp_tx_label: string | null;
         dscp_rx: number | null;
         dscp_rx_label: string | null;
+        dscp_match?: boolean | null;
+        dscp_status?: string | null;
         dscp_preserved: boolean | null;
         ttl_tx: number | null;
         ttl_rx: number | null;
         initial_ttl_guess: number | null;
         estimated_return_hops: number | null;
-        tcp_retransmissions: number;
-        zero_window_events: number;
+        tcp_retransmissions: number | null;
+        zero_window_events: number | null;
     };
 }
 
@@ -599,6 +603,7 @@ export default function PacketCapture({
     const [showCorrelationDetail, setShowCorrelationDetail] = useState<boolean>(false);
     const [activeForensicsHelp, setActiveForensicsHelp] = useState<'timing' | 'mss' | 'dscp' | 'ttl' | 'hub' | null>(null);
     const [showSourceCaptureMeta, setShowSourceCaptureMeta] = useState<boolean>(false);
+    const [traceHistorySearch, setTraceHistorySearch] = useState<string>('');
 
     // Draggable Column Widths for Virtual Packet Table
     const DEFAULT_COL_WIDTHS = useMemo(() => ({
@@ -2260,85 +2265,12 @@ export default function PacketCapture({
                             </div>
                         </div>
 
-                        {/* Secondary Row: Compact Favorites + Collapsible Advanced Options with Live Summary */}
+                        {/* Secondary Row: DEM / Failover Probe Selector + Collapsible Advanced Options with Live Summary */}
                         <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
-                            {/* Compact Favorites with active state matching & full details on hover */}
-                            <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
-                                <span className="font-black uppercase tracking-wider text-text-muted mr-0.5">Favorites:</span>
-                                {[
-                                    {
-                                        id: 'dc1_app',
-                                        label: 'DC1 App',
-                                        dst: '192.168.212.100',
-                                        port: 8098,
-                                        proto: 'tcp' as const,
-                                        tooltip: 'DC1 Private App · 192.168.212.100 · TCP/8098'
-                                    },
-                                    {
-                                        id: 'onprem_app',
-                                        label: 'OnPrem App',
-                                        dst: '192.168.203.100',
-                                        port: 8085,
-                                        proto: 'tcp' as const,
-                                        tooltip: 'OnPrem App 8085 · 192.168.203.100 · TCP/8085'
-                                    },
-                                    {
-                                        id: 'o365_ip',
-                                        label: 'O365 via DC2',
-                                        dst: '40.99.155.50',
-                                        port: 443,
-                                        proto: 'tcp' as const,
-                                        tooltip: 'Microsoft 365 Backhaul · 40.99.155.50 · TCP/443'
-                                    },
-                                    {
-                                        id: 'm365_fqdn',
-                                        label: 'Microsoft 365',
-                                        dst: 'login.microsoftonline.com',
-                                        port: 443,
-                                        proto: 'tcp' as const,
-                                        tooltip: 'Microsoft 365 Login FQDN · login.microsoftonline.com · TCP/443'
-                                    },
-                                    {
-                                        id: 'br5_dia',
-                                        label: 'BR5 DIA',
-                                        site: 'BR5',
-                                        dst: '172.217.20.46',
-                                        port: 443,
-                                        proto: 'tcp' as const,
-                                        tooltip: 'Remote Branch BR5 Direct Internet Breakout · 172.217.20.46 · TCP/443'
-                                    }
-                                ].map((fav) => {
-                                    const isFavActive =
-                                        traceDestination.trim().toLowerCase() === fav.dst.toLowerCase() &&
-                                        traceProtocol === fav.proto &&
-                                        (String(fav.proto) === 'icmp' || traceDstPort === fav.port) &&
-                                        (!fav.site || traceSourceSite.toUpperCase() === fav.site.toUpperCase());
-                                    return (
-                                        <button
-                                            key={fav.id}
-                                            type="button"
-                                            title={fav.tooltip}
-                                            onClick={() => {
-                                                if (fav.site) setTraceSourceSite(fav.site);
-                                                setTraceDestination(fav.dst);
-                                                setTraceDstPort(fav.port);
-                                                setTraceProtocol(fav.proto);
-                                                setTraceSrcIp('');
-                                                setActiveProbeLabel(fav.label);
-                                            }}
-                                            className={`px-2.5 py-0.5 rounded-lg border font-mono font-bold transition-all cursor-pointer ${
-                                                isFavActive
-                                                    ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-700 dark:text-indigo-300 shadow-xs'
-                                                    : 'bg-card-secondary hover:bg-indigo-500/10 border-border hover:border-indigo-500/35 text-text-secondary hover:text-indigo-700 dark:hover:text-indigo-300'
-                                            }`}
-                                        >
-                                            {fav.label}
-                                        </button>
-                                    );
-                                })}
-
-                                {/* Quick Selector for Configured DEM Connectivity & Failover Probes */}
-                                {configuredProbes.length > 0 && (() => {
+                            {/* Configured DEM Connectivity & Failover Probes Selector */}
+                            <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                                <span className="font-black uppercase tracking-wider text-text-muted">DEM / Failover Probe:</span>
+                                {configuredProbes.length > 0 ? (() => {
                                     const demGroup = configuredProbes
                                         .filter(p => p.category === 'DEM Connectivity')
                                         .map((p): StigixSelectOption => ({
@@ -2367,10 +2299,10 @@ export default function PacketCapture({
                                     );
 
                                     return (
-                                        <div className="inline-flex items-center gap-1 ml-1 pl-1.5 border-l border-border/60">
+                                        <div className="inline-flex items-center gap-1.5">
                                             <StigixSelect
                                                 value={activeMatchedProbe?.id || ''}
-                                                placeholder="Probes ▾"
+                                                placeholder="Select a configured DEM / Failover target…"
                                                 onChange={(val) => {
                                                     const chosen = configuredProbes.find(p => p.id === val);
                                                     if (!chosen) return;
@@ -2384,12 +2316,27 @@ export default function PacketCapture({
                                                 disabled={tracingFlow}
                                                 accent="cyan"
                                                 size="sm"
-                                                menuMinWidth={300}
-                                                triggerClassName="bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/35 rounded-lg h-6 px-2 text-[10px] font-mono font-bold text-cyan-700 dark:text-cyan-300"
+                                                menuMinWidth={320}
+                                                triggerClassName="bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/35 rounded-lg h-7 px-2.5 text-[10px] font-mono font-bold text-cyan-700 dark:text-cyan-300"
                                             />
+                                            {activeProbeLabel && (
+                                                <span className="px-2 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/35 text-indigo-700 dark:text-indigo-300 font-mono font-bold flex items-center gap-1">
+                                                    <span>{activeProbeLabel}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActiveProbeLabel('')}
+                                                        className="text-indigo-400 hover:text-indigo-200 cursor-pointer"
+                                                        title="Clear probe label"
+                                                    >
+                                                        <X size={10} />
+                                                    </button>
+                                                </span>
+                                            )}
                                         </div>
                                     );
-                                })()}
+                                })() : (
+                                    <span className="text-text-muted font-mono">No configured DEM probes found</span>
+                                )}
                             </div>
 
                             {/* Collapsible Advanced Options Toggle + Persistent Summary */}
@@ -5436,14 +5383,41 @@ export default function PacketCapture({
                 </div>
             )}
 
-            {/* E2E Trace History & Baselines Modal (7-day auto-retention, Pin, Delete, Purge, Compare) */}
+            {/* E2E Trace History & Baselines Modal (7-day auto-retention, Pin, Delete, Purge, Compare, Re-run, Flexible Search) */}
             {showTraceHistoryModal && (() => {
                 const pinnedCount = traceHistory.filter(t => t.pinned).length;
                 const unpinnedCount = traceHistory.length - pinnedCount;
+                const searchTokens = traceHistorySearch
+                    .trim()
+                    .toLowerCase()
+                    .split(/\s+/)
+                    .filter(Boolean);
+
                 const filteredHistory = traceHistory.filter(t => {
-                    if (traceHistoryFilter === 'pinned') return t.pinned;
+                    if (traceHistoryFilter === 'pinned' && !t.pinned) return false;
                     if (traceHistoryFilter === 'anomalies') {
-                        return t.verdict_status !== 'VERIFIED_E2E' && t.verdict_status !== 'FLOW_ACTIVE';
+                        if (t.verdict_status === 'VERIFIED_E2E' || t.verdict_status === 'FLOW_ACTIVE') return false;
+                    }
+                    if (searchTokens.length > 0) {
+                        const portPart = String(t.protocol || '').toUpperCase() === 'ICMP' ? 'icmp' : `${t.protocol}/${t.dst_port || ''}`;
+                        const haystack = [
+                            t.destination,
+                            t.probe_label,
+                            t.label,
+                            t.source_site,
+                            t.protocol,
+                            t.dst_port,
+                            portPart,
+                            t.egress_path,
+                            t.app_id,
+                            t.verdict_status,
+                            String(t.verdict_status || '').replace(/_/g, ' '),
+                            t.created_at
+                        ]
+                            .filter(Boolean)
+                            .join(' ')
+                            .toLowerCase();
+                        if (!searchTokens.every(tok => haystack.includes(tok))) return false;
                     }
                     return true;
                 });
@@ -5464,7 +5438,7 @@ export default function PacketCapture({
                                             </span>
                                         </div>
                                         <p className="text-xs text-text-muted">
-                                            Inspect past E2E trace runs, pin golden baselines, or compare Before / After network changes
+                                            Inspect past E2E trace runs, re-run targets, pin golden baselines, or compare Before / After network changes
                                         </p>
                                     </div>
                                 </div>
@@ -5476,43 +5450,65 @@ export default function PacketCapture({
                                 </button>
                             </div>
 
-                            {/* Filter Pills & Purge Unpinned Toolbar */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                    {[
-                                        { id: 'all' as const, label: `All Runs (${traceHistory.length})` },
-                                        { id: 'pinned' as const, label: `Pinned Baselines (${pinnedCount})` },
-                                        {
-                                            id: 'anomalies' as const,
-                                            label: `Anomalies (${traceHistory.filter(t => t.verdict_status !== 'VERIFIED_E2E' && t.verdict_status !== 'FLOW_ACTIVE').length})`
-                                        }
-                                    ].map(f => (
-                                        <button
-                                            key={f.id}
-                                            type="button"
-                                            onClick={() => setTraceHistoryFilter(f.id)}
-                                            className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-colors cursor-pointer ${
-                                                traceHistoryFilter === f.id
-                                                    ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-500/45 shadow-xs'
-                                                    : 'bg-card-secondary text-text-muted hover:text-text-primary border-border'
-                                            }`}
-                                        >
-                                            {f.label}
-                                        </button>
-                                    ))}
-                                </div>
+                            {/* Search Bar, Filter Pills & Purge Unpinned Toolbar */}
+                            <div className="flex flex-col gap-2.5 shrink-0">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    {/* Flexible Multi-Keyword Search Input */}
+                                    <div className="relative flex-1 max-w-md">
+                                        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                        <input
+                                            type="text"
+                                            value={traceHistorySearch}
+                                            onChange={(e) => setTraceHistorySearch(e.target.value)}
+                                            placeholder="Filter by destination, probe, site, path, App-ID, protocol, status…"
+                                            className="w-full bg-card-secondary border border-border rounded-xl pl-8 pr-7 py-1.5 text-xs text-text-primary font-mono placeholder:text-text-muted/60 focus:outline-none focus:border-indigo-500"
+                                        />
+                                        {traceHistorySearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setTraceHistorySearch('')}
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer"
+                                                title="Clear search"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        )}
+                                    </div>
 
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={handlePurgeUnpinnedTraces}
-                                        disabled={unpinnedCount === 0}
-                                        title="Delete all unpinned trace runs while keeping pinned baselines safe"
-                                        className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-rose-600 dark:text-rose-300 text-[10px] font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                        <Trash2 size={12} />
-                                        <span>Purge Unpinned ({unpinnedCount})</span>
-                                    </button>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        {[
+                                            { id: 'all' as const, label: `All Runs (${traceHistory.length})` },
+                                            { id: 'pinned' as const, label: `Pinned Baselines (${pinnedCount})` },
+                                            {
+                                                id: 'anomalies' as const,
+                                                label: `Anomalies (${traceHistory.filter(t => t.verdict_status !== 'VERIFIED_E2E' && t.verdict_status !== 'FLOW_ACTIVE').length})`
+                                            }
+                                        ].map(f => (
+                                            <button
+                                                key={f.id}
+                                                type="button"
+                                                onClick={() => setTraceHistoryFilter(f.id)}
+                                                className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-colors cursor-pointer ${
+                                                    traceHistoryFilter === f.id
+                                                        ? 'bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-500/45 shadow-xs'
+                                                        : 'bg-card-secondary text-text-muted hover:text-text-primary border-border'
+                                                }`}
+                                            >
+                                                {f.label}
+                                            </button>
+                                        ))}
+
+                                        <button
+                                            type="button"
+                                            onClick={handlePurgeUnpinnedTraces}
+                                            disabled={unpinnedCount === 0}
+                                            title="Delete all unpinned trace runs while keeping pinned baselines safe"
+                                            className="px-3 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-rose-600 dark:text-rose-300 text-[10px] font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                            <Trash2 size={12} />
+                                            <span>Purge Unpinned ({unpinnedCount})</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -5593,7 +5589,7 @@ export default function PacketCapture({
                                                                 <span className="text-emerald-600 dark:text-emerald-400 font-bold">RTT: {rttVal}ms</span>
                                                             </>
                                                         )}
-                                                        {item.forensics?.mss_clamped && (
+                                                        {(item.forensics?.mss_clamped || item.forensics?.mss_status === 'DIFFERENT_ADVERTISED_MSS') && (
                                                             <>
                                                                 <span>•</span>
                                                                 <span className="text-amber-600 dark:text-amber-300">
@@ -5605,6 +5601,35 @@ export default function PacketCapture({
                                                 </div>
 
                                                 <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                                                    <button
+                                                        type="button"
+                                                        disabled={tracingFlow}
+                                                        onClick={() => {
+                                                            const nextProto = String(item.protocol || 'tcp').toLowerCase() as 'tcp' | 'udp' | 'icmp';
+                                                            const nextPort = item.dst_port || 443;
+                                                            setCaptureMode('trace');
+                                                            if (item.source_site) setTraceSourceSite(item.source_site);
+                                                            setTraceDestination(item.destination);
+                                                            if (nextProto !== 'icmp') setTraceDstPort(nextPort);
+                                                            setTraceProtocol(nextProto);
+                                                            setTraceSrcIp('');
+                                                            setActiveProbeLabel(item.probe_label || item.label || '');
+                                                            setShowTraceHistoryModal(false);
+                                                            handleRunFlowTrace({
+                                                                sourceSite: item.source_site,
+                                                                destination: item.destination,
+                                                                dstPort: nextPort,
+                                                                protocol: nextProto,
+                                                                probeLabel: item.probe_label || item.label || ''
+                                                            });
+                                                        }}
+                                                        className="px-2.5 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-700 dark:text-cyan-300 rounded-xl text-[10px] font-black uppercase transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        title="Re-run a fresh live E2E trace with these parameters"
+                                                    >
+                                                        <RefreshCw size={11} />
+                                                        <span>Re-run</span>
+                                                    </button>
+
                                                     <button
                                                         type="button"
                                                         onClick={() => handleLoadSavedTraceRun(item.trace_id)}

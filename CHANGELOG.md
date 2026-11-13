@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.19] - 2026-11-13
+
+### Changed & Fixed
+- **E2E Flow Trace Composer & History Improvements (`web-dashboard/src/PacketCapture.tsx`)**:
+  - **DEM / Failover Probes as Primary Entry Point**: Removed the 5 hardcoded `Favorites` pills from the E2E Flow Trace bar, elevating the dynamic `DEM / Failover Probe` selector as the single source of truth alongside `Advanced options`.
+  - **One-Click `↻ Re-run` & Flexible Multi-Keyword Search in `E2E Flow Trace History & Baselines`**: Added a live multi-token keyword search input (filtering across destination, probe label, source site, SD-WAN egress path, App-ID, protocol/port, and verdict status) and a `↻ Re-run` action button on every history item to immediately dispatch a fresh live E2E trace with the same parameters.
+- **Network Path Trace (`TracerouteModal`) Bug Fixes & Silent Hop Grouping (`web-dashboard/server.ts`, `web-dashboard/src/components/TracerouteModal.tsx`)**:
+  - **Fixed FQDN `Destination Reached` Detection**: Extracted the resolved target IP from `traceroute to <host> (<resolved_ip>)` (with DNS lookup fallback and terminal-hop detection when `traceroute` completes before `max_hops`) so domain targets such as `meet.google.com` (`142.251.153.5`) properly report `Destination Reached` instead of `Partial / Unreached`.
+  - **Fixed Per-Hop `STATUS` Column**: Fixed the status mismatch where responding intermediate hops (`status: 'ok'`) were rendered as `TIMEOUT` in the UI; responding hops now display `OK` (`First Hop` on hop 1) and the final destination hop displays `Target Reached`.
+  - **Collapsible Silent Transit Hops (`*`) & UDP High-Port Guidance**: Consecutive silent hops ($\ge 2$ hops where `ICMP Time Exceeded` is filtered in transit or encapsulated) are now automatically grouped into a single compact expandable row (`03–09 · 7 silent transit hops`), and unreached UDP traces provide one-click `Retry with TCP :443` / `Retry with ICMP` actions.
+
 ## [3.2.18] - 2026-11-13
 
 ### Changed & Fixed
