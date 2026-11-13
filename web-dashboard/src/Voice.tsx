@@ -134,6 +134,7 @@ export default function Voice(props: VoiceProps) {
     const [qualityFilter, setQualityFilter] = useState<'all' | 'excellent' | 'fair' | 'poor'>('all');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>({ key: 'timestamp', direction: 'desc' });
     const [selectedStat, setSelectedStat] = useState<any>(null);
+    const [activeRadarTargetKey, setActiveRadarTargetKey] = useState<string | null>(null);
 
     // ── Target rows (merged registry + manual) ──
     const [targetRows, setTargetRows] = useState<TargetRow[]>([]);
@@ -613,6 +614,8 @@ export default function Voice(props: VoiceProps) {
             const avgRtt = avg(tCalls.map(c => c.avg_rtt_ms || 0).filter(Boolean));
             const avgJitter = avg(tCalls.map(c => c.jitter_ms || 0).filter(Boolean));
             const avgMos = avg(tCalls.map(c => c.mos_score || 0).filter(Boolean));
+            const goodCalls = tCalls.filter(c => (c.loss_pct || 0) < 2 && (c.mos_score || 4.4) >= 3.6).length;
+            const slaPct = tCalls.length > 0 ? (goodCalls / tCalls.length) * 100 : 100;
             const row = targetRows.find(r => `${r.host}:${r.port}` === target);
             return {
                 target,
@@ -622,10 +625,27 @@ export default function Voice(props: VoiceProps) {
                 avgRtt: avgRtt.toFixed(1),
                 avgJitter: avgJitter.toFixed(1),
                 avgMos: avgMos > 0 ? avgMos.toFixed(2) : 'N/A',
+                slaPct: slaPct.toFixed(0),
                 quality: qualityOf(avgLoss, avgRtt),
             };
         }).sort((a, b) => b.totalCalls - a.totalCalls);
     }, [calls, targetRows]);
+
+    const buildPentagonRadarData = React.useCallback((stat: any) => {
+        if (!stat) return [];
+        const loss = parseFloat(stat.avgLoss) || 0;
+        const rtt = parseFloat(stat.avgRtt) || 0;
+        const jitter = parseFloat(stat.avgJitter) || 0;
+        const mos = stat.avgMos !== 'N/A' ? parseFloat(stat.avgMos) : 3.0;
+        const sla = stat.slaPct !== undefined ? parseFloat(stat.slaPct) : Math.max(0, 100 - loss * 10);
+        return [
+            { metric: 'MOS',      value: Math.min(100, Math.max(15, Math.round((mos / 4.45) * 100))),           raw: `${stat.avgMos}` },
+            { metric: 'Delivery', value: Math.min(100, Math.max(10, Math.round((1 - loss / 10) * 100))),        raw: `${(100 - loss).toFixed(1)}%` },
+            { metric: 'Latency',  value: Math.min(100, Math.max(10, Math.round((1 - rtt / 220) * 100))),        raw: `${stat.avgRtt}ms` },
+            { metric: 'Jitter',   value: Math.min(100, Math.max(10, Math.round((1 - jitter / 40) * 100))),      raw: `${stat.avgJitter}ms` },
+            { metric: 'SLA',      value: Math.min(100, Math.max(15, Math.round(sla))),                          raw: `${ Math.round(sla)}%` },
+        ];
+    }, []);
 
     const perTargetStatsMap = React.useMemo(() => {
         const m = new Map<string, typeof perTargetStats[0]>();
@@ -729,7 +749,7 @@ export default function Voice(props: VoiceProps) {
                                 {config && (
                                     <div
                                         onClick={() => setShowSettings(s => !s)}
-                                        title="Click to configure global call parameters & network settings"
+                                        title="Click to configure global call profile"
                                         className="flex flex-wrap items-center gap-1.5 mt-2.5 cursor-pointer group/pills"
                                     >
                                         {[
@@ -737,8 +757,6 @@ export default function Voice(props: VoiceProps) {
                                             { label: `${config.sleep_between_calls}s Inter-Call`, icon: Clock },
                                             { label: globalCodec, icon: Phone },
                                             { label: `${globalDuration}s Duration`, icon: Clock },
-                                            { label: config.interface || 'Auto Egress', icon: Wifi },
-                                            { label: (config.source_port_mode || 'call_id') === 'call_id' ? 'Port 30000+N' : 'Ephemeral Ports', icon: Hash },
                                         ].map((pill, i) => (
                                             <span
                                                 key={i}
@@ -754,8 +772,8 @@ export default function Voice(props: VoiceProps) {
                         </div>
                     </div>
 
-                    {/* Right: Auto-save status + Settings toggle + Start/Stop */}
-                    <div className="flex flex-wrap items-center gap-3 shrink-0">
+                    {/* Right: Auto-save status + Settings toggle + Fixed-width Start/Stop */}
+                    <div className="flex items-center gap-3 shrink-0 flex-nowrap">
                         {/* Auto-save status indicator */}
                         <div className="min-w-[80px] flex justify-end">
                             {saveStatus === 'pending' && (
@@ -783,7 +801,7 @@ export default function Voice(props: VoiceProps) {
                         <button
                             onClick={() => setShowSettings(s => !s)}
                             className={cn(
-                                "px-4 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border flex items-center gap-2 cursor-pointer",
+                                "px-4 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border flex items-center gap-2 cursor-pointer shrink-0",
                                 showSettings
                                     ? "bg-blue-600/15 text-blue-500 border-blue-500/40 shadow-sm"
                                     : "bg-card-secondary/60 hover:bg-card-secondary text-text-secondary hover:text-text-primary border-border"
@@ -798,7 +816,7 @@ export default function Voice(props: VoiceProps) {
                             onClick={handleToggle}
                             disabled={isStartingV || isStoppingV || (!enabled && enabledRows.length === 0)}
                             className={cn(
-                                "px-8 py-4 rounded-2xl font-black text-[11px] tracking-[0.2em] transition-all shadow-2xl flex items-center gap-3 group cursor-pointer",
+                                "w-[254px] py-4 px-5 rounded-2xl font-black text-[11px] tracking-[0.18em] transition-colors shadow-2xl flex items-center justify-center gap-2.5 whitespace-nowrap shrink-0 group cursor-pointer",
                                 !enabled && enabledRows.length === 0
                                     ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed shadow-none"
                                     : enabled
@@ -808,12 +826,12 @@ export default function Voice(props: VoiceProps) {
                             )}
                         >
                             {isStartingV || isStoppingV
-                                ? <Activity size={20} className="animate-spin" />
+                                ? <Activity size={18} className="animate-spin shrink-0" />
                                 : enabled
-                                    ? <Pause size={20} fill="currentColor" className="group-hover:scale-110 transition-transform" />
-                                    : <Play size={20} fill="currentColor" className="group-hover:scale-110 transition-transform" />
+                                    ? <Pause size={18} fill="currentColor" className="group-hover:scale-110 transition-transform shrink-0" />
+                                    : <Play size={18} fill="currentColor" className="group-hover:scale-110 transition-transform shrink-0" />
                             }
-                            {isStartingV ? 'Initializing…' : isStoppingV ? 'Terminating…' : enabled ? 'Stop Voice Simulation' : 'Start Voice Simulation'}
+                            <span>{isStartingV ? 'Initializing…' : isStoppingV ? 'Terminating…' : enabled ? 'Stop Voice Simulation' : 'Start Voice Simulation'}</span>
                         </button>
                     </div>
                 </div>
@@ -842,7 +860,7 @@ export default function Voice(props: VoiceProps) {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                                 {/* Max Simultaneous Calls */}
                                 <div className="space-y-1.5">
                                     <label className="text-[9px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1.5">
@@ -893,37 +911,6 @@ export default function Voice(props: VoiceProps) {
                                         value={globalDuration}
                                         onChange={e => { setIsDirty(true); setGlobalDuration(String(Math.max(1, parseInt(e.target.value) || 30))); }}
                                         className="w-full bg-card border border-border text-text-primary rounded-xl px-3 py-2 text-xs font-black focus:ring-1 focus:ring-blue-500 outline-none shadow-sm"
-                                    />
-                                </div>
-
-                                {/* Egress Interface */}
-                                <div className="space-y-1.5">
-                                    <label className="text-[9px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1.5">
-                                        <Wifi size={10} className="text-blue-500" /> Egress Interface
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={config.interface || ''}
-                                        onChange={e => { setIsDirty(true); setConfig(p => p ? { ...p, interface: e.target.value } : null); }}
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-3 py-2 text-xs font-black focus:ring-1 focus:ring-blue-500 outline-none shadow-sm"
-                                        placeholder="eth0, enp2s0…"
-                                    />
-                                </div>
-
-                                {/* Source Ports Mode */}
-                                <div className="space-y-1.5">
-                                    <label className="text-[9px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1.5">
-                                        <Hash size={10} className="text-blue-500" /> Source Ports
-                                    </label>
-                                    <StigixSelect
-                                        value={config.source_port_mode || 'call_id'}
-                                        onChange={val => { setIsDirty(true); setConfig(p => p ? { ...p, source_port_mode: val as any } : null); }}
-                                        accent="blue"
-                                        triggerClassName="rounded-xl px-3 py-2 text-xs font-black shadow-sm"
-                                        options={[
-                                            { value: 'call_id', label: '🎯 Call ID (30000+N)' },
-                                            { value: 'ephemeral', label: '🎲 Ephemeral' },
-                                        ]}
                                     />
                                 </div>
                             </div>
@@ -1043,6 +1030,7 @@ export default function Voice(props: VoiceProps) {
                             activeCalls.map((call, idx) => {
                                 const siteName = targetNameMap.get(call.target);
                                 const [callDstIp] = String(call.target || '').split(':');
+                                const srcPort = deriveSourcePort(call.call_id);
                                 const lp = callLivePaths[call.call_id] || targetLivePaths[call.target] || targetLivePaths[callDstIp];
                                 return (
                                     <div key={idx} className="bg-card-secondary/50 p-4 rounded-2xl border border-border flex flex-col gap-2 shadow-sm hover:border-blue-500/30 transition-all">
@@ -1050,8 +1038,8 @@ export default function Voice(props: VoiceProps) {
                                             <div className="space-y-1.5 min-w-0 flex-1 mr-3">
                                                 <div className="flex items-center gap-2">
                                                     <span
-                                                        title={`Source Port: ${deriveSourcePort(call.call_id)}`}
-                                                        className="text-[9px] font-black text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded bg-blue-600/10 border border-blue-500/10 font-mono italic cursor-help shrink-0"
+                                                        title={`Call ID #${call.call_id} • Deterministic Source Port ${srcPort}`}
+                                                        className="text-[9px] font-black text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded bg-blue-600/10 border border-blue-500/10 font-mono italic shrink-0"
                                                     >
                                                         #{call.call_id}
                                                     </span>
@@ -1060,14 +1048,15 @@ export default function Voice(props: VoiceProps) {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 text-[10px] truncate">
-                                                    {siteName && (
-                                                        <>
-                                                            <span className="font-mono font-medium text-text-secondary">
-                                                                {call.target}
-                                                            </span>
-                                                            <span className="text-text-muted/60 text-[9px]">•</span>
-                                                        </>
+                                                    {srcPort !== '?' && (
+                                                        <span className="font-mono font-bold text-cyan-500 dark:text-cyan-400">
+                                                            :{srcPort} →
+                                                        </span>
                                                     )}
+                                                    <span className="font-mono font-medium text-text-secondary">
+                                                        {call.target}
+                                                    </span>
+                                                    <span className="text-text-muted/60 text-[9px]">•</span>
                                                     <span className="text-text-secondary/90 font-sans font-bold uppercase tracking-wider text-[9px]">
                                                         {call.codec} • {call.duration}s
                                                     </span>
@@ -1200,186 +1189,274 @@ export default function Voice(props: VoiceProps) {
                             </div>
                         )}
 
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-border">
-                                        <th className="pb-3 px-2 w-10" />
-                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Site</th>
-                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Endpoint</th>
-                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Calls</th>
-                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Avg MOS</th>
-                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Loss</th>
-                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">RTT / Jitter</th>
-                                        <th className="pb-3 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest text-right">Quality</th>
-                                        <th className="pb-3 px-2 w-8" />
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border/30">
-                                    {targetRows.map(row => {
-                                        const targetKey = `${row.host}:${row.port}`;
-                                        const stat = perTargetStatsMap.get(targetKey);
-                                        return (
-                                            <tr
-                                                key={row.id}
-                                                className="group transition-all hover:bg-card-secondary/20"
-                                            >
-                                                {/* Checkbox */}
-                                                <td className="py-3.5 px-2">
-                                                    <button
-                                                        onClick={() => toggleRow(row.id)}
-                                                        className={cn(
-                                                            'w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer',
-                                                            row.enabled
-                                                                ? 'bg-blue-600 border-blue-600 text-white'
-                                                                : 'border-slate-400 dark:border-slate-600 bg-card-secondary/30 hover:border-blue-500 hover:bg-blue-500/10'
-                                                        )}
-                                                    >
-                                                        {row.enabled && <CheckSquare size={11} />}
-                                                    </button>
-                                                </td>
-
-                                                {/* Site name + reachability dot */}
-                                                <td
-                                                    className={cn("py-3.5 px-3 transition-opacity duration-200 cursor-pointer select-none", !row.enabled && "opacity-45")}
-                                                    onClick={() => toggleRow(row.id)}
+                        <div className="flex flex-col xl:flex-row items-stretch gap-5">
+                            {/* Left: Targets Table (Single-line compact) */}
+                            <div className="flex-1 min-w-0 overflow-x-auto">
+                                <table className="w-full text-sm whitespace-nowrap">
+                                    <thead>
+                                        <tr className="border-b border-border">
+                                            <th className="pb-2.5 px-2 w-8" />
+                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Site</th>
+                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Endpoint</th>
+                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Calls</th>
+                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Avg MOS</th>
+                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">Loss</th>
+                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-left">RTT / Jitter</th>
+                                            <th className="pb-2.5 px-2.5 text-[9px] font-black text-text-muted uppercase tracking-widest text-right">Quality</th>
+                                            <th className="pb-2.5 px-1 w-6" />
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/30">
+                                        {targetRows.map(row => {
+                                            const targetKey = `${row.host}:${row.port}`;
+                                            const stat = perTargetStatsMap.get(targetKey);
+                                            const activeRadarStat = (activeRadarTargetKey && perTargetStatsMap.get(activeRadarTargetKey)) || perTargetStats[0];
+                                            const isRadarFocused = stat && activeRadarStat?.target === targetKey;
+                                            return (
+                                                <tr
+                                                    key={row.id}
+                                                    onMouseEnter={() => stat && setActiveRadarTargetKey(targetKey)}
+                                                    className={cn(
+                                                        "group transition-all hover:bg-card-secondary/30",
+                                                        isRadarFocused && "bg-blue-500/5"
+                                                    )}
                                                 >
-                                                    <div className="flex items-center gap-2">
-                                                        {reachability[row.id] === 'loading' || reachability[row.id] === undefined ? (
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
-                                                        ) : reachability[row.id] ? (
-                                                            <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
-                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
-                                                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                    {/* Checkbox */}
+                                                    <td className="py-3 px-2">
+                                                        <button
+                                                            onClick={() => toggleRow(row.id)}
+                                                            className={cn(
+                                                                'w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer',
+                                                                row.enabled
+                                                                    ? 'bg-blue-600 border-blue-600 text-white'
+                                                                    : 'border-slate-400 dark:border-slate-600 bg-card-secondary/30 hover:border-blue-500 hover:bg-blue-500/10'
+                                                            )}
+                                                        >
+                                                            {row.enabled && <CheckSquare size={10} />}
+                                                        </button>
+                                                    </td>
+
+                                                    {/* Site name + reachability dot */}
+                                                    <td
+                                                        className={cn("py-3 px-2.5 transition-opacity duration-200 cursor-pointer select-none", !row.enabled && "opacity-45")}
+                                                        onClick={() => toggleRow(row.id)}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            {reachability[row.id] === 'loading' || reachability[row.id] === undefined ? (
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                                            ) : reachability[row.id] ? (
+                                                                <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                            )}
+                                                            {row.isManual ? (
+                                                                <span className="text-[9px] text-orange-500 font-black uppercase tracking-wider px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/20 rounded">
+                                                                    Manual
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-xs font-black text-text-primary group-hover:text-blue-500 transition-colors">
+                                                                    {row.name}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Host:Port */}
+                                                    <td className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                        <span className="text-[11px] font-mono font-bold text-text-muted">{targetKey}</span>
+                                                    </td>
+
+                                                    {/* Calls */}
+                                                    <td
+                                                        onClick={() => stat && setSelectedStat(stat)}
+                                                        className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                    >
+                                                        {stat ? (
+                                                            <span className="text-xs font-black text-text-primary">{stat.totalCalls}</span>
+                                                        ) : (
+                                                            <span className="text-xs text-text-muted opacity-30">—</span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Avg MOS */}
+                                                    <td
+                                                        onClick={() => stat && setSelectedStat(stat)}
+                                                        className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                    >
+                                                        {stat ? (
+                                                            <span className={cn(
+                                                                'text-[10px] font-black px-2 py-0.5 rounded-lg border',
+                                                                stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 4
+                                                                    ? 'bg-green-600/10 text-green-500 border-green-500/20'
+                                                                    : stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 3
+                                                                        ? 'bg-orange-600/10 text-orange-500 border-orange-500/20'
+                                                                        : 'bg-red-600/10 text-red-500 border-red-500/20'
+                                                            )}>{stat.avgMos}</span>
+                                                        ) : (
+                                                            <span className="text-xs text-text-muted opacity-30">—</span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Avg Loss */}
+                                                    <td
+                                                        onClick={() => stat && setSelectedStat(stat)}
+                                                        className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                    >
+                                                        {stat ? (
+                                                            <span className={cn('text-xs font-black',
+                                                                parseFloat(stat.avgLoss) < 1 ? 'text-green-500' : parseFloat(stat.avgLoss) < 5 ? 'text-orange-500' : 'text-red-500'
+                                                            )}>{stat.avgLoss}%</span>
+                                                        ) : (
+                                                            <span className="text-xs text-text-muted opacity-30">—</span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* RTT / Jitter */}
+                                                    <td
+                                                        onClick={() => stat && setSelectedStat(stat)}
+                                                        className={cn("py-3 px-2.5 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                    >
+                                                        {stat ? (
+                                                            <div className="flex items-center gap-1 text-xs">
+                                                                <span className="font-black text-text-primary">{stat.avgRtt}ms</span>
+                                                                <span className="text-text-muted opacity-40">/</span>
+                                                                <span className="text-[10px] font-bold text-text-muted">{stat.avgJitter}ms</span>
                                                             </div>
                                                         ) : (
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                            <span className="text-xs text-text-muted opacity-30">—</span>
                                                         )}
-                                                        {row.isManual ? (
-                                                            <span className="text-[9px] text-orange-500 font-black uppercase tracking-wider px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/20 rounded">
-                                                                Manual
-                                                            </span>
+                                                    </td>
+
+                                                    {/* Quality badge + radar modal trigger */}
+                                                    <td
+                                                        onClick={() => stat && setSelectedStat(stat)}
+                                                        className={cn("py-3 px-2.5 text-right transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
+                                                        title={stat ? "Hover to preview in Pentagon Radar • Click to zoom" : undefined}
+                                                    >
+                                                        {stat ? (
+                                                            <div className="inline-flex items-center justify-end gap-1.5 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
+                                                                <div className={cn('h-2 w-2 rounded-full', qualityDotClass(stat.quality))} />
+                                                                <span className={cn('text-[9px] font-black uppercase tracking-widest', qualityTextClass(stat.quality))}>
+                                                                    {stat.quality}
+                                                                </span>
+                                                                <BarChart2 size={11} className="text-blue-500 opacity-60 ml-0.5" />
+                                                            </div>
                                                         ) : (
-                                                            <span className="text-xs font-black text-text-primary group-hover:text-blue-500 transition-colors">
-                                                                {row.name}
-                                                            </span>
+                                                            <span className="text-xs text-text-muted opacity-30">—</span>
                                                         )}
-                                                    </div>
-                                                </td>
+                                                    </td>
 
-                                                {/* Host:Port */}
-                                                <td className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45")}>
-                                                    <span className="text-[11px] font-mono font-bold text-text-muted">{targetKey}</span>
-                                                </td>
-
-                                                {/* Calls */}
-                                                <td
-                                                    onClick={() => stat && setSelectedStat(stat)}
-                                                    className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                >
-                                                    {stat ? (
-                                                        <span className="text-xs font-black text-text-primary">{stat.totalCalls}</span>
-                                                    ) : (
-                                                        <span className="text-xs text-text-muted opacity-30">—</span>
-                                                    )}
-                                                </td>
-
-                                                {/* Avg MOS */}
-                                                <td
-                                                    onClick={() => stat && setSelectedStat(stat)}
-                                                    className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                >
-                                                    {stat ? (
-                                                        <span className={cn(
-                                                            'text-[10px] font-black px-2 py-0.5 rounded-lg border',
-                                                            stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 4
-                                                                ? 'bg-green-600/10 text-green-500 border-green-500/20'
-                                                                : stat.avgMos !== 'N/A' && parseFloat(stat.avgMos) >= 3
-                                                                    ? 'bg-orange-600/10 text-orange-500 border-orange-500/20'
-                                                                    : 'bg-red-600/10 text-red-500 border-red-500/20'
-                                                        )}>{stat.avgMos}</span>
-                                                    ) : (
-                                                        <span className="text-xs text-text-muted opacity-30">—</span>
-                                                    )}
-                                                </td>
-
-                                                {/* Avg Loss */}
-                                                <td
-                                                    onClick={() => stat && setSelectedStat(stat)}
-                                                    className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                >
-                                                    {stat ? (
-                                                        <span className={cn('text-xs font-black',
-                                                            parseFloat(stat.avgLoss) < 1 ? 'text-green-500' : parseFloat(stat.avgLoss) < 5 ? 'text-orange-500' : 'text-red-500'
-                                                        )}>{stat.avgLoss}%</span>
-                                                    ) : (
-                                                        <span className="text-xs text-text-muted opacity-30">—</span>
-                                                    )}
-                                                </td>
-
-                                                {/* RTT / Jitter */}
-                                                <td
-                                                    onClick={() => stat && setSelectedStat(stat)}
-                                                    className={cn("py-3.5 px-3 transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                >
-                                                    {stat ? (
-                                                        <div className="flex items-center gap-1.5 text-xs">
-                                                            <span className="font-black text-text-primary">{stat.avgRtt}ms</span>
-                                                            <span className="text-text-muted opacity-40">/</span>
-                                                            <span className="text-[10px] font-bold text-text-muted">{stat.avgJitter}ms</span>
+                                                    {/* Actions (Remove for manual target) */}
+                                                    <td className={cn("py-3 px-1 transition-opacity duration-200", !row.enabled && "opacity-45")}>
+                                                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {row.isManual && (
+                                                                <button
+                                                                    onClick={() => removeRow(row.id)}
+                                                                    className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                                                                    title="Remove custom target"
+                                                                >
+                                                                    <Trash2 size={12} />
+                                                                </button>
+                                                            )}
                                                         </div>
-                                                    ) : (
-                                                        <span className="text-xs text-text-muted opacity-30">—</span>
-                                                    )}
-                                                </td>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
 
-                                                {/* Quality badge + radar modal trigger */}
-                                                <td
-                                                    onClick={() => stat && setSelectedStat(stat)}
-                                                    className={cn("py-3.5 px-3 text-right transition-opacity duration-200", !row.enabled && "opacity-45", stat && "cursor-pointer")}
-                                                    title={stat ? "Click to open QoS radar profile" : undefined}
-                                                >
-                                                    {stat ? (
-                                                        <div className="inline-flex items-center justify-end gap-1.5 px-2 py-0.5 rounded-lg hover:bg-blue-500/10 transition-colors">
-                                                            <div className={cn('h-2 w-2 rounded-full', qualityDotClass(stat.quality))} />
-                                                            <span className={cn('text-[9px] font-black uppercase tracking-widest', qualityTextClass(stat.quality))}>
-                                                                {stat.quality}
-                                                            </span>
-                                                            <BarChart2 size={11} className="text-blue-500 opacity-60 ml-0.5" />
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-xs text-text-muted opacity-30">—</span>
-                                                    )}
-                                                </td>
-
-                                                {/* Actions (Remove for manual target) */}
-                                                <td className={cn("py-3.5 px-2 transition-opacity duration-200", !row.enabled && "opacity-45")}>
-                                                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {row.isManual && (
-                                                            <button
-                                                                onClick={() => removeRow(row.id)}
-                                                                className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
-                                                                title="Remove custom target"
-                                                            >
-                                                                <Trash2 size={12} />
-                                                            </button>
-                                                        )}
-                                                    </div>
+                                        {/* Empty state */}
+                                        {targetRows.length === 0 && !loading && (
+                                            <tr>
+                                                <td colSpan={9} className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
+                                                    No voice-capable Stigix targets — click "+ Custom Target" above or enable Voice capability in Targets
                                                 </td>
                                             </tr>
-                                        );
-                                    })}
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
 
-                                    {/* Empty state */}
-                                    {targetRows.length === 0 && !loading && (
-                                        <tr>
-                                            <td colSpan={9} className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
-                                                No voice-capable Stigix targets — click "+ Custom Target" above or enable Voice capability in Targets
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
+                            {/* Right: Compact 5-Branch Pentagon Radar (Zero extra vertical height) */}
+                            {perTargetStats.length > 0 && (() => {
+                                const activeRadarStat = (activeRadarTargetKey && perTargetStatsMap.get(activeRadarTargetKey)) || perTargetStats[0];
+                                const miniRadarData = buildPentagonRadarData(activeRadarStat);
+                                const avgScore10 = miniRadarData.length
+                                    ? (miniRadarData.reduce((acc, d) => acc + d.value, 0) / miniRadarData.length / 10).toFixed(1)
+                                    : '—';
+                                const rColor = activeRadarStat.quality === 'excellent' ? '#3b82f6' : activeRadarStat.quality === 'fair' ? '#f97316' : '#ef4444';
+                                return (
+                                    <div
+                                        onClick={() => setSelectedStat(activeRadarStat)}
+                                        title="Hover any target row to inspect its 5-axis QoS pentagon • Click to expand"
+                                        className="xl:w-[215px] shrink-0 bg-card-secondary/35 border border-border/70 hover:border-blue-500/40 rounded-2xl p-3 flex flex-col justify-between cursor-pointer transition-all"
+                                    >
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <div className="min-w-0">
+                                                <div className="text-[8px] font-black uppercase tracking-widest text-text-muted opacity-60">
+                                                    QoS Radar
+                                                </div>
+                                                <div className="text-[11px] font-black text-text-primary truncate">
+                                                    {activeRadarStat.name}
+                                                </div>
+                                            </div>
+                                            <span className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-black bg-blue-500/10 text-blue-500 border border-blue-500/20 shrink-0">
+                                                {avgScore10}/10
+                                            </span>
+                                        </div>
+
+                                        {perTargetStats.length > 1 && (
+                                            <div className="flex items-center gap-1 flex-wrap mt-1.5" onClick={e => e.stopPropagation()}>
+                                                {perTargetStats.map(s => {
+                                                    const isSel = s.target === activeRadarStat.target;
+                                                    const shortLabel = s.name.replace(/-Ubuntu$/i, '');
+                                                    return (
+                                                        <button
+                                                            key={s.target}
+                                                            type="button"
+                                                            onClick={() => setActiveRadarTargetKey(s.target)}
+                                                            className={cn(
+                                                                "px-1.5 py-0.5 rounded text-[8px] font-black tracking-tight transition-all cursor-pointer border",
+                                                                isSel
+                                                                    ? "bg-blue-600 text-white border-blue-500 shadow-xs"
+                                                                    : "bg-card text-text-muted hover:text-text-primary border-border/60"
+                                                            )}
+                                                        >
+                                                            {shortLabel}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        <div className="h-[148px] w-full -my-1">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <RadarChart data={miniRadarData} margin={{ top: 14, right: 24, bottom: 10, left: 24 }}>
+                                                    <PolarGrid stroke="var(--border)" strokeOpacity={0.6} />
+                                                    <PolarAngleAxis
+                                                        dataKey="metric"
+                                                        tick={({ x, y, payload }: any) => (
+                                                            <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fill="var(--text-secondary)" fontSize={8.5} fontWeight={800}>
+                                                                {payload.value}
+                                                            </text>
+                                                        )}
+                                                    />
+                                                    <Radar
+                                                        dataKey="value"
+                                                        stroke={rColor}
+                                                        strokeWidth={2}
+                                                        strokeDasharray="3 2"
+                                                        fill={rColor}
+                                                        fillOpacity={0.28}
+                                                    />
+                                                </RadarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>{/* end RIGHT col */}
@@ -1731,18 +1808,12 @@ export default function Voice(props: VoiceProps) {
                 )}
             </div>
 
-            {/* ─── QoS Spider Chart Modal ─── */}
+            {/* ─── 5-Axis Pentagon QoS Radar Modal ─── */}
             {selectedStat && (() => {
-                const loss    = parseFloat(selectedStat.avgLoss);
-                const rtt     = parseFloat(selectedStat.avgRtt);
-                const jitter  = parseFloat(selectedStat.avgJitter);
-                const mos     = selectedStat.avgMos !== 'N/A' ? parseFloat(selectedStat.avgMos) : 3;
-                const radarData = [
-                    { metric: 'Loss',   value: Math.max(0, Math.round((1 - loss   / 10)  * 100)), raw: `${selectedStat.avgLoss}%` },
-                    { metric: 'RTT',    value: Math.max(0, Math.round((1 - rtt    / 400) * 100)), raw: `${selectedStat.avgRtt}ms` },
-                    { metric: 'MOS',    value: Math.round((mos / 5) * 100),                        raw: selectedStat.avgMos },
-                    { metric: 'Jitter', value: Math.max(0, Math.round((1 - jitter / 50)  * 100)), raw: `${selectedStat.avgJitter}ms` },
-                ];
+                const radarData = buildPentagonRadarData(selectedStat);
+                const avgScore10 = radarData.length
+                    ? (radarData.reduce((acc, d) => acc + d.value, 0) / radarData.length / 10).toFixed(1)
+                    : '—';
                 const quality      = selectedStat.quality;
                 const qualityColor = quality === 'excellent' ? '#22c55e' : quality === 'fair' ? '#f97316' : '#ef4444';
                 const radarColor   = quality === 'excellent' ? '#3b82f6' : quality === 'fair' ? '#f97316' : '#ef4444';
@@ -1756,13 +1827,18 @@ export default function Voice(props: VoiceProps) {
 
                         {/* Modal card */}
                         <div
-                            className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl p-6 w-[420px] max-w-[95vw]"
+                            className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl p-6 w-[460px] max-w-[95vw]"
                             onClick={e => e.stopPropagation()}
                         >
                             {/* Header */}
                             <div className="flex items-start justify-between mb-4">
                                 <div>
-                                    <h4 className="text-sm font-black text-text-primary tracking-tight">{selectedStat.name}</h4>
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="text-sm font-black text-text-primary tracking-tight">{selectedStat.name}</h4>
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                                            {avgScore10} / 10
+                                        </span>
+                                    </div>
                                     {selectedStat.name !== selectedStat.target && (
                                         <p className="text-[9px] font-mono text-text-muted opacity-50 mt-0.5">{selectedStat.target}</p>
                                     )}
@@ -1776,25 +1852,25 @@ export default function Voice(props: VoiceProps) {
                                 </div>
                                 <button
                                     onClick={() => setSelectedStat(null)}
-                                    className="p-1.5 hover:bg-card-secondary rounded-lg transition-all text-text-muted hover:text-text-primary"
+                                    className="p-1.5 hover:bg-card-secondary rounded-lg transition-all text-text-muted hover:text-text-primary cursor-pointer"
                                 >
                                     <X size={14} />
                                 </button>
                             </div>
 
-                            {/* Radar chart */}
-                            <div className="h-56">
+                            {/* 5-Branch Pentagon Radar chart */}
+                            <div className="h-60">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
-                                        <PolarGrid stroke="var(--border)" strokeOpacity={0.5} />
+                                    <RadarChart data={radarData} margin={{ top: 14, right: 34, bottom: 14, left: 34 }}>
+                                        <PolarGrid stroke="var(--border)" strokeOpacity={0.55} />
                                         <PolarAngleAxis
                                             dataKey="metric"
                                             tick={({ x, y, payload }: any) => {
                                                 const d = radarData.find(r => r.metric === payload.value);
                                                 return (
-                                                    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fill="var(--text-secondary)" fontSize={10} fontWeight={700}>
+                                                    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fill="var(--text-secondary)" fontSize={10} fontWeight={800}>
                                                         <tspan x={x} dy="0">{payload.value}</tspan>
-                                                        <tspan x={x} dy={13} fontSize={9} opacity={0.55} fill="var(--text-muted)">{d?.raw}</tspan>
+                                                        <tspan x={x} dy={13} fontSize={9} opacity={0.65} fill="var(--text-muted)">{d?.raw}</tspan>
                                                     </text>
                                                 );
                                             }}
@@ -1802,21 +1878,22 @@ export default function Voice(props: VoiceProps) {
                                         <Radar
                                             dataKey="value"
                                             stroke={radarColor}
+                                            strokeDasharray="4 2"
                                             fill={radarColor}
-                                            fillOpacity={0.18}
+                                            fillOpacity={0.28}
                                             strokeWidth={2}
                                         />
                                     </RadarChart>
                                 </ResponsiveContainer>
                             </div>
 
-                            {/* Raw metric grid */}
-                            <div className="grid grid-cols-4 gap-2 mt-4">
+                            {/* 5-Axis metric breakdown grid */}
+                            <div className="grid grid-cols-5 gap-1.5 mt-4">
                                 {radarData.map(d => (
-                                    <div key={d.metric} className="bg-card-secondary/50 border border-border rounded-xl p-2.5 text-center">
-                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-widest opacity-60 mb-1">{d.metric}</div>
-                                        <div className="text-xs font-black text-text-primary">{d.raw}</div>
-                                        <div className="text-[8px] text-text-muted opacity-40 mt-0.5">{d.value}/100</div>
+                                    <div key={d.metric} className="bg-card-secondary/50 border border-border rounded-xl p-2 text-center">
+                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-wider opacity-60 mb-1">{d.metric}</div>
+                                        <div className="text-[11px] font-black text-text-primary">{d.raw}</div>
+                                        <div className="text-[8px] font-mono text-blue-500/80 font-bold mt-0.5">{(d.value / 10).toFixed(1)}/10</div>
                                     </div>
                                 ))}
                             </div>
