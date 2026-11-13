@@ -1152,7 +1152,7 @@ export function createCaptureApiRouter(
                                             tlsSock.write(`GET / HTTP/1.1\r\nHost: ${hostHdr}\r\nUser-Agent: Stigix-FlowTrace/2.0\r\n`);
                                         } catch {}
                                         if (isInitial) {
-                                            finish(true, `TLS handshake${sniHost ? ` (SNI: ${sniHost})` : ''} succeeded (${Date.now() - probeT0}ms RTT)`);
+                                            finish(true, `TLS handshake${sniHost ? ` (SNI: ${sniHost})` : ''} succeeded (socket connect ${Date.now() - probeT0}ms)`);
                                         }
                                     });
                                     tlsSock.on('error', (err: any) => {
@@ -1218,7 +1218,7 @@ export function createCaptureApiRouter(
                                             }
                                         } catch {}
                                         if (isInitial) {
-                                            finish(true, `TCP 3-way handshake succeeded (${Date.now() - probeT0}ms RTT)`);
+                                            finish(true, `TCP 3-way handshake succeeded (socket connect ${Date.now() - probeT0}ms)`);
                                         }
                                     });
                                     sock.on('error', (err: any) => {
@@ -1293,9 +1293,18 @@ export function createCaptureApiRouter(
                             const udpSock = dgram.createSocket('udp4');
                             activeUdpSocket = udpSock;
                             const payload = buildUdpPayload();
+                            let udpReplyReceived = false;
+                            let udpSendT0 = Date.now();
+                            udpSock.once('message', () => {
+                                udpReplyReceived = true;
+                                probeInfo.reachable = true;
+                                probeInfo.rttMs = Math.max(1, Date.now() - udpSendT0);
+                                probeInfo.detail = `UDP reply received from ${resolvedDstIp}:${portNum} (socket ${probeInfo.rttMs}ms)`;
+                            });
                             udpSock.connect(portNum, resolvedDstIp, (err) => {
                                 if (err) {
                                     probeInfo.reachable = false;
+                                    probeInfo.rttMs = null;
                                     probeInfo.detail = `UDP socket error: ${err.message}`;
                                     return resolveProbe();
                                 }
@@ -1305,13 +1314,16 @@ export function createCaptureApiRouter(
                                     probeInfo.localPort = addr.port;
                                     if (addr.port > 0) sessionProbePorts.add(addr.port);
                                 } catch {}
+                                udpSendT0 = Date.now();
                                 udpSock.send(payload, () => {
                                     // Send a second UDP datagram 150ms later and keep pulsing every 800ms during ION CLI inspection
                                     setTimeout(() => {
                                         try { udpSock.send(buildUdpPayload()); } catch {}
-                                        probeInfo.reachable = true;
-                                        probeInfo.rttMs = Date.now() - probeT0;
-                                        probeInfo.detail = `Sent UDP ${portNum === 53 ? 'DNS query ' : ''}probe datagrams to ${resolvedDstIp}:${portNum}`;
+                                        if (!udpReplyReceived) {
+                                            probeInfo.reachable = null;
+                                            probeInfo.rttMs = null;
+                                            probeInfo.detail = `UDP ${portNum === 53 ? 'DNS query ' : ''}datagrams sent to ${resolvedDstIp}:${portNum}`;
+                                        }
                                         resolveProbe();
                                     }, 150);
                                 });
@@ -1328,12 +1340,16 @@ export function createCaptureApiRouter(
                             p.stdout.on('data', (d) => { out += d.toString(); });
                             p.on('close', (code) => {
                                 probeInfo.reachable = code === 0;
-                                probeInfo.rttMs = Date.now() - probeT0;
-                                probeInfo.detail = code === 0 ? 'ICMP Echo Reply received (2/2 packets)' : 'ICMP Echo timeout (0/2 replies)';
+                                const rttMatch = out.match(/time=([0-9.]+)\s*ms/i);
+                                probeInfo.rttMs = rttMatch ? Math.round(parseFloat(rttMatch[1]) * 10) / 10 : null;
+                                probeInfo.detail = code === 0
+                                    ? `ICMP Echo Reply received${probeInfo.rttMs !== null ? ` (${probeInfo.rttMs}ms)` : ''}`
+                                    : 'ICMP Echo timeout (0/2 replies)';
                                 resolveProbe();
                             });
                             p.on('error', () => {
                                 probeInfo.reachable = null;
+                                probeInfo.rttMs = null;
                                 probeInfo.detail = 'ICMP ping binary unavailable';
                                 resolveProbe();
                             });
@@ -1433,8 +1449,6 @@ export function createCaptureApiRouter(
             let synAckEpoch: number | null = null;
             let tlsClientHelloEpoch: number | null = null;
             let tlsServerHelloEpoch: number | null = null;
-            let firstAppTxEpoch: number | null = null;
-            let firstAppRxEpoch: number | null = null;
             let icmpReqEpoch: number | null = null;
             let icmpReplyEpoch: number | null = null;
             let udpReqEpoch: number | null = null;
@@ -1447,6 +1461,7 @@ export function createCaptureApiRouter(
             let ttlTx: number | null = null;
             let ttlRx: number | null = null;
             let dfBitTx: boolean | null = null;
+            let dfBitRx: boolean | null = null;
             let maxFrameBytes = 0;
             let tcpRetransmissions = 0;
             let zeroWindowEvents = 0;
@@ -1487,6 +1502,7 @@ export function createCaptureApiRouter(
                 } else if (isRx) {
                     if (dscpRxVal === null && pktDscp !== null) dscpRxVal = pktDscp;
                     if (ttlRx === null && pktTtl !== null && !Number.isNaN(pktTtl)) ttlRx = pktTtl;
+                    if (dfBitRx === null && ipTree['Flags'] !== undefined) dfBitRx = hasDf;
                 }
 
                 // TCP forensics & timing
@@ -1511,12 +1527,6 @@ export function createCaptureApiRouter(
                     }
                     const lenMatch = infoStr.match(/Len=(\d+)/);
                     const payloadBytesCount = lenMatch ? parseInt(lenMatch[1], 10) : (pkt?.tree?.['Payload Data'] ? 1 : 0);
-                    if (isTx && payloadBytesCount > 0 && !infoStr.includes('Client Hello') && firstAppTxEpoch === null && ep !== null) {
-                        firstAppTxEpoch = ep;
-                    }
-                    if (isRx && payloadBytesCount > 0 && !infoStr.includes('Server Hello') && firstAppRxEpoch === null && ep !== null) {
-                        firstAppRxEpoch = ep;
-                    }
                     // Retransmission check (same sport, seq, and positive payload or SYN)
                     if (isTx && tcpTree['Sequence Number'] !== undefined && (payloadBytesCount > 0 || isSynOnly)) {
                         const seqKey = `${pkt.sport || 0}:${tcpTree['Sequence Number']}:${isSynOnly ? 'S' : payloadBytesCount}`;
@@ -1559,16 +1569,32 @@ export function createCaptureApiRouter(
                 udpReqEpoch !== null && udpReplyEpoch !== null && udpReplyEpoch >= udpReqEpoch
                     ? roundMs(udpReplyEpoch - udpReqEpoch)
                     : null;
-            const transportRttMs =
-                tcpConnectRttMs ?? icmpEchoRttMs ?? udpResponseRttMs ?? (probeInfo.reachable ? probeInfo.rttMs : null);
             const tlsHandshakeMs =
                 tlsClientHelloEpoch !== null && tlsServerHelloEpoch !== null && tlsServerHelloEpoch >= tlsClientHelloEpoch
                     ? roundMs(tlsServerHelloEpoch - tlsClientHelloEpoch)
                     : null;
-            const appTtfbMs =
-                firstAppTxEpoch !== null && firstAppRxEpoch !== null && firstAppRxEpoch >= firstAppTxEpoch
-                    ? roundMs(firstAppRxEpoch - firstAppTxEpoch)
+
+            // Only report transport RTT when an actual reply or handshake completed; distinguish PCAP wire RTT from userspace socket connect time
+            const primaryWireRttMs =
+                protoNum === 6
+                    ? tcpConnectRttMs
+                    : protoNum === 1
+                    ? (icmpEchoRttMs ?? (probeInfo.reachable === true ? probeInfo.rttMs : null))
+                    : protoNum === 17
+                    ? (udpResponseRttMs ?? (probeInfo.reachable === true ? probeInfo.rttMs : null))
                     : null;
+            const transportRttSource =
+                protoNum === 6 && tcpConnectRttMs !== null
+                    ? 'PCAP_SYN_ACK'
+                    : protoNum === 1 && icmpEchoRttMs !== null
+                    ? 'PCAP_ICMP_ECHO'
+                    : protoNum === 17 && udpResponseRttMs !== null
+                    ? 'PCAP_UDP_REPLY'
+                    : probeInfo.reachable === true && probeInfo.rttMs !== null
+                    ? (protoNum === 1 ? 'PING_STDOUT' : 'USERSPACE_SOCKET')
+                    : null;
+            const transportRttMs =
+                primaryWireRttMs ?? (probeInfo.reachable === true ? probeInfo.rttMs : null);
 
             // Estimate return path L3 hop count from RX TTL (standard initial TTLs: 64, 128, 255)
             let estimatedReturnHops: number | null = null;
@@ -1578,38 +1604,70 @@ export function createCaptureApiRouter(
                 estimatedReturnHops = Math.max(0, initialTtlGuess - ttlRx);
             }
 
+            // Compare TX vs RX advertised MSS without claiming confirmed clamping from single-point observation
+            const mssDiffBytes =
+                tcpMssTx !== null && tcpMssRx !== null && tcpMssRx !== tcpMssTx
+                    ? tcpMssRx - tcpMssTx
+                    : null;
             const mssClampedDelta =
                 tcpMssTx !== null && tcpMssRx !== null && tcpMssRx < tcpMssTx
                     ? tcpMssTx - tcpMssRx
                     : null;
+            const mssStatus =
+                tcpMssTx !== null && tcpMssRx !== null
+                    ? (tcpMssTx !== tcpMssRx ? 'DIFFERENT_ADVERTISED_MSS' : 'SAME_ADVERTISED_MSS')
+                    : (tcpMssTx !== null || tcpMssRx !== null ? 'SINGLE_SIDE_ONLY' : null);
+
+            const hasPcapFrames = Boolean(capturedPcapFile && dstPackets.length > 0);
+            const hasTcpPcapFrames = Boolean(hasPcapFrames && protoNum === 6);
 
             const waterfallMetrics = {
                 dns_ms: dnsResolutionMs,
                 transport_rtt_ms: transportRttMs,
+                transport_rtt_source: transportRttSource,
                 tcp_connect_rtt_ms: tcpConnectRttMs,
+                icmp_echo_rtt_ms: icmpEchoRttMs,
+                udp_response_rtt_ms: udpResponseRttMs,
                 tls_handshake_ms: tlsHandshakeMs,
-                app_ttfb_ms: appTtfbMs,
-                probe_total_ms: probeInfo.rttMs
+                // Synthetic L4/TLS probe intentionally sends an incomplete HTTP header without \r\n\r\n to hold socket state; do not invent TTFB
+                app_ttfb_ms: null,
+                socket_connect_ms: protoNum === 6 && probeInfo.reachable === true ? probeInfo.rttMs : null,
+                probe_total_ms: probeInfo.reachable === true ? probeInfo.rttMs : null
             };
+
+            const dscpMatch = dscpTxVal !== null && dscpRxVal !== null ? dscpTxVal === dscpRxVal : null;
+            const dscpStatus =
+                dscpTxVal !== null && dscpRxVal !== null
+                    ? (dscpTxVal === dscpRxVal ? 'TX_RX_MATCH' : 'TX_RX_DIFFER')
+                    : dscpTxVal !== null
+                    ? 'TX_ONLY'
+                    : dscpRxVal !== null
+                    ? 'RX_ONLY'
+                    : null;
 
             const forensicsMetrics = {
                 tcp_mss_tx: tcpMssTx,
                 tcp_mss_rx: tcpMssRx,
-                mss_clamped: Boolean(mssClampedDelta && mssClampedDelta > 0),
+                mss_status: mssStatus,
+                mss_diff_bytes: mssDiffBytes,
+                mss_clamped: false, // Single-point source capture cannot prove in-path clamping vs remote endpoint MSS config
                 mss_clamped_delta: mssClampedDelta,
                 df_bit_tx: dfBitTx,
-                max_frame_bytes: maxFrameBytes || null,
+                df_bit_rx: dfBitRx,
+                max_frame_bytes: maxFrameBytes > 0 ? maxFrameBytes : null,
                 dscp_tx: dscpTxVal,
                 dscp_tx_label: formatDscpName(dscpTxVal),
                 dscp_rx: dscpRxVal,
                 dscp_rx_label: formatDscpName(dscpRxVal),
-                dscp_preserved: dscpTxVal !== null && dscpRxVal !== null ? dscpTxVal === dscpRxVal : null,
+                dscp_match: dscpMatch,
+                dscp_status: dscpStatus,
+                dscp_preserved: dscpMatch,
                 ttl_tx: ttlTx,
                 ttl_rx: ttlRx,
                 initial_ttl_guess: initialTtlGuess,
                 estimated_return_hops: estimatedReturnHops,
-                tcp_retransmissions: tcpRetransmissions,
-                zero_window_events: zeroWindowEvents
+                tcp_retransmissions: hasTcpPcapFrames ? tcpRetransmissions : null,
+                zero_window_events: hasTcpPcapFrames ? zeroWindowEvents : null
             };
             const effectiveSrcIp =
                 cleanSrcIp ||
@@ -1770,32 +1828,40 @@ export function createCaptureApiRouter(
                     const clientPort = isReverse ? fDport : fSport;
 
                     let matchScope: 'EXACT_PCAP_5TUPLE' | 'SESSION_PROBE_FLOW' | 'SAME_HOST_FLOW' | 'ASSOCIATED_DST_FLOW' = 'ASSOCIATED_DST_FLOW';
-                    let matchLabel = 'Associated Flow (Destination Match)';
+                    let matchLabel = 'Associated flow (destination match)';
+                    let correlationLevel: 'EXACT_FLOW_MATCH' | 'ASSOCIATED_FLOW' = 'ASSOCIATED_FLOW';
                     if (ipPairMatches) {
                         if (protoNum === 1 || (clientPort > 0 && pcapPorts.includes(clientPort))) {
                             matchScope = 'EXACT_PCAP_5TUPLE';
-                            matchLabel = 'Exact Probe 5-Tuple (In PCAP)';
+                            matchLabel = protoNum === 1 ? 'Exact flow match (ICMP)' : 'Exact flow match (5-tuple in PCAP)';
+                            correlationLevel = 'EXACT_FLOW_MATCH';
                         } else if (clientPort > 0 && sessionProbePorts.has(clientPort)) {
                             matchScope = 'SESSION_PROBE_FLOW';
-                            matchLabel = 'Session Probe Flow (Keepalive Port)';
+                            matchLabel = protoNum === 1 ? 'Exact flow match (ICMP session)' : 'Exact flow match (probe session 5-tuple)';
+                            correlationLevel = 'EXACT_FLOW_MATCH';
                         } else if (!isLocalStigixSite || !probeInfo.attempted) {
                             matchScope = 'SAME_HOST_FLOW';
-                            matchLabel = 'Matched Active Host Flow';
+                            matchLabel = 'Associated flow (active host flow)';
+                            correlationLevel = 'ASSOCIATED_FLOW';
                         } else {
                             matchScope = 'SAME_HOST_FLOW';
-                            matchLabel = 'Associated Flow (Same Host / Diff Port)';
+                            matchLabel = `Associated flow (same host, different port${clientPort ? ` :${clientPort}` : ''})`;
+                            correlationLevel = 'ASSOCIATED_FLOW';
                         }
                     } else if (effectiveSrcIp && resolvedDstIp && (fl.destination_ip === resolvedDstIp || fl.source_ip === resolvedDstIp)) {
                         const snatIp = fl.destination_ip === resolvedDstIp ? fl.source_ip : fl.destination_ip;
                         if (protoNum === 1 || (clientPort > 0 && pcapPorts.includes(clientPort))) {
                             matchScope = 'EXACT_PCAP_5TUPLE';
-                            matchLabel = `Exact Probe 5-Tuple (SNAT ${effectiveSrcIp} → ${snatIp})`;
+                            matchLabel = `Exact flow match (SNAT ${effectiveSrcIp} → ${snatIp})`;
+                            correlationLevel = 'EXACT_FLOW_MATCH';
                         } else if (clientPort > 0 && sessionProbePorts.has(clientPort)) {
                             matchScope = 'SESSION_PROBE_FLOW';
-                            matchLabel = `Session Probe Flow (SNAT ${effectiveSrcIp} → ${snatIp})`;
+                            matchLabel = `Exact flow match (probe session SNAT ${effectiveSrcIp} → ${snatIp})`;
+                            correlationLevel = 'EXACT_FLOW_MATCH';
                         } else {
                             matchScope = 'SAME_HOST_FLOW';
-                            matchLabel = `Source NAT Flow (${effectiveSrcIp} → ${snatIp})`;
+                            matchLabel = `Associated flow (SNAT ${effectiveSrcIp} → ${snatIp}${clientPort ? `, port :${clientPort}` : ''})`;
+                            correlationLevel = 'ASSOCIATED_FLOW';
                         }
                     }
                     return {
@@ -1803,7 +1869,8 @@ export function createCaptureApiRouter(
                         client_port: clientPort || null,
                         direction: isReverse ? 'reverse_indexed' : 'forward',
                         match_scope: matchScope,
-                        match_label: matchLabel
+                        match_label: matchLabel,
+                        correlation_level: correlationLevel
                     };
                 });
                 annotated.sort((a, b) => (rankOrder[a.match_scope] || 9) - (rankOrder[b.match_scope] || 9));
@@ -1830,6 +1897,15 @@ export function createCaptureApiRouter(
                 !seenRst
             );
 
+            const ingressIsExactMatch = Boolean(
+                primaryFlow &&
+                (primaryFlow.match_scope === 'EXACT_PCAP_5TUPLE' || primaryFlow.match_scope === 'SESSION_PROBE_FLOW')
+            );
+            const transitIsExactMatch = Boolean(
+                transitPrimaryFlow &&
+                (transitPrimaryFlow.match_scope === 'EXACT_PCAP_5TUPLE' || transitPrimaryFlow.match_scope === 'SESSION_PROBE_FLOW')
+            );
+
             // Build structured End-to-End Hops array
             const hops: any[] = [];
 
@@ -1850,7 +1926,7 @@ export function createCaptureApiRouter(
                     status: hop1Status,
                     badge: capturedPcapFile
                         ? dstPackets.length > 0
-                            ? `Packets captured (${txCount} TX / ${rxCount} RX)`
+                            ? `${txCount} TX / ${rxCount} RX captured`
                             : '0 packets captured'
                         : probeInfo.attempted
                         ? 'Active probe sent'
@@ -1866,8 +1942,8 @@ export function createCaptureApiRouter(
                         flow_packets: dstPackets.length,
                         tx_packets: txCount,
                         rx_packets: rxCount,
-                        syn_ack_seen: seenSynAck,
-                        rst_seen: seenRst,
+                        syn_ack_seen: hasTcpPcapFrames ? seenSynAck : null,
+                        rst_seen: hasTcpPcapFrames ? seenRst : null,
                         probe_attempted: probeInfo.attempted,
                         probe_reachable: probeInfo.reachable,
                         probe_rtt_ms: probeInfo.rttMs,
@@ -1945,16 +2021,27 @@ export function createCaptureApiRouter(
             } else if (primaryFlow) {
                 const secAction = String(primaryFlow.sec_action || 'ALLOW').toUpperCase();
                 const isBlocked = secAction.includes('DENY') || secAction.includes('DROP') || secAction.includes('REJECT');
+                const matchedPort = primaryFlow.client_port || primaryFlow.source_port || null;
                 hops.push({
                     id: 'hop_ingress_ion',
                     role: 'INGRESS_ION',
                     role_label: 'Ingress ION',
                     title: `ION ${ingressIon?.element || effectiveSourceSite}`,
                     subtitle: `SW ${ingressIon?.software_version || 'vION'} • VRF ${primaryFlow.vrf || 'Global'}`,
-                    status: isBlocked ? 'BLOCKED' : 'OBSERVED',
-                    badge: isBlocked ? `Blocked (${secAction})` : 'Matching flow found',
+                    status: isBlocked
+                        ? 'BLOCKED'
+                        : ingressIsExactMatch
+                        ? 'OBSERVED'
+                        : 'ASSOCIATED',
+                    badge: isBlocked
+                        ? (ingressIsExactMatch ? `Policy deny (${secAction})` : `Policy deny on associated flow (${secAction})`)
+                        : ingressIsExactMatch
+                        ? (protoNum === 1 ? 'Exact flow match (ICMP)' : `Exact flow match${matchedPort ? ` (:${matchedPort})` : ''}`)
+                        : `Associated flow${matchedPort ? ` (port :${matchedPort})` : ' (same host)'}`,
                     evidence_type: 'vION Flow Table',
-                    secondary_info: `App-ID: ${primaryFlow.app_id || 'unknown'}`,
+                    secondary_info: ingressIsExactMatch
+                        ? `App-ID: ${primaryFlow.app_id || 'unknown'}`
+                        : `Assoc. App-ID: ${primaryFlow.app_id || 'unknown'}`,
                     metrics: {
                         element: ingressIon?.element,
                         site_name: ingressIon?.site_name || effectiveSourceSite,
@@ -1971,6 +2058,10 @@ export function createCaptureApiRouter(
                         wanpath_id: primaryFlow.wanpath_id,
                         match_scope: primaryFlow.match_scope,
                         match_label: primaryFlow.match_label,
+                        correlation_level: ingressIsExactMatch ? 'EXACT_FLOW_MATCH' : 'ASSOCIATED_FLOW',
+                        matched_source_ip: primaryFlow.source_ip || null,
+                        matched_source_port: matchedPort,
+                        probe_source_port: primaryProbePort || null,
                         match_confidence: primaryFlow.match_confidence || ingressIon?.match_confidence,
                         matched_flows_count: annotatedIngressFlows.length,
                         total_table_flows: ingressIon?.total_table_flows || 0,
@@ -1986,7 +2077,7 @@ export function createCaptureApiRouter(
                     title: `ION ${ingressIon?.element || effectiveSourceSite}`,
                     subtitle: `SW ${ingressIon?.software_version || 'vION'} • ${ingressIon?.total_table_flows || 0} active flows in table`,
                     status: 'NOT_OBSERVED',
-                    badge: 'No Matching Flow',
+                    badge: 'No matching flow',
                     evidence_type: 'vION Flow Table',
                     secondary_info: `${ingressIon?.total_table_flows || 0} table rows scanned`,
                     metrics: {
@@ -1994,6 +2085,7 @@ export function createCaptureApiRouter(
                         site_name: ingressIon?.site_name || effectiveSourceSite,
                         software_version: ingressIon?.software_version,
                         command: ingressIon?.command,
+                        correlation_level: 'NO_MATCHING_FLOW',
                         total_table_flows: ingressIon?.total_table_flows || 0,
                         ha_elements_checked: ingressIon?.ha_elements_checked || [],
                         duration_ms: ingressIon?.duration_ms
@@ -2028,14 +2120,17 @@ export function createCaptureApiRouter(
                             }
                         });
                     } else if (transitPrimaryFlow) {
+                        const transitPort = transitPrimaryFlow.client_port || transitPrimaryFlow.source_port || null;
                         hops.push({
                             id: 'hop_transit',
                             role: 'TRANSIT_ION',
                             role_label: forwardingMode === 'DC_BACKHAUL_INTERNET' ? 'Backhaul Hub ION' : forwardingMode === 'BRANCH_TO_BRANCH_VPN' ? 'Remote Branch ION' : 'Destination Hub ION',
                             title: `Hub ${peerSite} (${transitIon?.element || peerSite})`,
                             subtitle: `${primaryFlow.egress_path} • ${transitPrimaryFlow.raw_path_type || 'vpn_to_core'}`,
-                            status: 'OBSERVED',
-                            badge: 'Matching flow found',
+                            status: transitIsExactMatch ? 'OBSERVED' : 'ASSOCIATED',
+                            badge: transitIsExactMatch
+                                ? (protoNum === 1 ? 'Exact flow match (ICMP)' : `Exact flow match${transitPort ? ` (:${transitPort})` : ''}`)
+                                : `Associated flow${transitPort ? ` (port :${transitPort})` : ' (same host)'}`,
                             evidence_type: 'vION Flow Table (HA)',
                             secondary_info: `${transitIon?.element || peerSite} (${transitPrimaryFlow.raw_path_type || 'vpn_to_core'})`,
                             metrics: {
@@ -2046,13 +2141,16 @@ export function createCaptureApiRouter(
                                 tunnel: primaryFlow.egress_path,
                                 wanpath_id: transitPrimaryFlow.wanpath_id,
                                 raw_path_type: transitPrimaryFlow.raw_path_type,
+                                observation: 'Overlay flow entry',
+                                context: transitPrimaryFlow.raw_path_type || 'vpn_to_core',
                                 match_scope: transitPrimaryFlow.match_scope,
                                 match_label: transitPrimaryFlow.match_label,
+                                correlation_level: transitIsExactMatch ? 'EXACT_FLOW_MATCH' : 'ASSOCIATED_FLOW',
+                                matched_source_port: transitPort,
                                 matched_flows_count: annotatedTransitFlows.length,
                                 total_table_flows: transitIon?.total_table_flows || 0,
                                 ha_elements_checked: transitIon?.ha_elements_checked || [],
-                                duration_ms: transitIon?.duration_ms,
-                                note: 'DPI App-ID & ZBFW policies are enforced at the ingress Branch ION; Hub ION confirms overlay tunnel arrival (vpn_to_core).'
+                                duration_ms: transitIon?.duration_ms
                             }
                         });
                     } else {
@@ -2066,7 +2164,7 @@ export function createCaptureApiRouter(
                             title: `Hub ${peerSite}`,
                             subtitle: primaryFlow.egress_path || 'SD-WAN VPN Tunnel',
                             status: 'NOT_OBSERVED',
-                            badge: 'No Matching Flow',
+                            badge: 'No matching flow',
                             evidence_type: 'vION Flow Table (HA)',
                             secondary_info: `Checked: ${checkedNames}`,
                             metrics: {
@@ -2074,6 +2172,7 @@ export function createCaptureApiRouter(
                                 site_name: transitIon?.site_name || peerSite,
                                 command: transitIon?.command,
                                 tunnel: primaryFlow.egress_path,
+                                correlation_level: 'NO_MATCHING_FLOW',
                                 total_table_flows: transitIon?.total_table_flows || 0,
                                 ha_elements_checked: transitIon?.ha_elements_checked || [],
                                 duration_ms: transitIon?.duration_ms
@@ -2142,22 +2241,44 @@ export function createCaptureApiRouter(
             const dstLabel = `${effDstIp || rawDest || 'Any Destination'} · ${dstPortLabel}`;
             const secAction = String(primaryFlow?.sec_action || '').toUpperCase();
             const isBlocked = secAction.includes('DENY') || secAction.includes('DROP') || secAction.includes('REJECT');
+            // Only treat ZBFW deny as blocking the probe itself if either the probe failed or the deny was on an exact flow match
+            const probeReplyObserved = Boolean(
+                isLocalStigixSite && (seenSynAck || seenRst || rxCount > 0 || probeInfo.reachable === true)
+            );
             const dstReached =
                 !isUnidirectionalNoReply &&
-                ((isLocalStigixSite && (seenSynAck || rxCount > 0 || probeInfo.reachable === true)) ||
-                (!isLocalStigixSite && Boolean(primaryFlow) && secAction === 'ALLOW'));
+                (probeReplyObserved || (!isLocalStigixSite && Boolean(primaryFlow) && !isBlocked));
             const lastObservedPoint = transitObserved
                 ? (transitIon?.element || ionTrace?.peer_site_name || 'Transit Hub')
                 : primaryFlow
                 ? `ION ${ingressIon?.element || effectiveSourceSite}`
                 : `Stigix ${effectiveSourceSite}`;
             const unidirDiagnosis = isUnidirectionalNoReply
-                ? `Last confirmed flow observation: ${lastObservedPoint}. Failure location not determined — suggested checks: ${
+                ? `Last flow observation: ${lastObservedPoint}. Failure location not determined from available points — suggested checks: ${
                       transitObserved
                           ? 'hub egress, downstream filtering, or return routing'
                           : 'overlay tunnel, policy routing, or downstream filtering'
                   }.`
                 : null;
+
+            const sourceVerificationLabel = dnsError
+                ? 'DNS resolution failed at source'
+                : seenSynAck
+                ? `SYN-ACK observed at source${rxCount > 0 ? ` (${rxCount} RX)` : ''}`
+                : seenRst
+                ? `TCP RST observed at source${rxCount > 0 ? ` (${rxCount} RX)` : ''}`
+                : protoNum === 1 && (rxCount > 0 || probeInfo.reachable === true)
+                ? `ICMP Echo Reply observed at source${rxCount > 0 ? ` (${rxCount} RX)` : ''}`
+                : protoNum === 17 && (rxCount > 0 || probeInfo.reachable === true)
+                ? `UDP reply observed at source${rxCount > 0 ? ` (${rxCount} RX)` : ''}`
+                : protoNum === 6 && probeInfo.reachable === true
+                ? 'TCP handshake completed from source'
+                : isBlocked && ingressIsExactMatch && !probeReplyObserved
+                ? `Policy deny observed at Ingress ION (${secAction})`
+                : probeInfo.attempted && rxCount === 0 && !probeInfo.reachable
+                ? (protoNum === 17 ? 'UDP datagrams sent · No reply observed at source' : 'No reply observed at source')
+                : 'No active source probe verification';
+
             hops.push({
                 id: 'hop_destination',
                 role: 'DESTINATION',
@@ -2166,7 +2287,7 @@ export function createCaptureApiRouter(
                 subtitle: dstLabel,
                 status: dnsError
                     ? 'BLOCKED'
-                    : isBlocked
+                    : isBlocked && !probeReplyObserved
                     ? 'BLOCKED'
                     : isUnidirectionalNoReply
                     ? 'NO_RESPONSE'
@@ -2175,38 +2296,27 @@ export function createCaptureApiRouter(
                     : primaryFlow
                     ? 'FORWARDED'
                     : 'NOT_OBSERVED',
-                badge: dnsError
-                    ? 'DNS resolution failed'
-                    : isBlocked
-                    ? `Blocked by ZBFW (${secAction})`
-                    : isUnidirectionalNoReply
-                    ? 'No response received'
-                    : seenRst
-                    ? `TCP RST received at source (${rxCount} RX)`
-                    : seenSynAck
-                    ? `Reply verified at source (SYN-ACK · ${rxCount} RX)`
-                    : rxCount > 0
-                    ? `Reply verified at source (${rxCount} RX)`
-                    : primaryFlow
-                    ? 'No destination-side capture'
-                    : 'No response received',
-                evidence_type: isLocalStigixSite
-                    ? 'Source probe · No destination capture'
-                    : 'Uninstrumented remote target',
+                badge: sourceVerificationLabel,
+                evidence_type: 'Destination capture unavailable',
                 secondary_info: dnsError
                     ? 'DNS Error'
                     : isUnidirectionalNoReply
-                    ? `${txCount} TX / 0 RX at source`
-                    : probeInfo.rttMs !== null
-                    ? `RTT ${probeInfo.rttMs}ms`
-                    : (resolvedDstIp || null),
+                    ? `${txCount} TX / 0 RX`
+                    : transportRttMs !== null
+                    ? (transportRttSource && transportRttSource.startsWith('PCAP_')
+                        ? `${transportRttMs}ms (PCAP)`
+                        : `${transportRttMs}ms`)
+                    : null,
                 metrics: {
                     destination_input: rawDest || null,
                     resolved_ip: resolvedDstIp || primaryFlow?.destination_ip || null,
+                    dns_resolved: Boolean(rawDest && resolvedDstIp && rawDest.toLowerCase() !== resolvedDstIp.toLowerCase()),
                     dns_resolution_ms: dnsResolutionMs,
                     dns_error: dnsError,
-                    port: portNum || primaryFlow?.destination_port || null,
+                    port: protoNum === 1 ? null : (portNum || primaryFlow?.destination_port || null),
                     protocol: protoStr.toUpperCase(),
+                    source_verification: sourceVerificationLabel,
+                    destination_capture_status: 'Destination capture unavailable',
                     instrumented: false,
                     unidirectional_diagnosis: unidirDiagnosis
                 }
@@ -2215,19 +2325,30 @@ export function createCaptureApiRouter(
             // Overall Verdict
             const verdictStatus = dnsError
                 ? 'DNS_ERROR'
-                : isBlocked
+                : isBlocked && !probeReplyObserved
                 ? 'BLOCKED'
                 : isUnidirectionalNoReply && primaryFlow
                 ? 'UNIDIRECTIONAL_NO_REPLY'
                 : isUnidirectionalNoReply
                 ? 'NO_RESPONSE'
+                : probeReplyObserved
+                ? 'VERIFIED_E2E'
                 : primaryFlow
-                ? (dstReached && isLocalStigixSite ? 'VERIFIED_E2E' : 'FLOW_ACTIVE')
+                ? 'FLOW_ACTIVE'
                 : 'NO_MATCHING_FLOW';
 
             // Build Flow Identity & Plain-English Diagnostic Synthesis
             const exact5TupleIngress = annotatedIngressFlows.some((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW');
             const exact5TupleTransit = annotatedTransitFlows.some((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW');
+            const correlationLevel: 'EXACT_FLOW_MATCH' | 'ASSOCIATED_FLOW' | 'NO_MATCHING_FLOW' | 'COLLECTION_UNAVAILABLE' =
+                !ionTrace || ionTrace.success === false
+                    ? 'COLLECTION_UNAVAILABLE'
+                    : !primaryFlow
+                    ? 'NO_MATCHING_FLOW'
+                    : exact5TupleIngress
+                    ? 'EXACT_FLOW_MATCH'
+                    : 'ASSOCIATED_FLOW';
+
             const displayedSrcIp = effectiveSrcIp || primaryFlow?.source_ip || 'Auto';
             const snatTranslatedIp =
                 effectiveSrcIp &&
@@ -2242,21 +2363,44 @@ export function createCaptureApiRouter(
             const srcTuplePart = `${displayedSrcIp}${displayedSrcPort && protoNum !== 1 ? `:${displayedSrcPort}` : ''}${snatTranslatedIp ? ` (SNAT ${snatTranslatedIp})` : ''}`;
             const tupleDisplay = `${srcTuplePart} → ${displayedDstIp}${displayedDstPort && protoNum !== 1 ? `:${displayedDstPort}` : ''} · ${protoStr.toUpperCase()}`;
 
+            const compactVerdictLabel = dnsError
+                ? 'DNS resolution failed'
+                : isBlocked && !probeReplyObserved
+                ? `Policy deny observed (${secAction})`
+                : isUnidirectionalNoReply
+                ? 'No reply observed at source'
+                : probeReplyObserved
+                ? protoNum === 6
+                    ? (seenRst ? 'Host reachable · TCP RST observed at source' : 'TCP reachable · Reply observed at source')
+                    : protoNum === 1
+                    ? 'ICMP reachable · Reply observed at source'
+                    : 'UDP reachable · Reply observed at source'
+                : protoNum === 17 && probeInfo.attempted
+                ? 'UDP probe sent · No reply observed at source'
+                : primaryFlow
+                ? 'Flow observed on ION'
+                : 'No reply or matching flow observed';
+
+            const rttSummaryBit =
+                transportRttMs !== null
+                    ? `, ${transportRttMs}ms ${transportRttSource && transportRttSource.startsWith('PCAP_') ? 'PCAP RTT' : 'RTT'}`
+                    : '';
+
             const connectivityHeadline = dnsError
                 ? `DNS resolution failed for "${rawDest}": ${dnsError}.`
-                : isBlocked
-                ? `Flow blocked at Ingress ION (${ingressIon?.element || effectiveSourceSite}) by Zone-Based Firewall policy "${primaryFlow?.sec_policy || 'Security Rule'}" (${secAction}).`
+                : isBlocked && !probeReplyObserved
+                ? `Policy deny observed at Ingress ION (${ingressIon?.element || effectiveSourceSite}): security policy "${primaryFlow?.sec_policy || 'Security Rule'}" reported action ${secAction}.`
                 : isUnidirectionalNoReply
-                ? `No response received — no return packets captured at ${effectiveSourceSite} during the test (${txCount} TX / 0 RX).`
+                ? `No reply observed — no return packets captured at ${effectiveSourceSite} during the test (${txCount} TX / 0 RX).`
                 : dstReached && isLocalStigixSite
                 ? seenRst
-                    ? `Reply received (TCP RST) — host reachable at ${effectiveSourceSite} (${txCount} TX / ${rxCount} RX packets${probeInfo.rttMs ? `, ${probeInfo.rttMs}ms RTT` : ''}).`
-                    : `Reply received — bidirectional connectivity confirmed at ${effectiveSourceSite} (${txCount} TX / ${rxCount} RX packets${probeInfo.rttMs ? `, ${probeInfo.rttMs}ms RTT` : ''}).`
+                    ? `Host reachable (TCP RST observed at ${effectiveSourceSite}, ${txCount} TX / ${rxCount} RX packets${rttSummaryBit}).`
+                    : `${protoStr.toUpperCase()} reachable — reply observed at ${effectiveSourceSite} (${txCount} TX / ${rxCount} RX packets${rttSummaryBit}).`
                 : primaryFlow && hasRemoteStigixPeer && remoteStigixPeer
-                ? `Active dataplane flow observed from Stigix Peer ${remoteStigixPeer.name} (${remoteStigixPeer.host}) across the SD-WAN fabric.`
+                ? `Dataplane flow observed from Stigix Peer ${remoteStigixPeer.name} (${remoteStigixPeer.host}) on the SD-WAN fabric.`
                 : primaryFlow
-                ? `Active dataplane flow observed on SD-WAN fabric (${isLocalStigixSite ? 'passive capture mode' : 'ION-only inspection'}).`
-                : `No active matching flow observed in ${effectiveSourceSite} vION flow table during collection window.`;
+                ? `Dataplane flow observed on SD-WAN fabric (${isLocalStigixSite ? 'passive capture mode' : 'ION-only inspection'}).`
+                : `No matching flow observed in ${effectiveSourceSite} vION flow table during collection window.`;
 
             const peerSiteLabel = ionTrace?.peer_site_name || 'Hub';
             const visibilityHeadline = !ionTrace || ionTrace.success === false
@@ -2266,22 +2410,26 @@ export function createCaptureApiRouter(
                     ? `Stigix Peer ${remoteStigixPeer.name} (${remoteStigixPeer.host}) is online, but no active flow to ${displayedDstIp}:${portNum} was present in ${ingressIon?.element || effectiveSourceSite} (${ingressIon?.total_table_flows || 0} active flows scanned).`
                     : `Local capture recorded ${txCount} TX / ${rxCount} RX packets, with no matching flow entry in ${ingressIon?.element || effectiveSourceSite} (${ingressIon?.total_table_flows || 0} active flows scanned).`
                 : forwardingMode === 'DIRECT_INTERNET_DIA'
-                ? `Local Internet breakout identified on ${ingressIon?.element || effectiveSourceSite} via "${primaryFlow.egress_path || 'Direct WAN'}" (${primaryFlow.raw_path_type || 'direct'}).`
+                ? `${exact5TupleIngress ? 'Exact flow match' : 'Associated flow'} on ${ingressIon?.element || effectiveSourceSite} via "${primaryFlow.egress_path || 'Direct WAN'}" (${primaryFlow.raw_path_type || 'direct'}).`
                 : forwardingMode === 'SERVICELINK_SSE'
-                ? `Matching flow found on ${ingressIon?.element || effectiveSourceSite} routed into ServiceLink SSE tunnel "${primaryFlow.egress_path}".`
+                ? `${exact5TupleIngress ? 'Exact flow match' : 'Associated flow'} on ${ingressIon?.element || effectiveSourceSite} routed into ServiceLink SSE tunnel "${primaryFlow.egress_path}".`
                 : transitObserved
-                ? `Matching flows found on ${ingressIon?.element || effectiveSourceSite} and hub ${transitIon?.element || peerSiteLabel} via "${primaryFlow.egress_path}" (${transitPrimaryFlow?.raw_path_type || 'vpn_to_core'}).`
-                : `Matching flow found on ${ingressIon?.element || effectiveSourceSite} via "${primaryFlow.egress_path}", with no matching flow found on ${peerSiteLabel} IONs.`;
+                ? `${exact5TupleIngress && exact5TupleTransit ? 'Exact flow matches' : 'Flow entries'} observed on ${ingressIon?.element || effectiveSourceSite} and hub ${transitIon?.element || peerSiteLabel} via "${primaryFlow.egress_path}" (${transitPrimaryFlow?.raw_path_type || 'vpn_to_core'}).`
+                : `${exact5TupleIngress ? 'Exact flow match' : 'Associated flow'} on ${ingressIon?.element || effectiveSourceSite} via "${primaryFlow.egress_path}", with no matching flow observed on ${peerSiteLabel} IONs.`;
 
             const limitOrDiagnosis = isUnidirectionalNoReply
                 ? (unidirDiagnosis as string)
+                : !ionTrace || ionTrace.success === false
+                ? `Partial collection: vION WebSocket CLI was unavailable on ${effectiveSourceSite} (${ionTrace?.error || 'CLI error'}).`
                 : !primaryFlow && txCount > 0
-                ? 'Short-lived or rejected flows can expire from the vION flow table before WebSocket CLI inspection completes.'
+                ? 'Flow correlation uncertain: no matching flow entry was found in the vION flow table during CLI inspection (short-lived flows can expire before CLI collection).'
+                : primaryFlow && !exact5TupleIngress
+                ? `Flow correlation uncertain: ION flow table returned an associated flow between the same hosts on source port :${primaryFlow.client_port || primaryFlow.source_port || '?'} rather than the probe port :${primaryProbePort || '?'}. App-ID, policy, and path shown reflect that associated flow.`
                 : primaryFlow && !transitObserved && (forwardingMode === 'DC_BACKHAUL_INTERNET' || forwardingMode === 'DC_PRIVATE_APP' || forwardingMode === 'BRANCH_TO_BRANCH_VPN')
-                ? `Last confirmed flow observation: ${ingressIon?.element || effectiveSourceSite}. Absence of a matching flow on ${peerSiteLabel} alone does not locate a packet drop.`
+                ? `Partial collection: flow observed on ${ingressIon?.element || effectiveSourceSite}, but no matching flow entry was observed on ${peerSiteLabel} Hub IONs during CLI inspection.`
                 : dstReached && isLocalStigixSite
-                ? 'Reply verified at source · No destination-side capture.'
-                : 'No destination-side capture agent · Path visibility relies on source and ION flow tables.';
+                ? 'Reply observed at source · Destination capture unavailable.'
+                : 'Destination capture unavailable · Visibility relies on source probe and ION flow tables.';
 
             activeFlowTraceProgress = {
                 active: false,
@@ -2322,6 +2470,8 @@ export function createCaptureApiRouter(
                     probe_5tuple: tupleDisplay,
                     src_ip: displayedSrcIp,
                     src_port: displayedSrcPort,
+                    probe_src_port: primaryProbePort || null,
+                    matched_ion_src_port: primaryFlow?.client_port || primaryFlow?.source_port || null,
                     dst_ip: displayedDstIp,
                     dst_port: displayedDstPort,
                     protocol: protoStr.toUpperCase(),
@@ -2329,6 +2479,7 @@ export function createCaptureApiRouter(
                     session_probe_ports: Array.from(sessionProbePorts),
                     exact_5tuple_ingress: exact5TupleIngress,
                     exact_5tuple_transit: exact5TupleTransit,
+                    correlation_level: correlationLevel,
                     primary_match_scope: primaryFlow?.match_scope || null,
                     primary_match_label: primaryFlow?.match_label || null,
                     total_ingress_matches: annotatedIngressFlows.length,
@@ -2336,12 +2487,15 @@ export function createCaptureApiRouter(
                     associated_flows_count: Math.max(0, annotatedIngressFlows.length - 1)
                 },
                 synthesis: {
+                    compact_verdict: compactVerdictLabel,
                     connectivity_headline: connectivityHeadline,
                     visibility_headline: visibilityHeadline,
                     limit_or_diagnosis: limitOrDiagnosis
                 },
                 verdict: {
                     status: verdictStatus,
+                    compact_verdict: compactVerdictLabel,
+                    correlation_level: correlationLevel,
                     forwarding_mode: forwardingMode,
                     app_id: primaryFlow?.app_id || null,
                     net_policy: primaryFlow?.net_policy || null,

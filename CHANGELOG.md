@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.18] - 2026-11-13
+
+### Changed & Fixed
+- **E2E Flow & Path Trace (NWPI) UI Streamlining & Evidence Semantics (`web-dashboard/packet-capture-routes.ts`, `web-dashboard/src/PacketCapture.tsx`)**:
+  - **Source Probe (`SOURCE_STIGIX`) 4-Card Single-Row Layout**: Consolidated the 8 source detail cards into 4 cards on a single desktop row (`Timing & Probe`, `TCP MSS` / `L3 Frame & DF`, `QoS / DSCP`, `Return & TCP Health` / `Return TTL`) with accessible contextual help (`?`) and an expandable `Socket & PCAP Info` disclosure drawer.
+  - **Non-Speculative Forensics & Timing Accuracy**:
+    - Distinguished kernel PCAP timestamp delta (`TCP connect (PCAP)`, `ICMP Echo (PCAP)`, `UDP reply (PCAP)`, `TLS (PCAP)`) from userspace `Socket connect` duration, eliminating duplicate/conflicting RTT labels.
+    - Stopped fabricating `TTFB` for synthetic L4/TLS probes that intentionally send an incomplete HTTP header without `\r\n\r\n` to hold socket state during vION CLI inspection.
+    - Replaced speculative `"CLAMPED"` / `"PRESERVED"` labels with `"Different advertised MSS"` (noting possible in-path clamping or remote endpoint MTU/MSS config) and `"TX/RX match"` / `"TX/RX differ"`, stated the initial TTL assumption on hop estimates (`"~3 hops, assuming initial TTL 64"`), and stopped displaying `0` for TCP counters when no TCP frames were captured.
+    - Fixed UDP probe so timer expiration without an inbound datagram does not report `reachable = true`, and fixed ICMP probe to parse individual echo reply `time=X ms` rather than total `ping -c 2` process wall time.
+  - **Explicit Flow Correlation Levels & Provenance Qualification**: Distinguished `Exact flow match`, `Associated flow` (same hosts, different port), and `No matching flow` in the compact top result header and on Hop 2 / Hop 3 ION cards (`ASSOCIATED FLOW` vs `EXACT FLOW MATCH`), added click/keyboard-accessible correlation criteria disclosure, and qualified SD-WAN metadata (`From associated flow:`) when matched on a different source port.
+  - **Conditional Intermediate Banner & Streamlined Hub/Destination Details**: Removed the redundant 2-line intermediate summary in nominal runs (displaying a banner only for anomalies, uncertain correlation, or partial collection), replaced the Hop 3 Hub pedagogical paragraph with data-driven cards (`Observation: Overlay flow entry · Context: vpn_to_core` and `DC1-R1: 1 matched / 10 flow rows`), and streamlined Hop 4 Destination to display literal target IPs once alongside concise source-probe verification (`SYN-ACK observed at source · Destination capture unavailable`).
+
 ## [3.2.17] - 2026-11-13
 
 ### Added & Enhanced

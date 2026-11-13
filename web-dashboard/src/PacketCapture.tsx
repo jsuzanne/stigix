@@ -596,6 +596,9 @@ export default function PacketCapture({
     const [compareBaseline, setCompareBaseline] = useState<TraceHistoryItem | null>(null);
     const [activeProbeLabel, setActiveProbeLabel] = useState<string>('');
     const [configuredProbes, setConfiguredProbes] = useState<ConfiguredProbeOption[]>([]);
+    const [showCorrelationDetail, setShowCorrelationDetail] = useState<boolean>(false);
+    const [activeForensicsHelp, setActiveForensicsHelp] = useState<'timing' | 'mss' | 'dscp' | 'ttl' | 'hub' | null>(null);
+    const [showSourceCaptureMeta, setShowSourceCaptureMeta] = useState<boolean>(false);
 
     // Draggable Column Widths for Virtual Packet Table
     const DEFAULT_COL_WIDTHS = useMemo(() => ({
@@ -907,6 +910,9 @@ export default function PacketCapture({
             }
             const data = await res.json();
             setCaptureMode('trace');
+            setShowCorrelationDetail(false);
+            setActiveForensicsHelp(null);
+            setShowSourceCaptureMeta(false);
             setTraceResult(data);
             setTraceProgress(null);
             if (data.query) {
@@ -1040,6 +1046,9 @@ export default function PacketCapture({
 
         setSelectedTraceFlow(null);
         setDisplayFilter('');
+        setShowCorrelationDetail(false);
+        setActiveForensicsHelp(null);
+        setShowSourceCaptureMeta(false);
         setSelectedHopId(isLocalTrace || hasRemotePeer ? 'hop_source' : 'hop_ingress_ion');
         setTraceProgress({
             active: true,
@@ -2860,7 +2869,21 @@ export default function PacketCapture({
                     ingressFlowsAll.filter((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW').length +
                     transitFlowsAll.filter((f) => f.match_scope === 'EXACT_PCAP_5TUPLE' || f.match_scope === 'SESSION_PROBE_FLOW').length;
 
-                const getNodeTheme = (statusRaw: string, roleRaw?: string) => {
+                const isHopAssociated = (hopObj: any): boolean => {
+                    if (!hopObj) return false;
+                    const st = String(hopObj.status || '').toUpperCase();
+                    if (st === 'ASSOCIATED') return true;
+                    const role = String(hopObj.role || '').toUpperCase();
+                    if ((role === 'INGRESS_ION' || role === 'TRANSIT_ION') && st === 'OBSERVED') {
+                        const ms = hopObj.metrics?.match_scope;
+                        if (ms && ms !== 'EXACT_PCAP_5TUPLE' && ms !== 'SESSION_PROBE_FLOW') {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                const getNodeTheme = (statusRaw: string, roleRaw?: string, hopObj?: any) => {
                     const st = String(statusRaw || '').toUpperCase();
                     const role = String(roleRaw || '').toUpperCase();
                     if (st === 'RUNNING') {
@@ -2872,12 +2895,21 @@ export default function PacketCapture({
                             label: 'ANALYZING'
                         };
                     }
+                    if (isHopAssociated(hopObj) || st === 'ASSOCIATED') {
+                        return {
+                            card: 'border-amber-500/45 dark:border-amber-500/40 bg-amber-500/[0.06] dark:bg-amber-500/[0.04] hover:border-amber-500/75',
+                            badge: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/40',
+                            dot: 'bg-amber-500 dark:bg-amber-400 ring-4 ring-amber-500/20',
+                            icon: <Info size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />,
+                            label: 'ASSOCIATED FLOW'
+                        };
+                    }
                     if (st === 'OBSERVED') {
                         const roleLabel =
                             role === 'SOURCE_STIGIX' || role === 'SOURCE_REMOTE_STIGIX'
                                 ? 'CAPTURED'
                                 : role === 'INGRESS_ION' || role === 'TRANSIT_ION'
-                                ? 'FLOW MATCHED'
+                                ? 'EXACT FLOW MATCH'
                                 : role === 'DESTINATION'
                                 ? 'REPLY RECEIVED'
                                 : role === 'TRANSIT_DIA'
@@ -2914,7 +2946,7 @@ export default function PacketCapture({
                             badge: 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40',
                             dot: 'bg-amber-500 dark:bg-amber-400 ring-4 ring-amber-500/20',
                             icon: <AlertCircle size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />,
-                            label: 'NO RESPONSE'
+                            label: 'NO REPLY'
                         };
                     }
                     if (st === 'BLOCKED') {
@@ -2923,7 +2955,7 @@ export default function PacketCapture({
                             badge: 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40',
                             dot: 'bg-rose-500 dark:bg-rose-400 ring-4 ring-rose-500/20',
                             icon: <AlertCircle size={13} className="text-rose-600 dark:text-rose-400 shrink-0" />,
-                            label: 'BLOCKED'
+                            label: 'POLICY DENY'
                         };
                     }
                     if (st === 'NOT_OBSERVED' || st === 'UNAVAILABLE') {
@@ -2932,7 +2964,7 @@ export default function PacketCapture({
                             badge: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/35',
                             dot: 'bg-amber-500 dark:bg-amber-400 ring-4 ring-amber-500/15',
                             icon: <AlertCircle size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />,
-                            label: st === 'NOT_OBSERVED' ? 'NO MATCH' : 'CLI ERROR'
+                            label: st === 'NOT_OBSERVED' ? 'NO MATCHING FLOW' : 'CLI ERROR'
                         };
                     }
                     if (st === 'PASSIVE') {
@@ -2953,8 +2985,53 @@ export default function PacketCapture({
                     };
                 };
 
-                const isIcmpFlow = String(flowIdObj?.protocol || traceProtocol || '').toUpperCase() === 'ICMP';
+                const protoUpper = String(flowIdObj?.protocol || traceResult?.query?.protocol || traceProtocol || 'TCP').toUpperCase();
+                const isIcmpFlow = protoUpper === 'ICMP';
+                const isUdpFlow = protoUpper === 'UDP';
+                const isTcpFlow = protoUpper === 'TCP';
                 const activePcapFilename = traceResult?.pcap?.filename || activePcapFile || '';
+
+                const isExactIngress = Boolean(
+                    flowIdObj?.exact_5tuple_ingress ||
+                    flowIdObj?.primary_match_scope === 'EXACT_PCAP_5TUPLE' ||
+                    flowIdObj?.primary_match_scope === 'SESSION_PROBE_FLOW'
+                );
+                const hasIngressFlow = Boolean(flowIdObj?.primary_match_scope || ingressFlowsAll.length > 0 || verdictObj?.app_id);
+                const ingressCliUnavailable = Boolean(activeHops[1]?.status === 'UNAVAILABLE');
+                const correlationState: 'EXACT_FLOW_MATCH' | 'ASSOCIATED_FLOW' | 'NO_MATCHING_FLOW' | 'COLLECTION_UNAVAILABLE' =
+                    ingressCliUnavailable
+                        ? 'COLLECTION_UNAVAILABLE'
+                        : isExactIngress
+                        ? 'EXACT_FLOW_MATCH'
+                        : hasIngressFlow
+                        ? 'ASSOCIATED_FLOW'
+                        : 'NO_MATCHING_FLOW';
+
+                // Derive compact probe verdict adapted to protocol and actual source evidence
+                const hop1M = activeHops[0]?.metrics || {};
+                const hop4St = String(activeHops[3]?.status || '').toUpperCase();
+                const vSt = String(verdictObj?.status || '');
+                const compactVerdictText = (() => {
+                    if (verdictObj?.compact_verdict) return verdictObj.compact_verdict;
+                    if (vSt === 'DNS_ERROR') return 'DNS resolution failed';
+                    if (vSt === 'BLOCKED') return `Policy deny observed (${verdictObj?.sec_action || 'DENY'})`;
+                    if (vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE' || hop4St === 'NO_RESPONSE') {
+                        return 'No reply observed at source';
+                    }
+                    if (vSt === 'VERIFIED_E2E' || hop4St === 'OBSERVED') {
+                        if (isTcpFlow) {
+                            return hop1M.rst_seen ? 'Host reachable · TCP RST observed at source' : 'TCP reachable · Reply observed at source';
+                        }
+                        if (isIcmpFlow) return 'ICMP reachable · Reply observed at source';
+                        if (isUdpFlow) return 'UDP reachable · Reply observed at source';
+                        return 'Reachable · Reply observed at source';
+                    }
+                    if (isUdpFlow && hop1M.probe_attempted && (hop1M.rx_packets ?? 0) === 0) {
+                        return 'UDP probe sent · No reply observed at source';
+                    }
+                    if (vSt === 'FLOW_ACTIVE') return 'Flow observed on ION';
+                    return 'No reply or matching flow observed';
+                })();
 
                 const handleSelectIonFlowRow = (fl: any, hopOrigin: 'ingress' | 'transit') => {
                     setSelectedTraceFlow({ ...fl, hopOrigin });
@@ -2971,75 +3048,78 @@ export default function PacketCapture({
                     <div className="space-y-3 animate-in fade-in duration-200">
                         {/* ── SECTION B: ANALYZED FLOW IDENTITY, 4-HOP PIPELINE & DIAGNOSTIC SYNTHESIS ── */}
                         <div className="bg-card border border-indigo-500/30 rounded-2xl p-4 shadow-sm space-y-3">
-                            {/* Top Row: Flow 5-Tuple Identity + Match Scope + SD-WAN Triad (locked min-h-[34px] to prevent any vertical shift) */}
-                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-3 min-h-[38px] border-b border-border/60">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">
+                            {/* Top Row: Single-line on wide screens, clean wrap on narrower viewports */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 min-h-[36px] border-b border-border/60">
+                                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-text-muted shrink-0">
                                         Analyzed Flow:
                                     </span>
-                                    <span className="px-2.5 py-0.5 rounded-lg bg-card-secondary border border-indigo-500/30 font-mono text-xs font-black text-text-primary flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded-lg bg-card-secondary border border-indigo-500/30 font-mono text-xs font-black text-text-primary flex items-center gap-1.5">
                                         <Zap size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                                         <span>{flowIdObj?.probe_5tuple || `${traceSrcIp || 'Auto'} → ${traceDestination}:${traceDstPort} · ${traceProtocol.toUpperCase()}`}</span>
                                     </span>
 
-                                    {/* Precision / Match Scope Pill */}
+                                    {/* Compact Probe Verdict Pill */}
+                                    {!tracingFlow && verdictObj && (
+                                        <span
+                                            className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border flex items-center gap-1 ${
+                                                vSt === 'VERIFIED_E2E'
+                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35'
+                                                    : vSt === 'BLOCKED' || vSt === 'DNS_ERROR'
+                                                    ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/35'
+                                                    : vSt === 'FLOW_ACTIVE'
+                                                    ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/35'
+                                                    : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/35'
+                                            }`}
+                                        >
+                                            <span>{compactVerdictText}</span>
+                                        </span>
+                                    )}
+
+                                    {/* Interactive Correlation Level Button (accessible via click & keyboard) */}
                                     {tracingFlow ? (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 dark:border-indigo-500/30 flex items-center gap-1.5">
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/40 flex items-center gap-1.5">
                                             <Loader2 size={11} className="animate-spin" />
                                             <span>{traceProgress?.phase_label || 'Collecting dataplane evidence...'}</span>
                                         </span>
-                                    ) : flowIdObj?.primary_match_scope === 'EXACT_PCAP_5TUPLE' ? (
-                                        <span
-                                            title={
-                                                isIcmpFlow
-                                                    ? 'Correlated between PCAP and ION flow table using Source IP, Destination IP, Protocol (ICMP), and session activity window'
-                                                    : 'Correlated between PCAP and ION flow table using exact 5-tuple (Source IP, Ephemeral Source Port, Destination IP, Destination Port, Protocol)'
-                                            }
-                                            className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 dark:border-emerald-500/30 flex items-center gap-1 cursor-help"
-                                        >
-                                            <CheckCircle2 size={11} />
-                                            <span>{isIcmpFlow ? 'Exact Flow Match (ICMP)' : 'Exact Flow Match (5-Tuple)'}</span>
-                                        </span>
-                                    ) : flowIdObj?.primary_match_scope === 'SESSION_PROBE_FLOW' ? (
-                                        <span
-                                            title={
-                                                isIcmpFlow
-                                                    ? 'Matched active ICMP probe flow in ION dataplane table (Source IP, Destination IP, Protocol)'
-                                                    : 'Matched active synthetic probe 5-tuple in ION dataplane table'
-                                            }
-                                            className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30 flex items-center gap-1 cursor-help"
-                                        >
-                                            <CheckCircle2 size={11} />
-                                            <span>{isIcmpFlow ? 'Session Probe Match (ICMP)' : 'Session Probe Match (5-Tuple)'}</span>
-                                        </span>
-                                    ) : flowIdObj?.primary_match_scope ? (
-                                        <span
-                                            title="Matched by host IP and destination protocol/port within the active flow table"
-                                            className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40 dark:border-amber-500/30 flex items-center gap-1 cursor-help"
-                                        >
-                                            <Info size={11} />
-                                            <span>{flowIdObj.primary_match_label || 'Host / Destination Match'}</span>
-                                        </span>
-                                    ) : null}
-
-                                    {(flowIdObj?.associated_flows_count || 0) > 0 && !tracingFlow && (
+                                    ) : (
                                         <button
                                             type="button"
-                                            onClick={() => setTraceEvidenceTab('flows')}
-                                            className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-colors cursor-pointer"
-                                            title="Other flows to the same destination with different ephemeral ports"
+                                            onClick={() => setShowCorrelationDetail((prev) => !prev)}
+                                            aria-expanded={showCorrelationDetail}
+                                            title="Click or press Enter to view flow correlation criteria and provenance"
+                                            className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border flex items-center gap-1 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/50 ${
+                                                correlationState === 'EXACT_FLOW_MATCH'
+                                                    ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                                    : correlationState === 'ASSOCIATED_FLOW'
+                                                    ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border-amber-500/40'
+                                                    : 'bg-slate-500/15 hover:bg-slate-500/25 text-text-secondary border-border'
+                                            }`}
                                         >
-                                            +{flowIdObj.associated_flows_count} associated flow{flowIdObj.associated_flows_count > 1 ? 's' : ''}
+                                            {correlationState === 'EXACT_FLOW_MATCH' ? (
+                                                <CheckCircle2 size={11} />
+                                            ) : (
+                                                <Info size={11} />
+                                            )}
+                                            <span>
+                                                {correlationState === 'EXACT_FLOW_MATCH'
+                                                    ? 'Exact flow match'
+                                                    : correlationState === 'ASSOCIATED_FLOW'
+                                                    ? 'Associated flow'
+                                                    : correlationState === 'COLLECTION_UNAVAILABLE'
+                                                    ? 'Flow CLI unavailable'
+                                                    : 'No matching flow'}
+                                            </span>
+                                            <ChevronDown size={10} className={`transition-transform ${showCorrelationDetail ? 'rotate-180' : ''}`} />
                                         </button>
                                     )}
                                 </div>
 
-                                {/* Right side: SD-WAN Classification Triad Badges + Pin & Compare Actions */}
+                                {/* Right side: SD-WAN Classification Triad Badges (with provenance when Associated) + Pin & Compare Actions */}
                                 {!tracingFlow && verdictObj && (() => {
                                     const currentTraceIdVal = traceResult?.trace_id || '';
                                     const currentHistEntry = traceHistory.find(t => t.trace_id === currentTraceIdVal);
                                     const isCurrentPinned = Boolean(currentHistEntry?.pinned);
-                                    // Find a candidate previous run for quick 1-click compare (prefer pinned baseline for same destination, else latest previous run)
                                     const candidatePrevious = traceHistory.find(
                                         t =>
                                             t.trace_id !== currentTraceIdVal &&
@@ -3051,31 +3131,50 @@ export default function PacketCapture({
                                             t.destination.toLowerCase() === String(traceResult?.query?.destination_input || traceDestination).toLowerCase()
                                     ) || traceHistory.find(t => t.trace_id !== currentTraceIdVal);
 
+                                    const isAssocMeta = correlationState === 'ASSOCIATED_FLOW';
+
                                     return (
-                                        <div className="flex items-center gap-2 flex-wrap">
+                                        <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+                                            {isAssocMeta && (verdictObj.app_id || verdictObj.sec_action || verdictObj.egress_path) && (
+                                                <span className="text-[9px] font-mono font-bold text-amber-700 dark:text-amber-300">
+                                                    From associated flow:
+                                                </span>
+                                            )}
                                             {verdictObj.app_id && (
-                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30 flex items-center gap-1">
+                                                <span
+                                                    title={isAssocMeta ? 'Observed on an associated flow (different source port), not proven for the probe socket' : 'Observed on exact probe 5-tuple flow'}
+                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black flex items-center gap-1 ${
+                                                        isAssocMeta
+                                                            ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-dashed border-purple-500/45'
+                                                            : 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/40'
+                                                    }`}
+                                                >
                                                     <Cpu size={11} />
                                                     <span>App-ID: {verdictObj.app_id}</span>
                                                 </span>
                                             )}
                                             {verdictObj.sec_action && (
-                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black border ${
-                                                    String(verdictObj.sec_action).toUpperCase() === 'ALLOW'
-                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 dark:border-emerald-500/30'
-                                                        : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 dark:border-rose-500/30'
-                                                }`}>
+                                                <span
+                                                    title={isAssocMeta ? 'Security action reported on associated flow' : 'Security action reported on exact probe flow'}
+                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-black ${
+                                                        isAssocMeta ? 'border border-dashed' : 'border'
+                                                    } ${
+                                                        String(verdictObj.sec_action).toUpperCase() === 'ALLOW'
+                                                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                                            : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
+                                                    }`}
+                                                >
                                                     ZBFW: {verdictObj.sec_action}
                                                 </span>
                                             )}
                                             {verdictObj.egress_path && (
-                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-cyan-500/15 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 dark:border-cyan-500/30">
+                                                <span
+                                                    title={isAssocMeta ? 'WAN path reported on associated flow' : 'WAN path reported on exact probe flow'}
+                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-cyan-500/15 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 ${
+                                                        isAssocMeta ? 'border border-dashed border-cyan-500/45' : 'border border-cyan-500/40'
+                                                    }`}
+                                                >
                                                     {verdictObj.egress_path}
-                                                </span>
-                                            )}
-                                            {traceResult?.duration_ms && (
-                                                <span className="text-[10px] font-mono text-text-muted">
-                                                    ({(traceResult.duration_ms / 1000).toFixed(1)}s)
                                                 </span>
                                             )}
 
@@ -3130,12 +3229,70 @@ export default function PacketCapture({
                                 })()}
                             </div>
 
-                            {/* ── SECTION C: CONNECTED HORIZONTAL PROGRESSION TIMELINE (●──────●──────●──────●) ──
-                                Positioned immediately under Analyzed Flow so the 4 hop cards NEVER shift down when synthesis arrives */}
+                            {/* Accessible Correlation Criteria Disclosure Panel (toggled on click/keyboard of correlation badge) */}
+                            {!tracingFlow && showCorrelationDetail && (
+                                <div className="rounded-xl p-3 bg-card-secondary/70 border border-border text-[11px] font-mono space-y-1.5 animate-in fade-in duration-150">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                                            Flow Correlation Criteria &amp; Provenance
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            {totalIonFlows > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTraceEvidenceTab('flows')}
+                                                    className="px-2 py-0.5 rounded bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 border border-indigo-500/35 text-[10px] font-bold cursor-pointer"
+                                                >
+                                                    Open vION Flow Records ({totalIonFlows})
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowCorrelationDetail(false)}
+                                                className="text-text-muted hover:text-text-primary p-0.5 cursor-pointer"
+                                                title="Close correlation details"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-text-secondary">
+                                        <div>
+                                            <span className="text-text-muted">Probe 5-Tuple: </span>
+                                            <strong className="text-text-primary">{flowIdObj?.probe_5tuple || '-'}</strong>
+                                            {flowIdObj?.pcap_ports?.length > 0 && (
+                                                <span className="text-text-muted"> (PCAP source port{flowIdObj.pcap_ports.length > 1 ? 's' : ''}: :{flowIdObj.pcap_ports.join(', :')})</span>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <span className="text-text-muted">Correlation Status: </span>
+                                            {correlationState === 'EXACT_FLOW_MATCH' ? (
+                                                <span className="text-emerald-700 dark:text-emerald-300 font-bold">
+                                                    Exact flow match — ION flow table entry matches the probe&apos;s {isIcmpFlow ? 'ICMP host pair and session window' : `exact 5-tuple (including ephemeral source port :${flowIdObj?.matched_ion_src_port || flowIdObj?.src_port || '-'})`}.
+                                                </span>
+                                            ) : correlationState === 'ASSOCIATED_FLOW' ? (
+                                                <span className="text-amber-800 dark:text-amber-300 font-bold">
+                                                    Associated flow — Matched same source/destination IP and service port, but on a different source port (ION port :{ ingressFlowsAll[0]?.client_port || ingressFlowsAll[0]?.source_port || '?' } vs probe port :{ flowIdObj?.probe_src_port || flowIdObj?.pcap_ports?.[0] || '?' }). App-ID, ZBFW policy, and WAN path come from this associated flow and are not proven for the probe socket.
+                                                </span>
+                                            ) : correlationState === 'COLLECTION_UNAVAILABLE' ? (
+                                                <span className="text-amber-800 dark:text-amber-300 font-bold">
+                                                    vION WebSocket CLI collection was unavailable; flow correlation could not be performed.
+                                                </span>
+                                            ) : (
+                                                <span className="text-text-primary font-bold">
+                                                    No matching flow — {activeHops[1]?.metrics?.total_table_flows ?? 0} active rows scanned on Ingress ION; no entry matched this host/destination pair during CLI collection.
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── SECTION C: CONNECTED HORIZONTAL PROGRESSION TIMELINE (●──────●──────●──────●) ── */}
                             <div className="pt-1">
                                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                                     {activeHops.map((hop: any, idx: number) => {
-                                        const theme = getNodeTheme(hop.status, hop.role);
+                                        const theme = getNodeTheme(hop.status, hop.role, hop);
                                         const isSelected = selectedHop?.id === hop.id;
                                         const hopSt = String(hop.status || '').toUpperCase();
                                         const prevHop = idx > 0 ? activeHops[idx - 1] : null;
@@ -3150,19 +3307,23 @@ export default function PacketCapture({
                                             (idx === 1 && prevSt === 'PASSIVE');
                                         const nextConfirmed = nextSt === 'OBSERVED' || nextSt === 'FORWARDED';
 
-                                        const leftConfirmed = prevConfirmed && hopConfirmed;
+                                        const leftConfirmed = prevConfirmed && hopConfirmed && !isHopAssociated(hop) && !isHopAssociated(prevHop);
                                         const rightConfirmed =
-                                            (hopConfirmed || (idx === 0 && hopSt === 'PASSIVE')) && nextConfirmed;
+                                            (hopConfirmed || (idx === 0 && hopSt === 'PASSIVE')) && nextConfirmed && !isHopAssociated(hop) && !isHopAssociated(nextHop);
                                         const leftWarning =
                                             !leftConfirmed &&
-                                            (hopSt === 'NO_RESPONSE' ||
+                                            (isHopAssociated(hop) ||
+                                                isHopAssociated(prevHop) ||
+                                                hopSt === 'NO_RESPONSE' ||
                                                 hopSt === 'UNREACHABLE' ||
                                                 hopSt === 'BLOCKED' ||
                                                 hopSt === 'NOT_OBSERVED' ||
                                                 prevSt === 'NOT_OBSERVED');
                                         const rightWarning =
                                             !rightConfirmed &&
-                                            (nextSt === 'NO_RESPONSE' ||
+                                            (isHopAssociated(hop) ||
+                                                isHopAssociated(nextHop) ||
+                                                nextSt === 'NO_RESPONSE' ||
                                                 nextSt === 'UNREACHABLE' ||
                                                 nextSt === 'BLOCKED' ||
                                                 nextSt === 'NOT_OBSERVED' ||
@@ -3177,11 +3338,29 @@ export default function PacketCapture({
                                                 null;
                                         }
 
+                                        // Ensure Hop card primary text & secondary info reflect associated flow vs exact match even for older saved traces
+                                        const hopAssoc = isHopAssociated(hop);
+                                        const hopPrimaryText = (() => {
+                                            if ((hop.role === 'INGRESS_ION' || hop.role === 'TRANSIT_ION') && hopAssoc) {
+                                                const mPort = hop.metrics?.matched_source_port;
+                                                return `Associated flow${mPort ? ` (port :${mPort})` : ' (diff port)'}`;
+                                            }
+                                            if ((hop.role === 'INGRESS_ION' || hop.role === 'TRANSIT_ION') && hopSt === 'OBSERVED' && hop.badge === 'Matching flow found') {
+                                                return 'Exact flow match';
+                                            }
+                                            return hop.badge || hop.subtitle;
+                                        })();
+                                        const hopSecondaryText = (() => {
+                                            if (hop.role === 'INGRESS_ION' && hopAssoc && hop.metrics?.app_id) {
+                                                return `Assoc. App-ID: ${hop.metrics.app_id}`;
+                                            }
+                                            return hop.secondary_info;
+                                        })();
+
                                         return (
                                             <div key={hop.id || idx} className="flex flex-col min-w-0">
-                                                {/* Horizontal Progression Axis Track (●──────────) — -mx-1.5 bridges the gap-3 between grid columns */}
+                                                {/* Horizontal Progression Axis Track (●──────────) */}
                                                 <div className="hidden lg:flex items-center h-7 mb-1.5 relative -mx-1.5">
-                                                    {/* Left half-line */}
                                                     <div
                                                         className={`flex-1 h-[2px] ${
                                                             idx === 0
@@ -3193,7 +3372,6 @@ export default function PacketCapture({
                                                                 : 'border-t-2 border-dashed border-slate-500/40 bg-transparent'
                                                         }`}
                                                     />
-                                                    {/* Progression Node Circle (●) */}
                                                     <button
                                                         type="button"
                                                         onClick={() => setSelectedHopId(hop.id)}
@@ -3208,7 +3386,6 @@ export default function PacketCapture({
                                                     >
                                                         {theme.icon}
                                                     </button>
-                                                    {/* Right half-line */}
                                                     <div
                                                         className={`flex-1 h-[2px] relative ${
                                                             !nextHop
@@ -3231,7 +3408,7 @@ export default function PacketCapture({
                                                     </div>
                                                 </div>
 
-                                                {/* Lighter Selectable Timeline Node Card */}
+                                                {/* Selectable Timeline Node Card */}
                                                 <button
                                                     type="button"
                                                     onClick={() => setSelectedHopId(hop.id)}
@@ -3244,7 +3421,6 @@ export default function PacketCapture({
                                                     }`}
                                                 >
                                                     <div className="space-y-1">
-                                                        {/* Role + Status Label */}
                                                         <div className="flex items-center justify-between gap-1.5">
                                                             <span className="text-[9px] font-black uppercase tracking-wider text-text-muted truncate">
                                                                 {idx + 1}. {hop.role_label || hop.role?.replace(/_/g, ' ')}
@@ -3255,25 +3431,22 @@ export default function PacketCapture({
                                                             </span>
                                                         </div>
 
-                                                        {/* Equipment / Destination Name */}
                                                         <div className="text-xs font-black text-text-primary truncate" title={hop.title}>
                                                             {hop.title}
                                                         </div>
 
-                                                        {/* Concise State Summary */}
-                                                        <div className="text-[11px] font-mono font-bold text-text-primary/90 truncate" title={hop.badge}>
-                                                            {hop.badge || hop.subtitle}
+                                                        <div className="text-[11px] font-mono font-bold text-text-primary/90 truncate" title={hopPrimaryText}>
+                                                            {hopPrimaryText}
                                                         </div>
                                                     </div>
 
-                                                    {/* Discrete Evidence Footer */}
                                                     <div className="pt-1 border-t border-border/35 flex items-center justify-between gap-1.5 text-[9px] font-mono text-text-muted">
                                                         <span className="truncate" title={hop.evidence_type}>
                                                             {hop.evidence_type || 'Telemetry'}
                                                         </span>
-                                                        {hop.secondary_info && (
-                                                            <span className="text-cyan-700 dark:text-cyan-300 font-bold truncate shrink-0" title={hop.secondary_info}>
-                                                                {hop.secondary_info}
+                                                        {hopSecondaryText && (
+                                                            <span className="text-cyan-700 dark:text-cyan-300 font-bold truncate shrink-0" title={hopSecondaryText}>
+                                                                {hopSecondaryText}
                                                             </span>
                                                         )}
                                                     </div>
@@ -3284,82 +3457,104 @@ export default function PacketCapture({
                                 </div>
                             </div>
 
-                            {/* Diagnostic Synthesis Sentences (Level 1 Outcome + Level 2 Path Summary + Compact Scope/Boundary)
-                                Placed BELOW the 4 hop cards so completing the trace updates hop cards in-place with zero layout shift */}
+                            {/* Conditional Diagnostic Banner: ONLY rendered for anomalies, correlation uncertainty, or partial collection (omitted in nominal exact-match runs) */}
                             {!tracingFlow && synthesisObj && (() => {
-                                const vSt = String(verdictObj?.status || '');
-                                const isAnomaly =
-                                    vSt === 'UNIDIRECTIONAL_NO_REPLY' ||
-                                    vSt === 'NO_RESPONSE' ||
-                                    vSt === 'UNREACHABLE' ||
-                                    vSt === 'BLOCKED' ||
-                                    vSt === 'DNS_ERROR' ||
-                                    vSt === 'NO_MATCHING_FLOW';
-                                const badgeLabel =
-                                    vSt === 'VERIFIED_E2E'
-                                        ? 'REPLY RECEIVED'
-                                        : vSt === 'FLOW_ACTIVE'
-                                        ? 'FLOW OBSERVED'
-                                        : vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE' || vSt === 'UNREACHABLE'
-                                        ? 'NO RESPONSE'
-                                        : vSt === 'BLOCKED'
-                                        ? 'BLOCKED BY ZBFW'
-                                        : vSt.replace(/_/g, ' ') || 'DIAGNOSTIC';
+                                const hop3 = activeHops[2];
+                                const hop3St = String(hop3?.status || '').toUpperCase();
+                                const transitMissingOrUncertain =
+                                    hop3?.role === 'TRANSIT_ION' &&
+                                    (hop3St === 'NOT_OBSERVED' || hop3St === 'UNAVAILABLE' || isHopAssociated(hop3));
+
+                                const bannerSpec: { tag: string; message: string; tone: 'rose' | 'amber' } | null = (() => {
+                                    if (vSt === 'DNS_ERROR') {
+                                        return {
+                                            tag: 'DNS resolution failed',
+                                            message: synthesisObj.connectivity_headline || 'Target hostname could not be resolved.',
+                                            tone: 'rose'
+                                        };
+                                    }
+                                    if (vSt === 'BLOCKED') {
+                                        return {
+                                            tag: 'Policy deny observed',
+                                            message: synthesisObj.connectivity_headline || `Security policy reported action ${verdictObj?.sec_action || 'DENY'}.`,
+                                            tone: 'rose'
+                                        };
+                                    }
+                                    if (vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE' || hop4St === 'NO_RESPONSE') {
+                                        return {
+                                            tag: 'No reply observed',
+                                            message: `${synthesisObj.connectivity_headline || 'No return traffic was captured at the source.'}${synthesisObj.limit_or_diagnosis ? ` ${synthesisObj.limit_or_diagnosis}` : ''}`,
+                                            tone: 'amber'
+                                        };
+                                    }
+                                    if (correlationState === 'COLLECTION_UNAVAILABLE' || hop3St === 'UNAVAILABLE') {
+                                        return {
+                                            tag: 'Partial collection',
+                                            message: synthesisObj.visibility_headline || synthesisObj.limit_or_diagnosis || 'vION WebSocket CLI collection was unavailable on one or more hops.',
+                                            tone: 'amber'
+                                        };
+                                    }
+                                    if (correlationState === 'ASSOCIATED_FLOW') {
+                                        const mPort = ingressFlowsAll[0]?.client_port || ingressFlowsAll[0]?.source_port || flowIdObj?.matched_ion_src_port;
+                                        const pPort = flowIdObj?.probe_src_port || flowIdObj?.pcap_ports?.[0] || hop1M.local_port;
+                                        return {
+                                            tag: 'Flow correlation uncertain',
+                                            message: `ION flow table matched an associated flow between the same hosts${mPort ? ` (port :${mPort})` : ''}${pPort ? ` rather than the probe socket port :${pPort}` : ''}. App-ID, policy, and WAN path reflect that associated flow.`,
+                                            tone: 'amber'
+                                        };
+                                    }
+                                    if (correlationState === 'NO_MATCHING_FLOW') {
+                                        return {
+                                            tag: 'Flow correlation uncertain',
+                                            message: synthesisObj.visibility_headline || 'No matching flow entry was found in the vION flow table during CLI inspection.',
+                                            tone: 'amber'
+                                        };
+                                    }
+                                    if (transitMissingOrUncertain) {
+                                        return {
+                                            tag: isHopAssociated(hop3) ? 'Flow correlation uncertain' : 'Partial collection',
+                                            message: isHopAssociated(hop3)
+                                                ? `Exact flow matched on Ingress ION, while ${hop3.title} returned an associated flow on a different source port.`
+                                                : `Flow matched on Ingress ION via "${verdictObj?.egress_path || 'overlay'}", but no matching flow entry was observed on ${hop3.title} during collection.`,
+                                            tone: 'amber'
+                                        };
+                                    }
+                                    return null;
+                                })();
+
+                                if (!bannerSpec) return null;
 
                                 return (
-                                    <div className="pt-2.5 border-t border-border/50 space-y-1.5 animate-in fade-in duration-200">
-                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
-                                            {/* Level 1 — Primary Test Outcome */}
-                                            <div className="flex items-center gap-2.5 flex-wrap">
-                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shrink-0 ${
-                                                    vSt === 'VERIFIED_E2E'
-                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
-                                                        : vSt === 'FLOW_ACTIVE'
-                                                        ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40'
-                                                        : vSt === 'BLOCKED' || vSt === 'DNS_ERROR'
-                                                        ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40'
-                                                        : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/40'
-                                                }`}>
-                                                    {badgeLabel}
+                                    <div
+                                        className={`rounded-xl px-3 py-2 border text-[11px] flex items-start justify-between gap-2 animate-in fade-in duration-150 ${
+                                            bannerSpec.tone === 'rose'
+                                                ? 'bg-rose-500/10 border-rose-500/35 text-rose-900 dark:text-rose-200'
+                                                : 'bg-amber-500/10 border-amber-500/35 text-amber-900 dark:text-amber-200'
+                                        }`}
+                                    >
+                                        <div className="flex items-start gap-2">
+                                            <AlertCircle
+                                                size={13}
+                                                className={`shrink-0 mt-0.5 ${
+                                                    bannerSpec.tone === 'rose'
+                                                        ? 'text-rose-600 dark:text-rose-400'
+                                                        : 'text-amber-600 dark:text-amber-400'
+                                                }`}
+                                            />
+                                            <div>
+                                                <span className="font-black uppercase text-[9px] tracking-wider mr-1.5 px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10">
+                                                    {bannerSpec.tag}
                                                 </span>
-                                                <span className="text-xs font-black text-text-primary leading-snug">
-                                                    {synthesisObj.connectivity_headline}
-                                                </span>
+                                                <span className="font-mono">{bannerSpec.message}</span>
                                             </div>
-
-                                            {/* Compact 1-Line Scope Pill in Normal Cases */}
-                                            {!isAnomaly && synthesisObj.limit_or_diagnosis && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTraceEvidenceTab('limits')}
-                                                    title="View full diagnostic collection scope & limits"
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/80 hover:bg-card-hover border border-border/60 text-[10px] font-mono text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0 self-start lg:self-auto"
-                                                >
-                                                    <Info size={11} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
-                                                    <span>{synthesisObj.limit_or_diagnosis}</span>
-                                                </button>
-                                            )}
                                         </div>
-
-                                        {/* Level 2 — Path Summary */}
-                                        <p className="text-xs text-text-secondary leading-relaxed">
-                                            {synthesisObj.visibility_headline}
-                                        </p>
-
-                                        {/* Highlighted Callout Only When Anomaly or Partial Visibility */}
-                                        {isAnomaly && synthesisObj.limit_or_diagnosis && (
-                                            <div className="rounded-xl px-3 py-2 border bg-amber-500/10 border-amber-500/35 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
-                                                <Info size={13} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                                                <div>
-                                                    <span className="font-black uppercase text-[9px] tracking-wider mr-1.5">
-                                                        {vSt === 'UNIDIRECTIONAL_NO_REPLY' || vSt === 'NO_RESPONSE'
-                                                            ? 'Observation Boundary & Suggested Checks:'
-                                                            : 'Diagnostic Scope:'}
-                                                    </span>
-                                                    <span>{synthesisObj.limit_or_diagnosis}</span>
-                                                </div>
-                                            </div>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setTraceEvidenceTab('limits')}
+                                            className="px-2 py-0.5 rounded bg-card/80 hover:bg-card border border-border/60 text-[10px] font-mono font-bold text-text-secondary hover:text-text-primary shrink-0 cursor-pointer"
+                                        >
+                                            Collection &amp; Limits
+                                        </button>
                                     </div>
                                 );
                             })()}
@@ -3555,11 +3750,27 @@ export default function PacketCapture({
                                             <span className="text-[11px] font-mono text-text-muted">
                                                 ({selectedHop.subtitle})
                                             </span>
+                                            {selectedHop.role === 'SOURCE_STIGIX' && selectedHop.metrics?.pcap_file && (
+                                                <span className="px-1.5 py-0.5 rounded bg-card border border-border text-[10px] font-mono text-cyan-700 dark:text-cyan-300 font-bold">
+                                                    {selectedHop.metrics.tx_packets ?? 0} TX / {selectedHop.metrics.rx_packets ?? 0} RX
+                                                </span>
+                                            )}
                                         </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-mono">
+                                        <div className="flex items-center gap-2 text-[10px] font-mono flex-wrap">
                                             <span className="text-text-muted">
                                                 Evidence: <strong className="text-text-primary">{selectedHop.evidence_type || 'Dataplane'}</strong>
                                             </span>
+                                            {selectedHop.role === 'SOURCE_STIGIX' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowSourceCaptureMeta((prev) => !prev)}
+                                                    aria-expanded={showSourceCaptureMeta}
+                                                    className="px-2 py-0.5 rounded bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border font-bold flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <span>Socket &amp; PCAP Info</span>
+                                                    <ChevronDown size={10} className={`transition-transform ${showSourceCaptureMeta ? 'rotate-180' : ''}`} />
+                                                </button>
+                                            )}
                                             {!tracingFlow && selectedHop.role === 'SOURCE_STIGIX' && traceResult?.pcap && (
                                                 <button
                                                     type="button"
@@ -3581,6 +3792,29 @@ export default function PacketCapture({
                                         </div>
                                     </div>
 
+                                    {/* Expandable Socket & PCAP File Metadata (keeps 1-row 4-card layout clean while preserving full access) */}
+                                    {selectedHop.role === 'SOURCE_STIGIX' && showSourceCaptureMeta && (
+                                        <div className="px-3 py-2 rounded-lg bg-card border border-border/70 text-[10px] font-mono text-text-secondary flex flex-wrap items-center gap-x-4 gap-y-1">
+                                            <span>
+                                                Local Socket: <strong className="text-text-primary">{selectedHop.subtitle}{selectedHop.metrics?.local_port && !isIcmpFlow ? `:${selectedHop.metrics.local_port}` : ''}</strong>
+                                            </span>
+                                            <span>
+                                                PCAP File: <strong className="text-text-primary">{selectedHop.metrics?.pcap_file || 'None'}</strong>
+                                            </span>
+                                            <span>
+                                                Interface: <strong className="text-text-primary">{selectedHop.metrics?.interface || 'any'}</strong>
+                                            </span>
+                                            <span>
+                                                Flow Frames: <strong className="text-cyan-700 dark:text-cyan-300">{selectedHop.metrics?.flow_packets ?? 0}</strong> ({selectedHop.metrics?.tx_packets ?? 0} TX / {selectedHop.metrics?.rx_packets ?? 0} RX, {selectedHop.metrics?.total_packets ?? 0} total in capture)
+                                            </span>
+                                            {traceResult?.query?.bpf_used && (
+                                                <span>
+                                                    BPF: <code className="text-emerald-700 dark:text-emerald-300">{traceResult.query.bpf_used}</code>
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {selectedHop.error && (
                                         <div className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs font-mono text-rose-700 dark:text-rose-300">
                                             {selectedHop.error}
@@ -3589,303 +3823,549 @@ export default function PacketCapture({
 
                                     {/* Hop-specific detailed metrics grid */}
                                     {selectedHop.metrics && Object.keys(selectedHop.metrics).length > 0 ? (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-[11px] font-mono">
-                                            {selectedHop.role === 'SOURCE_STIGIX' && (
-                                                <>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Synthetic Probe Result</div>
-                                                        <div className="font-bold text-text-primary mt-0.5">{selectedHop.metrics.probe_detail || '-'}</div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Captured Packets (TX / RX)</div>
-                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
-                                                            {selectedHop.metrics.tx_packets ?? 0} TX / {selectedHop.metrics.rx_packets ?? 0} RX ({selectedHop.metrics.flow_packets ?? 0} flow frames)
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">TCP Handshake Flags</div>
-                                                        <div className="font-bold text-text-primary mt-0.5">
-                                                            SYN-ACK: <span className={selectedHop.metrics.syn_ack_seen ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{selectedHop.metrics.syn_ack_seen ? 'Observed' : 'Not Seen'}</span>
-                                                            {' • '}
-                                                            RST: <span className={selectedHop.metrics.rst_seen ? 'text-rose-600 dark:text-rose-400' : 'text-text-muted'}>{selectedHop.metrics.rst_seen ? 'Observed' : 'None'}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Local Socket &amp; PCAP File</div>
-                                                        <div className="font-bold text-text-primary mt-0.5 truncate" title={selectedHop.metrics.pcap_file || ''}>
-                                                            Port :{selectedHop.metrics.local_port || '-'} • {selectedHop.metrics.pcap_file || 'No PCAP'}
-                                                        </div>
-                                                    </div>
+                                        <div className="space-y-2">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-[11px] font-mono">
+                                                {selectedHop.role === 'SOURCE_STIGIX' && (() => {
+                                                    const wf = selectedHop.metrics.waterfall || {};
+                                                    const fx = selectedHop.metrics.forensics || {};
+                                                    const hasMssBoth = fx.tcp_mss_tx !== null && fx.tcp_mss_tx !== undefined && fx.tcp_mss_rx !== null && fx.tcp_mss_rx !== undefined;
+                                                    const mssDiffer = hasMssBoth && fx.tcp_mss_tx !== fx.tcp_mss_rx;
+                                                    const hasDscpBoth = fx.dscp_tx !== null && fx.dscp_tx !== undefined && fx.dscp_rx !== null && fx.dscp_rx !== undefined;
+                                                    const dscpMatch = hasDscpBoth ? fx.dscp_tx === fx.dscp_rx : null;
 
-                                                    {/* Wave 1 Enrichments: Timing Waterfall & L3/L4 PCAP Forensics */}
-                                                    {(selectedHop.metrics.waterfall || selectedHop.metrics.forensics) && (() => {
-                                                        const wf = selectedHop.metrics.waterfall || {};
-                                                        const fx = selectedHop.metrics.forensics || {};
-                                                        return (
-                                                            <>
-                                                                {/* 5. Phase Timing Waterfall */}
-                                                                <div className="p-2 rounded-lg bg-card border border-indigo-500/25">
-                                                                    <div className="flex items-center justify-between gap-1">
-                                                                        <span className="text-[9px] uppercase text-text-muted">Phase Timing Waterfall</span>
-                                                                        {wf.transport_rtt_ms !== null && wf.transport_rtt_ms !== undefined && (
-                                                                            <span className="px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[9px] font-bold">
-                                                                                RTT {wf.transport_rtt_ms}ms
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="font-bold text-text-primary mt-1 flex items-center gap-1.5 flex-wrap text-[10px]">
-                                                                        {wf.dns_ms !== null && wf.dns_ms !== undefined && (
-                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
-                                                                                DNS: <strong className="text-cyan-600 dark:text-cyan-300">{wf.dns_ms}ms</strong>
-                                                                            </span>
-                                                                        )}
-                                                                        {wf.tcp_connect_rtt_ms !== null && wf.tcp_connect_rtt_ms !== undefined && (
-                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
-                                                                                TCP: <strong className="text-emerald-600 dark:text-emerald-400">{wf.tcp_connect_rtt_ms}ms</strong>
-                                                                            </span>
-                                                                        )}
-                                                                        {wf.tls_handshake_ms !== null && wf.tls_handshake_ms !== undefined && (
-                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
-                                                                                TLS: <strong className="text-purple-600 dark:text-purple-300">{wf.tls_handshake_ms}ms</strong>
-                                                                            </span>
-                                                                        )}
-                                                                        {wf.app_ttfb_ms !== null && wf.app_ttfb_ms !== undefined && (
-                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
-                                                                                TTFB: <strong className="text-amber-600 dark:text-amber-300">{wf.app_ttfb_ms}ms</strong>
-                                                                            </span>
-                                                                        )}
-                                                                        {wf.dns_ms === null && wf.tcp_connect_rtt_ms === null && wf.transport_rtt_ms !== null && (
-                                                                            <span>Wire RTT: <strong className="text-emerald-600 dark:text-emerald-400">{wf.transport_rtt_ms}ms</strong></span>
-                                                                        )}
-                                                                    </div>
+                                                    return (
+                                                        <>
+                                                            {/* Card A: Timing & Probe */}
+                                                            <div className="p-2.5 rounded-lg bg-card border border-border/60 flex flex-col justify-between gap-1">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <span className="text-[9px] uppercase text-text-muted font-bold">Timing &amp; Probe</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setActiveForensicsHelp((h) => (h === 'timing' ? null : 'timing'))}
+                                                                        aria-expanded={activeForensicsHelp === 'timing'}
+                                                                        title="Origin and definitions of timing measurements"
+                                                                        className="text-text-muted hover:text-indigo-600 dark:hover:text-indigo-300 p-0.5 rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                    >
+                                                                        <Info size={11} />
+                                                                    </button>
                                                                 </div>
+                                                                <div className="font-bold text-text-primary flex items-center gap-1.5 flex-wrap text-[10px]">
+                                                                    {wf.dns_ms !== null && wf.dns_ms !== undefined && (
+                                                                        <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                            DNS: <strong className="text-cyan-600 dark:text-cyan-300">{wf.dns_ms}ms</strong>
+                                                                        </span>
+                                                                    )}
+                                                                    {isTcpFlow && (
+                                                                        wf.tcp_connect_rtt_ms !== null && wf.tcp_connect_rtt_ms !== undefined ? (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                TCP connect (PCAP): <strong className="text-emerald-600 dark:text-emerald-400">{wf.tcp_connect_rtt_ms}ms</strong>
+                                                                            </span>
+                                                                        ) : wf.socket_connect_ms !== null && wf.socket_connect_ms !== undefined ? (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                Socket connect: <strong className="text-emerald-600 dark:text-emerald-400">{wf.socket_connect_ms}ms</strong>
+                                                                            </span>
+                                                                        ) : wf.probe_total_ms !== null && wf.probe_total_ms !== undefined && selectedHop.metrics.probe_reachable === true ? (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                Socket connect: <strong className="text-emerald-600 dark:text-emerald-400">{wf.probe_total_ms}ms</strong>
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-text-muted">TCP connect: Unavailable</span>
+                                                                        )
+                                                                    )}
+                                                                    {isIcmpFlow && (
+                                                                        wf.icmp_echo_rtt_ms !== null && wf.icmp_echo_rtt_ms !== undefined ? (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                ICMP Echo (PCAP): <strong className="text-emerald-600 dark:text-emerald-400">{wf.icmp_echo_rtt_ms}ms</strong>
+                                                                            </span>
+                                                                        ) : wf.transport_rtt_ms !== null && wf.transport_rtt_ms !== undefined ? (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                ICMP Echo: <strong className="text-emerald-600 dark:text-emerald-400">{wf.transport_rtt_ms}ms</strong>
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-text-muted">ICMP Echo: Unavailable</span>
+                                                                        )
+                                                                    )}
+                                                                    {isUdpFlow && (
+                                                                        wf.udp_response_rtt_ms !== null && wf.udp_response_rtt_ms !== undefined ? (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                UDP reply (PCAP): <strong className="text-emerald-600 dark:text-emerald-400">{wf.udp_response_rtt_ms}ms</strong>
+                                                                            </span>
+                                                                        ) : wf.transport_rtt_ms !== null && wf.transport_rtt_ms !== undefined && (selectedHop.metrics.rx_packets ?? 0) > 0 ? (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                                UDP reply: <strong className="text-emerald-600 dark:text-emerald-400">{wf.transport_rtt_ms}ms</strong>
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-text-muted">UDP response: No reply</span>
+                                                                        )
+                                                                    )}
+                                                                    {wf.tls_handshake_ms !== null && wf.tls_handshake_ms !== undefined && (
+                                                                        <span className="px-1.5 py-0.5 rounded bg-card-secondary border border-border">
+                                                                            TLS (PCAP): <strong className="text-purple-600 dark:text-purple-300">{wf.tls_handshake_ms}ms</strong>
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-[10px] text-text-secondary truncate">
+                                                                    {isTcpFlow ? (
+                                                                        selectedHop.metrics.syn_ack_seen === true
+                                                                            ? 'Handshake: SYN-ACK observed'
+                                                                            : selectedHop.metrics.rst_seen === true
+                                                                            ? 'Handshake: TCP RST observed'
+                                                                            : selectedHop.metrics.probe_reachable === true
+                                                                            ? 'Handshake: Socket connected'
+                                                                            : selectedHop.metrics.probe_attempted
+                                                                            ? 'Handshake: No SYN-ACK observed'
+                                                                            : 'Passive capture'
+                                                                    ) : isIcmpFlow ? (
+                                                                        (selectedHop.metrics.rx_packets ?? 0) > 0 || selectedHop.metrics.probe_reachable === true
+                                                                            ? 'Echo Reply observed'
+                                                                            : 'No Echo Reply observed'
+                                                                    ) : (
+                                                                        (selectedHop.metrics.rx_packets ?? 0) > 0 || selectedHop.metrics.probe_reachable === true
+                                                                            ? 'UDP reply observed'
+                                                                            : 'Datagrams sent · No reply'
+                                                                    )}
+                                                                </div>
+                                                            </div>
 
-                                                                {/* 6. TCP MSS & MTU Forensics */}
-                                                                <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                                    <div className="flex items-center justify-between gap-1">
-                                                                        <span className="text-[9px] uppercase text-text-muted">TCP MSS &amp; MTU Clamping</span>
-                                                                        {fx.mss_clamped ? (
+                                                            {/* Card B: TCP MSS (for TCP) / L3 Frame & DF (for UDP/ICMP) */}
+                                                            <div className="p-2.5 rounded-lg bg-card border border-border/60 flex flex-col justify-between gap-1">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <span className="text-[9px] uppercase text-text-muted font-bold">
+                                                                        {isTcpFlow ? 'TCP MSS' : 'L3 Frame & DF'}
+                                                                    </span>
+                                                                    <div className="flex items-center gap-1">
+                                                                        {isTcpFlow && hasMssBoth && (
                                                                             <span
-                                                                                title="Return SYN-ACK MSS was clamped by SD-WAN IPSec tunnel interface to prevent fragmentation"
-                                                                                className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/35 text-[8px] font-black uppercase"
+                                                                                className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase border ${
+                                                                                    mssDiffer
+                                                                                        ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/35'
+                                                                                        : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35'
+                                                                                }`}
                                                                             >
-                                                                                Clamped -{fx.mss_clamped_delta}B
+                                                                                {mssDiffer ? 'Different advertised MSS' : 'Same advertised MSS'}
                                                                             </span>
-                                                                        ) : fx.tcp_mss_tx ? (
-                                                                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[8px] font-black uppercase">
-                                                                                Unclamped
-                                                                            </span>
-                                                                        ) : null}
-                                                                    </div>
-                                                                    <div className="font-bold text-text-primary mt-1">
-                                                                        {fx.tcp_mss_tx || fx.tcp_mss_rx ? (
-                                                                            <>
-                                                                                TX {fx.tcp_mss_tx ?? '-'}B → RX <span className={fx.mss_clamped ? 'text-amber-600 dark:text-amber-300' : 'text-cyan-700 dark:text-cyan-300'}>{fx.tcp_mss_rx ?? '-'}B</span>
-                                                                            </>
-                                                                        ) : (
-                                                                            <span className="text-text-muted">Max Frame: {fx.max_frame_bytes ?? '-'}B</span>
                                                                         )}
-                                                                        {' • '}
-                                                                        <span className="text-text-muted text-[10px]">
-                                                                            DF: {fx.df_bit_tx === true ? 'Set' : fx.df_bit_tx === false ? 'Clear' : '-'}
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setActiveForensicsHelp((h) => (h === 'mss' ? null : 'mss'))}
+                                                                            aria-expanded={activeForensicsHelp === 'mss'}
+                                                                            title="MSS & DF interpretation details"
+                                                                            className="text-text-muted hover:text-indigo-600 dark:hover:text-indigo-300 p-0.5 rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                        >
+                                                                            <Info size={11} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="font-bold text-text-primary text-[10px]">
+                                                                    {isTcpFlow ? (
+                                                                        <>
+                                                                            SYN: <span className="text-text-primary">{fx.tcp_mss_tx !== null && fx.tcp_mss_tx !== undefined ? `${fx.tcp_mss_tx}B` : 'N/A'}</span>
+                                                                            {' · '}
+                                                                            SYN-ACK: <span className={mssDiffer ? 'text-amber-700 dark:text-amber-300' : 'text-cyan-700 dark:text-cyan-300'}>
+                                                                                {fx.tcp_mss_rx !== null && fx.tcp_mss_rx !== undefined ? `${fx.tcp_mss_rx}B` : 'N/A'}
+                                                                            </span>
+                                                                        </>
+                                                                    ) : (
+                                                                        <span>Max frame: {fx.max_frame_bytes ? `${fx.max_frame_bytes}B` : 'N/A'}</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-[10px] text-text-secondary">
+                                                                    DF (TX): <strong className="text-text-primary">{fx.df_bit_tx === true ? 'Set' : fx.df_bit_tx === false ? 'Clear' : 'N/A'}</strong>
+                                                                    {fx.df_bit_rx !== null && fx.df_bit_rx !== undefined && (
+                                                                        <>
+                                                                            {' · '}DF (RX): <strong className="text-text-primary">{fx.df_bit_rx ? 'Set' : 'Clear'}</strong>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Card C: QoS / DSCP */}
+                                                            <div className="p-2.5 rounded-lg bg-card border border-border/60 flex flex-col justify-between gap-1">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <span className="text-[9px] uppercase text-text-muted font-bold">QoS / DSCP</span>
+                                                                    <div className="flex items-center gap-1">
+                                                                        {dscpMatch !== null && (
+                                                                            <span
+                                                                                className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase border ${
+                                                                                    dscpMatch
+                                                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35'
+                                                                                        : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/35'
+                                                                                }`}
+                                                                            >
+                                                                                {dscpMatch ? 'TX/RX match' : 'TX/RX differ'}
+                                                                            </span>
+                                                                        )}
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setActiveForensicsHelp((h) => (h === 'dscp' ? null : 'dscp'))}
+                                                                            aria-expanded={activeForensicsHelp === 'dscp'}
+                                                                            title="DSCP observation scope"
+                                                                            className="text-text-muted hover:text-indigo-600 dark:hover:text-indigo-300 p-0.5 rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                        >
+                                                                            <Info size={11} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="font-bold text-text-primary text-[10px] truncate">
+                                                                    TX: <span className="text-purple-700 dark:text-purple-300">{fx.dscp_tx_label || 'N/A'}</span>
+                                                                    {' → '}
+                                                                    RX: <span className="text-cyan-700 dark:text-cyan-300">{fx.dscp_rx_label || 'N/A'}</span>
+                                                                </div>
+                                                                <div className="text-[10px] text-text-secondary truncate">
+                                                                    Observed at source capture only
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Card D: Return & TCP Health (or Return TTL for UDP/ICMP) */}
+                                                            <div className="p-2.5 rounded-lg bg-card border border-border/60 flex flex-col justify-between gap-1">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <span className="text-[9px] uppercase text-text-muted font-bold">
+                                                                        {isTcpFlow ? 'Return & TCP Health' : 'Return TTL'}
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setActiveForensicsHelp((h) => (h === 'ttl' ? null : 'ttl'))}
+                                                                        aria-expanded={activeForensicsHelp === 'ttl'}
+                                                                        title="TTL hop heuristic & TCP counters explanation"
+                                                                        className="text-text-muted hover:text-indigo-600 dark:hover:text-indigo-300 p-0.5 rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                    >
+                                                                        <Info size={11} />
+                                                                    </button>
+                                                                </div>
+                                                                <div className="font-bold text-text-primary text-[10px]">
+                                                                    {fx.ttl_rx !== null && fx.ttl_rx !== undefined ? (
+                                                                        <>
+                                                                            RX TTL {fx.ttl_rx}{' '}
+                                                                            {fx.estimated_return_hops !== null && fx.estimated_return_hops !== undefined && fx.initial_ttl_guess ? (
+                                                                                <span className="text-cyan-700 dark:text-cyan-300 font-normal">
+                                                                                    (~{fx.estimated_return_hops} hops, assuming initial TTL {fx.initial_ttl_guess})
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </>
+                                                                    ) : (
+                                                                        <span className="text-text-muted">
+                                                                            RX TTL: N/A{fx.ttl_tx !== null && fx.ttl_tx !== undefined ? ` (TX TTL ${fx.ttl_tx})` : ''}
                                                                         </span>
-                                                                    </div>
+                                                                    )}
                                                                 </div>
-
-                                                                {/* 7. DSCP QoS Marking */}
-                                                                <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                                    <div className="flex items-center justify-between gap-1">
-                                                                        <span className="text-[9px] uppercase text-text-muted">DSCP QoS Marking (TX → RX)</span>
-                                                                        {fx.dscp_preserved !== null && fx.dscp_preserved !== undefined && (
-                                                                            <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${
-                                                                                fx.dscp_preserved
-                                                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                                                                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                                                            }`}>
-                                                                                {fx.dscp_preserved ? 'Preserved' : 'Remarked'}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="font-bold text-text-primary mt-1 truncate">
-                                                                        TX: <span className="text-purple-700 dark:text-purple-300">{fx.dscp_tx_label || 'CS0 (0)'}</span>
-                                                                        {' → '}
-                                                                        RX: <span className="text-cyan-700 dark:text-cyan-300">{fx.dscp_rx_label || '-'}</span>
-                                                                    </div>
+                                                                <div className="text-[10px] text-text-secondary">
+                                                                    {isTcpFlow ? (
+                                                                        <>
+                                                                            Retrans:{' '}
+                                                                            <strong className={(fx.tcp_retransmissions || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-text-primary'}>
+                                                                                {fx.tcp_retransmissions !== null && fx.tcp_retransmissions !== undefined && (selectedHop.metrics.flow_packets ?? 0) > 0
+                                                                                    ? fx.tcp_retransmissions
+                                                                                    : 'N/A'}
+                                                                            </strong>
+                                                                            {' · '}RST:{' '}
+                                                                            <strong className={selectedHop.metrics.rst_seen === true ? 'text-rose-600 dark:text-rose-400' : 'text-text-primary'}>
+                                                                                {selectedHop.metrics.rst_seen === true
+                                                                                    ? 'Observed'
+                                                                                    : selectedHop.metrics.rst_seen === false && (selectedHop.metrics.flow_packets ?? 0) > 0
+                                                                                    ? 'None'
+                                                                                    : 'N/A'}
+                                                                            </strong>
+                                                                        </>
+                                                                    ) : (
+                                                                        <span>TX TTL: {fx.ttl_tx !== null && fx.ttl_tx !== undefined ? fx.ttl_tx : 'N/A'}</span>
+                                                                    )}
                                                                 </div>
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
 
-                                                                {/* 8. Return TTL, L3 Distance & TCP Health */}
-                                                                <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                                    <div className="flex items-center justify-between gap-1">
-                                                                        <span className="text-[9px] uppercase text-text-muted">Return TTL &amp; L3 Distance</span>
-                                                                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${
-                                                                            (fx.tcp_retransmissions || 0) > 0
-                                                                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                                                                                : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                                                        }`}>
-                                                                            Retrans: {fx.tcp_retransmissions ?? 0}
+                                                {selectedHop.role === 'SOURCE_REMOTE_STIGIX' && (
+                                                    <>
+                                                        <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                            <div className="text-[9px] uppercase text-text-muted">Remote Stigix Instance</div>
+                                                            <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
+                                                                {selectedHop.metrics.peer_name} (v{selectedHop.metrics.peer_version || '3.1'})
+                                                            </div>
+                                                        </div>
+                                                        <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                            <div className="text-[9px] uppercase text-text-muted">Peer LAN IP &amp; Port</div>
+                                                            <div className="font-bold text-text-primary mt-0.5">
+                                                                {selectedHop.metrics.source_ip}{selectedHop.metrics.source_port ? `:${selectedHop.metrics.source_port}` : ''}
+                                                            </div>
+                                                        </div>
+                                                        <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                            <div className="text-[9px] uppercase text-text-muted">Collection Mode</div>
+                                                            <div className="font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">{selectedHop.metrics.mode}</div>
+                                                        </div>
+                                                    </>
+                                                )}
+
+                                                {selectedHop.role === 'SOURCE_CLIENT_AGENTLESS' && (
+                                                    <>
+                                                        <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                            <div className="text-[9px] uppercase text-text-muted">Client Source IP</div>
+                                                            <div className="font-bold text-text-primary mt-0.5">{selectedHop.metrics.source_ip}</div>
+                                                        </div>
+                                                        <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                            <div className="text-[9px] uppercase text-text-muted">Client Source Port</div>
+                                                            <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">{selectedHop.metrics.source_port || 'Any'}</div>
+                                                        </div>
+                                                        <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                            <div className="text-[9px] uppercase text-text-muted">Collection Mode</div>
+                                                            <div className="font-bold text-amber-700 dark:text-amber-300 mt-0.5">{selectedHop.metrics.mode}</div>
+                                                        </div>
+                                                    </>
+                                                )}
+
+                                                {selectedHop.role === 'INGRESS_ION' && (() => {
+                                                    const hopAssoc = isHopAssociated(selectedHop);
+                                                    const mPort = selectedHop.metrics.matched_source_port;
+                                                    return (
+                                                        <>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <span className="text-[9px] uppercase text-text-muted">Application &amp; ZBFW</span>
+                                                                    {hopAssoc && (
+                                                                        <span className="text-[8px] font-mono text-amber-700 dark:text-amber-300">
+                                                                            Associated flow
                                                                         </span>
-                                                                    </div>
-                                                                    <div className="font-bold text-text-primary mt-1">
-                                                                        {fx.ttl_rx !== null && fx.ttl_rx !== undefined ? (
-                                                                            <>
-                                                                                RX TTL {fx.ttl_rx} <span className="text-cyan-700 dark:text-cyan-300">(~{fx.estimated_return_hops ?? 0} L3 hops)</span>
-                                                                            </>
-                                                                        ) : (
-                                                                            <span className="text-text-muted">TX TTL {fx.ttl_tx ?? '-'} (No return frame)</span>
-                                                                        )}
-                                                                    </div>
+                                                                    )}
                                                                 </div>
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </>
-                                            )}
+                                                                <div className="font-bold text-purple-700 dark:text-purple-300 mt-0.5">
+                                                                    App-ID: {selectedHop.metrics.app_id || 'None'} • ZBFW: {selectedHop.metrics.sec_action || '-'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <span className="text-[9px] uppercase text-text-muted">Policies (Path / QoS / Sec)</span>
+                                                                    {hopAssoc && (
+                                                                        <span className="text-[8px] font-mono text-amber-700 dark:text-amber-300">
+                                                                            Associated flow
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="font-bold text-text-primary mt-0.5 truncate" title={`${selectedHop.metrics.net_policy || '-'} / ${selectedHop.metrics.pri_policy || '-'} / ${selectedHop.metrics.sec_policy || '-'}`}>
+                                                                    {selectedHop.metrics.net_policy || '-'} / {selectedHop.metrics.pri_policy || '-'} / {selectedHop.metrics.sec_policy || '-'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <span className="text-[9px] uppercase text-text-muted">Selected Egress WAN Path</span>
+                                                                    {hopAssoc && (
+                                                                        <span className="text-[8px] font-mono text-amber-700 dark:text-amber-300">
+                                                                            Associated flow
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
+                                                                    {selectedHop.metrics.egress_path || '-'} ({selectedHop.metrics.raw_path_type || '-'})
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="text-[9px] uppercase text-text-muted">Flow Table Correlation</div>
+                                                                <div className="font-bold text-text-primary mt-0.5">
+                                                                    {hopAssoc
+                                                                        ? `Associated flow${mPort ? ` (port :${mPort})` : ''}`
+                                                                        : (selectedHop.metrics.matched_flows_count ?? 0) > 0
+                                                                        ? 'Exact flow match'
+                                                                        : 'No matching flow'}
+                                                                    {' · '}
+                                                                    <span className="text-text-secondary font-normal">
+                                                                        {selectedHop.metrics.matched_flows_count ?? 0} matched / {selectedHop.metrics.total_table_flows ?? 0} flow rows
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
 
-                                            {selectedHop.role === 'SOURCE_REMOTE_STIGIX' && (
-                                                <>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Remote Stigix Instance</div>
-                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
-                                                            {selectedHop.metrics.peer_name} (v{selectedHop.metrics.peer_version || '3.1'})
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Peer LAN IP &amp; Port</div>
-                                                        <div className="font-bold text-text-primary mt-0.5">
-                                                            {selectedHop.metrics.source_ip}{selectedHop.metrics.source_port ? `:${selectedHop.metrics.source_port}` : ''}
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
-                                                        <div className="text-[9px] uppercase text-text-muted">Collection Mode</div>
-                                                        <div className="font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">{selectedHop.metrics.mode}</div>
-                                                    </div>
-                                                </>
-                                            )}
+                                                {selectedHop.role === 'TRANSIT_ION' && (() => {
+                                                    const hopAssoc = isHopAssociated(selectedHop);
+                                                    const mPort = selectedHop.metrics.matched_source_port;
+                                                    const hasMatch = (selectedHop.metrics.matched_flows_count ?? 0) > 0;
+                                                    return (
+                                                        <>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="text-[9px] uppercase text-text-muted">Overlay Tunnel</div>
+                                                                <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
+                                                                    {selectedHop.metrics.tunnel || 'N/A'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <span className="text-[9px] uppercase text-text-muted">Observation &amp; Context</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setActiveForensicsHelp((h) => (h === 'hub' ? null : 'hub'))}
+                                                                        aria-expanded={activeForensicsHelp === 'hub'}
+                                                                        title="Hub flow table observation notes"
+                                                                        className="text-text-muted hover:text-indigo-600 dark:hover:text-indigo-300 p-0.5 rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                    >
+                                                                        <Info size={11} />
+                                                                    </button>
+                                                                </div>
+                                                                <div className="font-bold text-text-primary mt-0.5">
+                                                                    {hasMatch ? 'Overlay flow entry' : 'No flow entry observed'}
+                                                                    {' · '}
+                                                                    <span className="text-cyan-700 dark:text-cyan-300">
+                                                                        Context: {selectedHop.metrics.context || selectedHop.metrics.raw_path_type || 'N/A'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="text-[9px] uppercase text-text-muted">Hub Flow Correlation</div>
+                                                                <div className={`font-bold mt-0.5 ${hopAssoc ? 'text-amber-700 dark:text-amber-300' : hasMatch ? 'text-emerald-600 dark:text-emerald-400' : 'text-text-muted'}`}>
+                                                                    {hasMatch
+                                                                        ? hopAssoc
+                                                                            ? `Associated flow${mPort ? ` (port :${mPort})` : ''}`
+                                                                            : 'Exact flow match'
+                                                                        : 'No matching flow'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="text-[9px] uppercase text-text-muted">Hub Elements Scanned (HA)</div>
+                                                                <div className="font-bold text-text-primary mt-0.5">
+                                                                    {Array.isArray(selectedHop.metrics.ha_elements_checked) && selectedHop.metrics.ha_elements_checked.length > 0
+                                                                        ? selectedHop.metrics.ha_elements_checked
+                                                                              .map((h: any) => `${h.element}: ${h.matched_flows ?? 0} matched / ${h.total_flows ?? 0} flow rows`)
+                                                                              .join(' • ')
+                                                                        : (selectedHop.metrics.element || 'N/A')}
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
 
-                                            {selectedHop.role === 'SOURCE_CLIENT_AGENTLESS' && (
-                                                <>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Client Source IP</div>
-                                                        <div className="font-bold text-text-primary mt-0.5">{selectedHop.metrics.source_ip}</div>
+                                                {selectedHop.role === 'TRANSIT_SERVICELINK' && (
+                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-4">
+                                                        <div className="text-[9px] uppercase text-text-muted">ServiceLink Tunnel Status (dump servicelink summary all)</div>
+                                                        <div className="font-bold text-text-primary mt-1 flex flex-wrap gap-2">
+                                                            {Array.isArray(selectedHop.metrics.servicelinks) && selectedHop.metrics.servicelinks.length > 0
+                                                                ? selectedHop.metrics.servicelinks.map((sl: any, sIdx: number) => (
+                                                                    <span key={sIdx} className="px-2 py-0.5 rounded bg-card-secondary border border-border">
+                                                                        {sl.device} ({sl.name}): <span className={sl.status === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-300'}>{sl.status}/{sl.ext_state}</span> → {sl.peer}
+                                                                    </span>
+                                                                ))
+                                                                : <span>Tunnel: {selectedHop.metrics.egress_path}</span>}
+                                                        </div>
                                                     </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Client Source Port</div>
-                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">{selectedHop.metrics.source_port || 'Any'}</div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
-                                                        <div className="text-[9px] uppercase text-text-muted">Collection Mode</div>
-                                                        <div className="font-bold text-amber-700 dark:text-amber-300 mt-0.5">{selectedHop.metrics.mode}</div>
-                                                    </div>
-                                                </>
-                                            )}
+                                                )}
 
-                                            {selectedHop.role === 'INGRESS_ION' && (
-                                                <>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Application &amp; ZBFW</div>
-                                                        <div className="font-bold text-purple-700 dark:text-purple-300 mt-0.5">
-                                                            App-ID: {selectedHop.metrics.app_id || 'None'} • ZBFW: {selectedHop.metrics.sec_action || '-'}
+                                                {selectedHop.role === 'TRANSIT_DIA' && (
+                                                    <>
+                                                        <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                            <div className="text-[9px] uppercase text-text-muted">Direct Internet Breakout Circuit</div>
+                                                            <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">{selectedHop.metrics.circuit || 'Direct WAN'}</div>
                                                         </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Enforced Policies (Path / QoS / Sec)</div>
-                                                        <div className="font-bold text-text-primary mt-0.5 truncate" title={`${selectedHop.metrics.net_policy || '-'} / ${selectedHop.metrics.pri_policy || '-'} / ${selectedHop.metrics.sec_policy || '-'}`}>
-                                                            {selectedHop.metrics.net_policy || '-'} / {selectedHop.metrics.pri_policy || '-'} / {selectedHop.metrics.sec_policy || '-'}
+                                                        <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                            <div className="text-[9px] uppercase text-text-muted">Forwarding Mode</div>
+                                                            <div className="font-bold text-text-primary mt-0.5">{selectedHop.metrics.raw_path_type || 'direct'} (WANPATH {selectedHop.metrics.wanpath_id || '-'})</div>
                                                         </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Selected Egress WAN Path</div>
-                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
-                                                            {selectedHop.metrics.egress_path || '-'} ({selectedHop.metrics.raw_path_type || '-'})
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Flow Table Correlation</div>
-                                                        <div className="font-bold text-text-primary mt-0.5">
-                                                            {selectedHop.metrics.matched_flows_count ?? 0} matched / {selectedHop.metrics.total_table_flows ?? 0} active ({selectedHop.metrics.match_label || 'Scanned'})
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
+                                                    </>
+                                                )}
 
-                                            {selectedHop.role === 'TRANSIT_ION' && (
-                                                <>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Overlay Tunnel Arrival</div>
-                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
-                                                            {selectedHop.metrics.tunnel || '-'} ({selectedHop.metrics.raw_path_type || 'Not Observed'})
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Hub HA Elements Checked</div>
-                                                        <div className="font-bold text-text-primary mt-0.5">
-                                                            {Array.isArray(selectedHop.metrics.ha_elements_checked) && selectedHop.metrics.ha_elements_checked.length > 0
-                                                                ? selectedHop.metrics.ha_elements_checked.map((h: any) => `${h.element}: ${h.matched_flows}/${h.total_flows}`).join(' • ')
-                                                                : (selectedHop.metrics.element || '-')}
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
-                                                        <div className="text-[9px] uppercase text-text-muted">Hub Dataplane Observation Note</div>
-                                                        <div className="text-text-secondary mt-0.5 text-[10px]">
-                                                            {selectedHop.metrics.note || 'Hub ION inspects vpn_to_core transit sessions across the HA pair.'}
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
+                                                {selectedHop.role === 'DESTINATION' && (() => {
+                                                    const dstInput = String(selectedHop.metrics.destination_input || '').trim();
+                                                    const resIp = String(selectedHop.metrics.resolved_ip || '').trim();
+                                                    const dnsWasResolved = Boolean(dstInput && resIp && dstInput.toLowerCase() !== resIp.toLowerCase());
+                                                    const dstProto = String(selectedHop.metrics.protocol || protoUpper).toUpperCase();
+                                                    const srcVerifText = (() => {
+                                                        if (selectedHop.metrics.source_verification) return selectedHop.metrics.source_verification;
+                                                        if (selectedHop.metrics.dns_error) return 'DNS resolution failed at source';
+                                                        if (hop1M.syn_ack_seen === true) return 'SYN-ACK observed at source';
+                                                        if (hop1M.rst_seen === true) return 'TCP RST observed at source';
+                                                        if (dstProto === 'ICMP' && ((hop1M.rx_packets ?? 0) > 0 || hop1M.probe_reachable === true)) {
+                                                            return 'ICMP Echo Reply observed at source';
+                                                        }
+                                                        if (dstProto === 'UDP' && ((hop1M.rx_packets ?? 0) > 0 || hop1M.probe_reachable === true)) {
+                                                            return 'UDP reply observed at source';
+                                                        }
+                                                        if (dstProto === 'TCP' && hop1M.probe_reachable === true) {
+                                                            return 'TCP handshake completed from source';
+                                                        }
+                                                        if (hop1M.probe_attempted && (hop1M.rx_packets ?? 0) === 0 && !hop1M.probe_reachable) {
+                                                            return 'No reply observed at source';
+                                                        }
+                                                        return 'No active source probe verification';
+                                                    })();
 
-                                            {selectedHop.role === 'TRANSIT_SERVICELINK' && (
-                                                <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-4">
-                                                    <div className="text-[9px] uppercase text-text-muted">ServiceLink Tunnel Status (dump servicelink summary all)</div>
-                                                    <div className="font-bold text-text-primary mt-1 flex flex-wrap gap-2">
-                                                        {Array.isArray(selectedHop.metrics.servicelinks) && selectedHop.metrics.servicelinks.length > 0
-                                                            ? selectedHop.metrics.servicelinks.map((sl: any, sIdx: number) => (
-                                                                <span key={sIdx} className="px-2 py-0.5 rounded bg-card-secondary border border-border">
-                                                                    {sl.device} ({sl.name}): <span className={sl.status === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{sl.status}/{sl.ext_state}</span> → {sl.peer}
-                                                                </span>
-                                                            ))
-                                                            : <span>Tunnel: {selectedHop.metrics.egress_path}</span>}
+                                                    return (
+                                                        <>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="text-[9px] uppercase text-text-muted">
+                                                                    {dnsWasResolved ? 'Target & Resolved IP' : 'Target IP'}
+                                                                </div>
+                                                                <div className="font-bold text-text-primary mt-0.5">
+                                                                    {dnsWasResolved ? `${dstInput} → ${resIp}` : (resIp || dstInput || '-')}
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50">
+                                                                <div className="text-[9px] uppercase text-text-muted">Protocol &amp; Service</div>
+                                                                <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
+                                                                    {dstProto === 'ICMP'
+                                                                        ? 'ICMP Echo'
+                                                                        : `${dstProto}/${selectedHop.metrics.port || '*'}`}
+                                                                    {dnsWasResolved && selectedHop.metrics.dns_resolution_ms !== null && selectedHop.metrics.dns_resolution_ms !== undefined
+                                                                        ? ` (DNS: ${selectedHop.metrics.dns_resolution_ms}ms)`
+                                                                        : ''}
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
+                                                                <div className="text-[9px] uppercase text-text-muted">Verification &amp; Capture Scope</div>
+                                                                <div className="font-bold text-text-primary mt-0.5 flex items-center gap-2 flex-wrap">
+                                                                    <span>{srcVerifText}</span>
+                                                                    <span className="text-text-muted font-normal">·</span>
+                                                                    <span className="text-text-secondary font-normal">
+                                                                        {selectedHop.metrics.destination_capture_status || 'Destination capture unavailable'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+
+                                            {/* Accessible Contextual Help Callout (toggled by clicking ? on any card) */}
+                                            {activeForensicsHelp && (
+                                                <div className="px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[10px] font-mono text-text-secondary flex items-start justify-between gap-2 animate-in fade-in duration-150">
+                                                    <div>
+                                                        {activeForensicsHelp === 'timing' && (
+                                                            <span>
+                                                                <strong className="text-text-primary">Timing Definitions:</strong>{' '}
+                                                                <strong>TCP connect (PCAP)</strong> / <strong>ICMP Echo (PCAP)</strong> / <strong>UDP reply (PCAP)</strong> are calculated from kernel packet capture timestamps (outbound request to inbound reply).{' '}
+                                                                <strong>Socket connect</strong> (when shown: {selectedHop.metrics?.waterfall?.socket_connect_ms ?? selectedHop.metrics?.probe_rtt_ms ?? 'N/A'}ms) is the userspace socket connect duration, which includes OS syscall and event-loop overhead. TTFB is not reported for L4/TLS synthetic probes that do not perform a complete application request/response exchange.
+                                                            </span>
+                                                        )}
+                                                        {activeForensicsHelp === 'mss' && (
+                                                            <span>
+                                                                <strong className="text-text-primary">TCP MSS &amp; DF Scope:</strong>{' '}
+                                                                <strong>SYN MSS</strong> is advertised by the local source host; <strong>SYN-ACK MSS</strong> is the value observed at the source in the return packet from the remote endpoint. A difference between the two indicates <em>possible in-path MSS clamping or a different remote endpoint MTU/MSS configuration</em>—single-point capture at the source cannot distinguish between the two without a remote capture.
+                                                            </span>
+                                                        )}
+                                                        {activeForensicsHelp === 'dscp' && (
+                                                            <span>
+                                                                <strong className="text-text-primary">QoS / DSCP Scope:</strong>{' '}
+                                                                Compares the IPv4 DSCP field of outbound probe packets (TX) and return packets (RX) captured at the source interface. <strong>TX/RX match</strong> indicates both directions carry the same value at the source; it does not prove end-to-end forward-path preservation without a destination capture.
+                                                            </span>
+                                                        )}
+                                                        {activeForensicsHelp === 'ttl' && (
+                                                            <span>
+                                                                <strong className="text-text-primary">Return TTL &amp; Hop Estimate:</strong>{' '}
+                                                                The hop count is a heuristic derived from the received IPv4 TTL assuming the nearest standard initial TTL (64, 128, or 255). It is not an active traceroute and does not measure underlay router hops inside encrypted tunnels.
+                                                            </span>
+                                                        )}
+                                                        {activeForensicsHelp === 'hub' && (
+                                                            <span>
+                                                                <strong className="text-text-primary">Hub Flow Table Context:</strong>{' '}
+                                                                On transit or hub vION elements, <code className="text-cyan-700 dark:text-cyan-300">inspect flow brief</code> reports the overlay session state (such as <code className="text-cyan-700 dark:text-cyan-300">vpn_to_core</code>) and the number of matching flow rows out of the total rows returned by the CLI on each HA element.
+                                                            </span>
+                                                        )}
                                                     </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActiveForensicsHelp(null)}
+                                                        className="text-text-muted hover:text-text-primary p-0.5 shrink-0 cursor-pointer"
+                                                        title="Close help"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
                                                 </div>
-                                            )}
-
-                                            {selectedHop.role === 'TRANSIT_DIA' && (
-                                                <>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
-                                                        <div className="text-[9px] uppercase text-text-muted">Direct Internet Breakout Circuit</div>
-                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">{selectedHop.metrics.circuit || 'Direct WAN'}</div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
-                                                        <div className="text-[9px] uppercase text-text-muted">Forwarding Mode</div>
-                                                        <div className="font-bold text-text-primary mt-0.5">{selectedHop.metrics.raw_path_type || 'direct'} (WANPATH {selectedHop.metrics.wanpath_id || '-'})</div>
-                                                    </div>
-                                                </>
-                                            )}
-
-                                            {selectedHop.role === 'DESTINATION' && (
-                                                <>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Target &amp; Resolved IP</div>
-                                                        <div className="font-bold text-text-primary mt-0.5">
-                                                            {selectedHop.metrics.destination_input || '-'} → {selectedHop.metrics.resolved_ip || '-'}
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50">
-                                                        <div className="text-[9px] uppercase text-text-muted">Protocol / Service Port</div>
-                                                        <div className="font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
-                                                            {selectedHop.metrics.protocol}/{selectedHop.metrics.port || '*'}
-                                                            {selectedHop.metrics.dns_resolution_ms !== null && selectedHop.metrics.dns_resolution_ms !== undefined
-                                                                ? ` (DNS: ${selectedHop.metrics.dns_resolution_ms}ms)`
-                                                                : ''}
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-2 rounded-lg bg-card border border-border/50 sm:col-span-2">
-                                                        <div className="text-[9px] uppercase text-text-muted">Instrumentation &amp; Proof Boundary</div>
-                                                        <div className="text-text-secondary mt-0.5 text-[10px]">
-                                                            {selectedHop.metrics.unidirectional_diagnosis ||
-                                                                'Uninstrumented remote endpoint (no Stigix capture agent on destination). Reachability is verified via return traffic received by the source probe.'}
-                                                        </div>
-                                                    </div>
-                                                </>
                                             )}
                                         </div>
                                     ) : (
@@ -5116,7 +5596,9 @@ export default function PacketCapture({
                                                         {item.forensics?.mss_clamped && (
                                                             <>
                                                                 <span>•</span>
-                                                                <span className="text-amber-600 dark:text-amber-300">MSS {item.forensics.tcp_mss_rx}B (Clamped)</span>
+                                                                <span className="text-amber-600 dark:text-amber-300">
+                                                                    MSS {item.forensics.tcp_mss_tx ? `${item.forensics.tcp_mss_tx}→` : ''}{item.forensics.tcp_mss_rx}B (Different advertised MSS)
+                                                                </span>
                                                             </>
                                                         )}
                                                     </div>
