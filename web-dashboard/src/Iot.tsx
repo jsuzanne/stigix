@@ -341,12 +341,18 @@ export default function Iot({ token }: IotProps) {
 
             const activeCnt = devices.filter(d => (d as any).deviceState === 'ACTIVE').length || iotSettings.active || 0;
             const livePps = tr?.pps || 0;
-            // Combine measured pps with real-time log event bursts so the curve is always responsive
-            const netVal = activeCnt > 0
-                ? Math.max(livePps, Math.round(bucket.net * 1.5 + (livePps > 0 ? livePps : activeCnt * 0.35)))
-                : 0;
+
+            // Convert 2-second bucket event counts to per-second rates
+            const netEventsPerSec = Math.round(bucket.net / 2);
+            const threatEventsPerSec = (activeCnt > 0 && badBehaviorEnabled) ? Math.round(bucket.threat / 2) : 0;
+
             const threatVal = (activeCnt > 0 && badBehaviorEnabled)
-                ? Math.max(Math.round(bucket.threat * 2), Math.round(netVal * 0.28))
+                ? Math.max(threatEventsPerSec, Math.round((livePps || Math.max(1, Math.round(activeCnt * 0.25))) * 0.35))
+                : 0;
+
+            // Total throughput (pps) always includes both clean protocol packets and attack salvos
+            const netVal = activeCnt > 0
+                ? Math.max(livePps, netEventsPerSec + threatVal, Math.max(1, Math.round(activeCnt * 0.45)))
                 : 0;
 
             setPulseHistory(prev => [
@@ -1009,24 +1015,24 @@ export default function Iot({ token }: IotProps) {
 
             {/* ── Row 2: Unified Control, Concurrency & Filter Bar ────────────── */}
             <div className={cn(
-                "flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-card border px-4 py-3 rounded-2xl shadow-sm",
+                "flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 bg-card border px-3.5 py-2.5 rounded-2xl shadow-sm",
                 iotSettings.active > 80 ? "border-red-500/40" : "border-border"
             )}>
-                {/* Left: Search + Concurrency Slider */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 min-w-0">
-                    <div className="relative w-full sm:w-64 shrink-0">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={14} />
+                {/* Left: Search + Concurrency Slider + State Pills */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 min-w-0">
+                    <div className="relative w-full sm:w-48 lg:w-52 shrink-0">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={13} />
                         <input
                             type="text"
-                            placeholder="Search name, vendor, IP, MAC..."
-                            className="bg-card-secondary border-border text-foreground pl-8 pr-7 py-1.5 rounded-xl text-xs w-full focus:ring-1 focus:ring-blue-500 transition-all border outline-none"
+                            placeholder="Search name, vendor, IP..."
+                            className="bg-card-secondary border-border text-foreground pl-7 pr-6 py-1.5 rounded-xl text-xs w-full focus:ring-1 focus:ring-blue-500 transition-all border outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                         {searchQuery && (
                             <button
                                 onClick={() => setSearchQuery('')}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
                             >
                                 <X size={12} />
                             </button>
@@ -1034,21 +1040,21 @@ export default function Iot({ token }: IotProps) {
                     </div>
 
                     {/* Concurrency Slider Pill */}
-                    <div className="flex items-center gap-2 bg-card-secondary border border-border rounded-xl px-3 py-1.5 min-w-[200px] max-w-xs flex-1">
-                        <Gauge size={13} className="text-blue-400 shrink-0" />
-                        <span className="text-[10px] font-bold text-text-muted whitespace-nowrap shrink-0">Max Active:</span>
+                    <div className="flex items-center gap-1.5 bg-card-secondary border border-border rounded-xl px-2.5 py-1.5 w-44 shrink-0">
+                        <Gauge size={12} className="text-blue-400 shrink-0" />
+                        <span className="text-[10px] font-bold text-text-muted whitespace-nowrap shrink-0">Max:</span>
                         <input
                             type="range" min={1} max={Math.max(devices.length, sliderValue, 163)}
                             value={sliderValue}
                             onChange={e => handleSliderChange(Number(e.target.value))}
-                            className="flex-1 accent-blue-500 h-1 rounded-full cursor-pointer min-w-[60px]"
+                            className="flex-1 accent-blue-500 h-1 rounded-full cursor-pointer min-w-[48px]"
                             title={`Max concurrent active devices: ${sliderValue}`}
                         />
-                        <span className="text-xs font-black text-blue-400 w-6 text-right shrink-0">{sliderValue}</span>
+                        <span className="text-xs font-black text-blue-400 w-6 text-right shrink-0 tabular-nums">{sliderValue}</span>
                     </div>
 
                     {/* State Filter Pills (single source of truth for state counts + filtering) */}
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div className="flex items-center gap-1 flex-nowrap overflow-x-auto no-scrollbar">
                         {(['ALL', 'ACTIVE', 'QUEUED', 'IDLE', 'STOPPED'] as const).map(s => {
                             const count = s === 'ALL' ? devices.length
                                 : s === 'ACTIVE'  ? devices.filter(d => (d as any).deviceState === 'ACTIVE').length
@@ -1068,11 +1074,11 @@ export default function Iot({ token }: IotProps) {
                                     key={s}
                                     onClick={() => setStateFilter(s)}
                                     className={cn(
-                                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black border transition-all",
+                                        "flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-black border transition-all whitespace-nowrap shrink-0",
                                         active ? activeStyle : 'bg-card-secondary border-border text-text-muted hover:text-text-secondary hover:bg-card-hover'
                                     )}
                                 >
-                                    {s !== 'ALL' && <div className={cn('w-1.5 h-1.5 rounded-full', dot)} />}
+                                    {s !== 'ALL' && <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', dot)} />}
                                     {label} <span className="opacity-65">({count})</span>
                                 </button>
                             );
@@ -1183,7 +1189,7 @@ export default function Iot({ token }: IotProps) {
                 const queuedCount = devices.filter(d => (d as any).deviceState === 'QUEUED').length;
                 const idleCount   = devices.filter(d => (d as any).deviceState === 'IDLE').length;
                 const latestPoint = pulseHistory[pulseHistory.length - 1] || { net: 0, threat: 0 };
-                const displayPps  = trafficRate?.pps || latestPoint.net || 0;
+                const displayPps  = Math.max(trafficRate?.pps || 0, latestPoint.net || 0);
 
                 // Aggregate protocol & behavior counts from live breakdown + fleet logs + active device configs
                 const getProtoCount = (keys: string[]) =>
@@ -1507,40 +1513,32 @@ export default function Iot({ token }: IotProps) {
                                     </div>
                                 </div>
 
-                                {/* Threat Intel + Attack Badges + Protocols */}
-                                <div className="flex-1 min-w-0 hidden lg:flex items-center gap-1.5 flex-wrap">
+                                {/* Threat Intel + Attack Badges + Protocols (Strictly Single-Line in List View) */}
+                                <div className="flex-1 min-w-0 hidden lg:flex items-center gap-1.5 flex-nowrap overflow-hidden">
                                     {meta && (
                                         <>
-                                            <span className="bg-orange-500/15 text-orange-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-orange-500/30 uppercase tracking-tight" title={`${meta.cve_count || 0} CVEs · Max CVSS ${meta.max_cvss || 0}`}>
+                                            <span className="bg-orange-500/15 text-orange-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-orange-500/30 uppercase tracking-tight shrink-0 whitespace-nowrap" title={`${meta.cve_count || 0} CVEs · Max CVSS ${meta.max_cvss || 0}`}>
                                                 Score {meta.danger_score}
                                             </span>
                                             {meta.critical_cves > 0 && (
-                                                <span className="bg-red-500/15 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/25 uppercase tracking-tight">
+                                                <span className="bg-red-500/15 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/25 uppercase tracking-tight shrink-0 whitespace-nowrap">
                                                     {meta.critical_cves} Crit
                                                 </span>
                                             )}
                                             {meta.has_ics_cert && (
-                                                <span className="bg-yellow-500/15 text-yellow-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-yellow-500/25 uppercase tracking-tight">
+                                                <span className="bg-yellow-500/15 text-yellow-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-yellow-500/25 uppercase tracking-tight shrink-0 whitespace-nowrap">
                                                     ⚠ ICS
                                                 </span>
                                             )}
                                         </>
                                     )}
                                     {device.security?.bad_behavior && (device.security.behavior_type || []).slice(0, 2).map(bt => (
-                                        <span key={bt} className="bg-red-500/10 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/20 uppercase tracking-tight">
+                                        <span key={bt} className="bg-red-500/10 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/20 uppercase tracking-tight shrink-0 whitespace-nowrap">
                                             {bt.replace(/_/g, ' ')}
                                         </span>
                                     ))}
                                     {device.security?.bad_behavior && (device.security.behavior_type || []).length > 2 && (
-                                        <span className="text-[8px] font-bold text-red-400">+{(device.security.behavior_type || []).length - 2}</span>
-                                    )}
-                                    {device.protocols.slice(0, 4).map(p => (
-                                        <span key={p} className="bg-card-secondary text-[8px] font-black px-1.5 py-0.5 rounded border border-border text-text-muted uppercase tracking-tight">
-                                            {p}
-                                        </span>
-                                    ))}
-                                    {device.protocols.length > 4 && (
-                                        <span className="text-[8px] font-bold text-text-muted">+{device.protocols.length - 4}</span>
+                                        <span className="text-[8px] font-bold text-red-400 shrink-0 whitespace-nowrap">+{(device.security.behavior_type || []).length - 2}</span>
                                     )}
                                     {state === 'ACTIVE' && (() => {
                                         const liveLog = deviceLastLog[device.id] || (device.status as any)?.lastLog;
@@ -1551,7 +1549,7 @@ export default function Iot({ token }: IotProps) {
                                                 onClick={() => setActiveLogDevice(device)}
                                                 title={`${liveLog.message} — Click to open live device console`}
                                                 className={cn(
-                                                    "ml-1 px-2 py-0.5 rounded border font-mono text-[9px] flex items-center gap-1.5 max-w-[220px] xl:max-w-[280px] truncate cursor-pointer",
+                                                    "ml-1 px-2 py-0.5 rounded border font-mono text-[9px] flex items-center gap-1.5 min-w-0 flex-1 max-w-[320px] truncate cursor-pointer",
                                                     isT
                                                         ? "bg-red-500/10 border-red-500/30 text-red-400"
                                                         : "bg-card-secondary border-border text-cyan-400"
@@ -1562,6 +1560,18 @@ export default function Iot({ token }: IotProps) {
                                             </span>
                                         );
                                     })()}
+                                    {!(state === 'ACTIVE' && (deviceLastLog[device.id]?.message || (device.status as any)?.lastLog?.message)) && (
+                                        <>
+                                            {device.protocols.slice(0, 4).map(p => (
+                                                <span key={p} className="bg-card-secondary text-[8px] font-black px-1.5 py-0.5 rounded border border-border text-text-muted uppercase tracking-tight shrink-0 whitespace-nowrap">
+                                                    {p}
+                                                </span>
+                                            ))}
+                                            {device.protocols.length > 4 && (
+                                                <span className="text-[8px] font-bold text-text-muted shrink-0 whitespace-nowrap">+{device.protocols.length - 4}</span>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Actions */}
