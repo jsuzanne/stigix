@@ -286,6 +286,10 @@ type iotPreviousStats struct {
 	UptimeSeconds int64            `json:"uptime_seconds"`
 }
 
+type iotVulnMeta struct {
+	OS string `json:"os"`
+}
+
 type IoTDeviceSpec struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
@@ -297,13 +301,447 @@ type IoTDeviceSpec struct {
 	Enabled         *bool             `json:"enabled"`
 	TrafficInterval int               `json:"traffic_interval"`
 	Gateway         string            `json:"gateway"`
+	Description     string            `json:"description"`
 	Fingerprint     iotFingerprintCfg `json:"fingerprint"`
 	Security        iotSecurityCfg    `json:"security"`
+	VulnMeta        *iotVulnMeta      `json:"_vuln_meta"`
 	PreviousStats   iotPreviousStats  `json:"previous_stats"`
+}
+
+type iotPersona struct {
+	Vendor         string
+	Model          string
+	OS             string
+	Firmware       string
+	UserAgent      string
+	LLDPSystemDesc string
+	ServerHeader   string
+	OpenPorts      map[uint16][]byte
+}
+
+// synthesizePersona builds a complete 4-level OS, Firmware, User-Agent, LLDP description, and Open Port
+// banner profile for any IoT device — even when _vuln_meta or explicit firmware info is absent.
+func synthesizePersona(spec IoTDeviceSpec) iotPersona {
+	vendor := strings.TrimSpace(spec.Vendor)
+	devType := strings.TrimSpace(spec.Type)
+	devName := strings.TrimSpace(spec.Name)
+	if devName == "" {
+		devName = spec.ID
+	}
+
+	// Level 1: Extract explicit OS if present in _vuln_meta.os or Description ("OS: <value> |")
+	explicitOS := ""
+	if spec.VulnMeta != nil && strings.TrimSpace(spec.VulnMeta.OS) != "" && spec.VulnMeta.OS != "-" {
+		explicitOS = strings.TrimSpace(spec.VulnMeta.OS)
+	} else if idx := strings.Index(spec.Description, "OS:"); idx != -1 {
+		rest := strings.TrimSpace(spec.Description[idx+3:])
+		if pipeIdx := strings.Index(rest, "|"); pipeIdx != -1 {
+			explicitOS = strings.TrimSpace(rest[:pipeIdx])
+		} else {
+			explicitOS = rest
+		}
+	}
+
+	// OUI-based Vendor enrichment when Vendor is empty/Unknown/Generic
+	oui := strings.ToLower(strings.TrimSpace(spec.MAC))
+	if len(oui) >= 8 {
+		oui = oui[:8]
+	}
+	if vendor == "" || strings.EqualFold(vendor, "Unknown") || strings.EqualFold(vendor, "Generic") {
+		switch oui {
+		case "00:a0:03", "00:1b:1b":
+			vendor = "Siemens AG"
+		case "00:40:8c", "ac:cc:8e":
+			vendor = "Axis Communications"
+		case "00:a0:98":
+			vendor = "NetApp, Inc."
+		case "00:1b:17":
+			vendor = "Palo Alto Networks, Inc."
+		case "b8:27:eb", "dc:a6:32":
+			vendor = "Raspberry Pi Foundation"
+		case "00:17:88":
+			vendor = "Signify"
+		case "00:0c:29", "00:50:56":
+			vendor = "VMware, Inc."
+		}
+	}
+	if vendor == "" {
+		vendor = "Generic"
+	}
+	if devType == "" {
+		devType = "IoT Device"
+	}
+
+	combined := strings.ToLower(vendor + " " + devType + " " + devName + " " + explicitOS)
+
+	model := devType
+	osName := explicitOS
+	fwVer := "v2.4.18"
+	ua := ""
+	serverHdr := "Embedded-HTTP/2.4"
+	var extraPorts []uint16
+
+	// Level 2: Vendor & Product Family Knowledge Base
+	switch {
+	case strings.Contains(combined, "hikvision"):
+		model = "DS-2CD2142FWD-I"
+		if osName == "" || strings.EqualFold(osName, "Linux") {
+			osName = "Embedded Linux 4.9.38"
+		}
+		fwVer = "V5.5.82 build 190909"
+		ua = fmt.Sprintf("App-webs/5.5.82 (Hikvision; %s; %s; FW/%s; ID/%s)", model, osName, fwVer, devName)
+		serverHdr = "App-webs/"
+		extraPorts = append(extraPorts, 554)
+
+	case strings.Contains(combined, "axis"):
+		model = "AXIS P3245-V"
+		if osName == "" || strings.EqualFold(osName, "Axis OS") {
+			osName = "AXIS OS 9.80.3.1"
+		}
+		fwVer = "9.80.3.1"
+		ua = fmt.Sprintf("AXIS-VAPIX/9.80.3.1 (Axis Communications; %s; %s; FW/%s)", model, osName, fwVer)
+		serverHdr = "Apache/2.4.51 (Unix) AXIS-OS/9.80.3.1"
+		extraPorts = append(extraPorts, 554)
+
+	case strings.Contains(combined, "meraki") && strings.Contains(combined, "camera"):
+		model = "MV72X Smart Camera"
+		osName = "Meraki Vision OS (Linux)"
+		fwVer = "MV-4.18.1"
+		ua = fmt.Sprintf("Meraki-MV/4.18.1 (Cisco Meraki; %s; %s; FW/%s)", model, osName, fwVer)
+		serverHdr = "Meraki-Embedded/4.18.1"
+		extraPorts = append(extraPorts, 554)
+
+	case strings.Contains(combined, "rhombus"):
+		model = "R200 Dome Camera"
+		osName = "Rhombus Embedded Linux"
+		fwVer = "2024.08.14.2"
+		ua = fmt.Sprintf("RhombusAgent/2024.08.14.2 (Rhombus Systems; %s; Linux aarch64; FW/%s)", model, fwVer)
+		serverHdr = "Rhombus-Cam/2024.08"
+		extraPorts = append(extraPorts, 554)
+
+	case strings.Contains(combined, "avigilon"):
+		model = "ACC7-NVR4-VAL"
+		if osName == "" {
+			osName = "Windows 8.1/6.10.4.0"
+		}
+		fwVer = "6.10.4.0"
+		ua = fmt.Sprintf("AvigilonControlCenter/6.10.4.0 (Windows NT 6.3; Win64; x64; Avigilon; OS/%s)", osName)
+		serverHdr = "Microsoft-IIS/8.5 Avigilon/6.10.4.0"
+		extraPorts = append(extraPorts, 554)
+
+	case strings.Contains(combined, "siemens"):
+		if strings.Contains(combined, "plc") || strings.Contains(combined, "simatic") {
+			model = "SIMATIC S7-1500 CPU 1516-3 PN/DP"
+			osName = "SIMATIC Embedded RTOS"
+			fwVer = "V2.9.4"
+			ua = fmt.Sprintf("SIMATIC-S7-1500/2.9.4 (Siemens AG; %s; 6ES7 516-3AN02-0AB0; FW/%s)", model, fwVer)
+			serverHdr = "SIMATIC-S7-Web/2.9.4"
+			extraPorts = append(extraPorts, 102, 502)
+		} else {
+			model = "DESIGO PX PXC100-E.D"
+			osName = "Siemens BACnet/IP Embedded"
+			fwVer = "V6.30.012"
+			ua = fmt.Sprintf("Siemens-Desigo-PX/6.30.012 (Siemens AG; %s; Building Automation; FW/%s)", model, fwVer)
+			serverHdr = "Siemens-Embedded-HTTP/6.30"
+			extraPorts = append(extraPorts, 102)
+		}
+
+	case strings.Contains(combined, "rockwell") || strings.Contains(combined, "allen-bradley"):
+		model = "ControlLogix 1756-EN2TR"
+		if osName == "" {
+			osName = "VxWorks Industrial RTOS"
+		}
+		fwVer = "v33.011"
+		ua = fmt.Sprintf("Rockwell-Logix/33.011 (Rockwell Automation; %s; EtherNet/IP; OS/%s; FW/%s)", model, osName, fwVer)
+		serverHdr = "Rockwell-Automation-HTTP/33.011"
+		extraPorts = append(extraPorts, 44818)
+
+	case strings.Contains(combined, "fanuc"):
+		model = "R-30iB Plus Robot Controller"
+		osName = "FANUC System Software"
+		fwVer = "V9.40P/23"
+		ua = fmt.Sprintf("FANUC-R30iB/9.40P.23 (FANUC Robotics; %s; KAREL/HTTP; FW/%s)", model, fwVer)
+		serverHdr = "FANUC-Embedded-Web/9.40P"
+		extraPorts = append(extraPorts, 502)
+
+	case strings.Contains(combined, "jbt") || strings.Contains(combined, "agv"):
+		model = "SGV Automated Guided Vehicle"
+		osName = "VxWorks 6.9 AGV Control"
+		fwVer = "v8.4.2"
+		ua = fmt.Sprintf("JBT-AGV-Telemetry/8.4.2 (JBT Corporation; %s; FW/%s)", model, fwVer)
+		serverHdr = "JBT-Embedded/8.4.2"
+		extraPorts = append(extraPorts, 502)
+
+	case strings.Contains(combined, "netapp"):
+		model = "FAS8300"
+		osName = "NetApp Data ONTAP 9.12.1P2"
+		fwVer = "9.12.1P2"
+		ua = fmt.Sprintf("NetApp-ONTAP/9.12.1P2 (NetApp, Inc.; %s; %s)", model, osName)
+		serverHdr = "NetApp/9.12.1P2"
+
+	case strings.Contains(combined, "f5 networks") || strings.Contains(combined, "big-ip"):
+		model = "BIG-IP i4800"
+		osName = "F5 TMOS 16.1.3.4"
+		fwVer = "16.1.3.4 Build 0.0.5"
+		ua = fmt.Sprintf("F5-BIG-IP-iControl/16.1.3.4 (F5 Networks; %s; %s)", model, osName)
+		serverHdr = "BIG-IP/16.1.3.4"
+
+	case strings.Contains(combined, "palo alto"):
+		if strings.Contains(strings.ToLower(explicitOS), "windows") {
+			model = "GlobalProtect Agent"
+			osName = explicitOS
+			fwVer = "6.1.2-c83"
+			ua = fmt.Sprintf("PanGP/6.1.2-c83 (Windows NT 10.0; Palo Alto Networks; %s)", devName)
+			serverHdr = "Microsoft-HTTPAPI/2.0"
+		} else {
+			model = "PA-440"
+			osName = "PAN-OS 10.2.8-h3"
+			fwVer = "10.2.8-h3"
+			ua = fmt.Sprintf("PanOS-Telemetry/10.2.8-h3 (Palo Alto Networks; %s; %s)", model, osName)
+			serverHdr = "PanWebServer/10.2.8-h3"
+		}
+
+	case strings.Contains(combined, "schneider") || strings.Contains(combined, "apc"):
+		model = "Smart-UPS SRT 5000 (AP9641)"
+		osName = "APC AOS v6.9.6"
+		fwVer = "v6.9.6"
+		ua = fmt.Sprintf("APC-NMC3/6.9.6 (Schneider Electric; %s; %s; App/sumx v6.9.6)", model, osName)
+		serverHdr = "Allegro-Software-RomPager/4.60 APC-AOS/6.9.6"
+		extraPorts = append(extraPorts, 502)
+
+	case strings.Contains(combined, "cisco"):
+		if strings.Contains(combined, "switch") || strings.Contains(combined, "industrial") {
+			model = "Catalyst IE-4000-8GT4G-E"
+			if osName == "" {
+				osName = "Cisco IOS 15.2(4)EA9"
+			}
+			fwVer = "15.2(4)EA9"
+			ua = fmt.Sprintf("Cisco-IOS/15.2(4)EA9 (Cisco Systems; %s; %s)", model, osName)
+			serverHdr = "cisco-IOS/15.2(4)EA9"
+		} else {
+			model = "CP-8845 IP Phone"
+			osName = "Cisco Voice OS"
+			fwVer = "sip8845.12-8-1-0001-455"
+			ua = fmt.Sprintf("Cisco-CP8845/12.8.1 (Cisco Systems; %s; FW/%s)", model, fwVer)
+			serverHdr = "Cisco-VoIP-HTTP/12.8.1"
+		}
+
+	case strings.Contains(combined, "poly"):
+		model = "Poly Studio X50"
+		if osName == "" {
+			osName = "Poly VideoOS 4.1.1"
+		}
+		fwVer = "4.1.1-382114"
+		ua = fmt.Sprintf("Poly-VideoOS/4.1.1.382114 (Poly Inc.; %s; %s; UC-Software/6.4.3)", model, osName)
+		serverHdr = "Poly-Web/4.1.1"
+
+	case strings.Contains(combined, "xbox"):
+		model = "Xbox Series X / One"
+		osName = "Xbox System OS 10.0.25398"
+		fwVer = "10.0.25398.2923"
+		ua = fmt.Sprintf("XboxLiveClient/10.0.25398.2923 (Windows NT 10.0; Xbox One; Microsoft Corporation; %s)", devName)
+		serverHdr = "Microsoft-HTTPAPI/2.0"
+
+	case strings.Contains(combined, "hue") || strings.Contains(combined, "signify") || strings.Contains(combined, "philips"):
+		model = "BSB002 Hue Bridge v2"
+		osName = "OpenWrt Embedded Linux"
+		fwVer = "1960062030"
+		ua = fmt.Sprintf("HueBridge/1960062030 (Signify; %s; API/1.60.0; Linux mips)", model)
+		serverHdr = "nginx/1.21.3 HueBridge/1.60.0"
+
+	case strings.Contains(combined, "raspberry"):
+		model = "Raspberry Pi 4 Model B"
+		osName = "Raspberry Pi OS (Debian 12 Bookworm)"
+		fwVer = "6.6.20+rpt-rpi-v8"
+		ua = fmt.Sprintf("RPi-Telemetry/6.6.20 (Raspberry Pi Foundation; %s; Linux aarch64; FW/%s)", model, fwVer)
+		serverHdr = "lighttpd/1.4.69 (Raspberry-Pi-OS)"
+
+	case strings.Contains(combined, "hp-printer") || strings.Contains(combined, "hp inc"):
+		model = "LaserJet Enterprise M611dn"
+		osName = "HP FutureSmart LynxOS"
+		fwVer = "2506087_029612"
+		ua = fmt.Sprintf("HP-FutureSmart/5.6.0.1 (HP Inc.; %s; %s; JetDirect/J8031E; FW/%s)", model, osName, fwVer)
+		serverHdr = "HP-ChaiSOE/1.0"
+		extraPorts = append(extraPorts, 9100)
+
+	case strings.Contains(combined, "sharp"):
+		model = "MX-4071 Multifunction"
+		osName = "ThreadX RTOS"
+		fwVer = "05.00.N2"
+		ua = fmt.Sprintf("SHARP-MFP/05.00.N2 (SHARP Corporation; %s; %s; FW/%s)", model, osName, fwVer)
+		serverHdr = "RapidLogic/1.1 SHARP-MX/05.00.N2"
+		extraPorts = append(extraPorts, 9100)
+
+	case strings.Contains(combined, "lenel"):
+		model = "OnGuard LNL-4420"
+		if osName == "" {
+			osName = "Windows 8.1 Embedded"
+		}
+		fwVer = "OnGuard 7.6.342"
+		ua = fmt.Sprintf("Lenel-OnGuard/7.6.342 (LenelS2; %s; Windows NT 6.3; AccessControl; OS/%s)", model, osName)
+		serverHdr = "Microsoft-IIS/8.5 Lenel-OnGuard/7.6"
+
+	case strings.Contains(combined, "profusion") || strings.Contains(combined, "mood media"):
+		model = "ProFusion iS Digital Signage"
+		osName = "Mood Embedded Linux 2.30.0"
+		fwVer = "2.30.0-build418"
+		ua = fmt.Sprintf("ProFusion-iS/2.30.0 (Mood Media; %s; Linux x86_64; FW/%s)", model, fwVer)
+		serverHdr = "Apache/2.4.38 (Mood-ProFusion/2.30.0)"
+
+	case strings.Contains(combined, "proxmox"):
+		model = "Proxmox VE Hypervisor"
+		osName = "Debian GNU/Linux 12 (PVE)"
+		fwVer = "pve-manager/8.1.4"
+		ua = fmt.Sprintf("PVE-API-Client/8.1.4 (Proxmox Server Solutions GmbH; Linux 6.5.11-8-pve; x86_64)")
+		serverHdr = "pve-api-daemon/3.0"
+
+	case strings.Contains(combined, "ibm"):
+		model = "System x3650 M5"
+		osName = "Windows Server 2016 (NT 10.0)"
+		fwVer = "IMM2 v6.80"
+		ua = fmt.Sprintf("IBM-IMM2/6.80 (IBM Corporation; %s; Windows NT 10.0; Win64; x64)", model)
+		serverHdr = "IBM-HTTP-Server/9.0"
+
+	case strings.Contains(combined, "amazon") || strings.Contains(combined, "echo"):
+		model = "Echo Dot (5th Gen)"
+		osName = "Fire OS 8.3.1.9 (Android 11)"
+		fwVer = "9698494596"
+		ua = fmt.Sprintf("Dalvik/2.1.0 (Linux; U; Android 11; AEOBC Build/NS6294; FireOS/8.3.1.9; Amazon Echo; %s)", devName)
+		serverHdr = "Amazon-Embedded/8.3"
+
+	case strings.Contains(combined, "chromecast") || strings.Contains(combined, "google"):
+		model = "Chromecast 4K"
+		osName = "Android TV 12"
+		fwVer = "1.68.374976"
+		ua = fmt.Sprintf("CrKey/1.68.374976 (Linux; Android 12; Chromecast; Build/STTE.231215.005; Google Inc.)")
+		serverHdr = "Eureka-HTTP/1.68"
+
+	default:
+		// Level 3: Synthesize by OS family or Device Type keywords (for user-created or unknown vendor devices)
+		switch {
+		case strings.Contains(strings.ToLower(explicitOS), "windows 7"):
+			osName = "Windows 7 SP1 (NT 6.1)"
+			fwVer = "6.1.7601"
+			ua = fmt.Sprintf("Mozilla/5.0 (Windows NT 6.1; Win64; x64) %s/%s (%s; %s)", strings.ReplaceAll(devName, " ", "-"), fwVer, vendor, devType)
+			serverHdr = "Microsoft-IIS/7.5"
+		case strings.Contains(strings.ToLower(explicitOS), "windows 8"):
+			osName = "Windows 8.1 (NT 6.3)"
+			fwVer = "6.3.9600"
+			ua = fmt.Sprintf("Mozilla/5.0 (Windows NT 6.3; Win64; x64) %s/%s (%s; %s)", strings.ReplaceAll(devName, " ", "-"), fwVer, vendor, devType)
+			serverHdr = "Microsoft-IIS/8.5"
+		case strings.Contains(strings.ToLower(explicitOS), "windows"):
+			osName = "Windows 10 Pro (NT 10.0)"
+			fwVer = "10.0.19045"
+			ua = fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) %s/%s (%s; %s)", strings.ReplaceAll(devName, " ", "-"), fwVer, vendor, devType)
+			serverHdr = "Microsoft-IIS/10.0"
+		case strings.Contains(combined, "camera") || strings.Contains(combined, "nvr") || strings.Contains(combined, "video"):
+			model = "ONVIF Network Camera"
+			osName = "Embedded Linux 4.14"
+			fwVer = "v4.32.1-onvif"
+			ua = fmt.Sprintf("ONVIF-Camera/4.32.1 (%s; %s; %s; FW/%s)", vendor, model, osName, fwVer)
+			serverHdr = "GoAhead-Webs/2.5.0 ONVIF/4.32.1"
+			extraPorts = append(extraPorts, 554)
+		case strings.Contains(combined, "plc") || strings.Contains(combined, "scada") || strings.Contains(combined, "industrial"):
+			model = "ICS RTU Controller"
+			osName = "VxWorks RTOS 7.0"
+			fwVer = "v3.14.2"
+			ua = fmt.Sprintf("ICS-Controller/3.14.2 (%s; %s; %s; FW/%s)", vendor, model, osName, fwVer)
+			serverHdr = "WindRiver-WebServer/4.7"
+			extraPorts = append(extraPorts, 502)
+		case strings.Contains(combined, "printer") || strings.Contains(combined, "mfp"):
+			model = "Network Enterprise Printer"
+			osName = "ThreadX RTOS"
+			fwVer = "v240806"
+			ua = fmt.Sprintf("Embedded-Printer/240806 (%s; %s; %s; FW/%s)", vendor, model, osName, fwVer)
+			serverHdr = "gSOAP/2.8 JetDirect/240806"
+			extraPorts = append(extraPorts, 9100)
+		case strings.Contains(combined, "medical") || strings.Contains(combined, "infusion") || strings.Contains(combined, "mri") || strings.Contains(combined, "patient"):
+			model = "Clinical Telemetry Unit"
+			osName = "VxWorks Medical RTOS 6.9"
+			fwVer = "v5.2.1-med"
+			ua = fmt.Sprintf("MedDevice-Telemetry/5.2.1 (%s; %s; %s; FW/%s)", vendor, model, osName, fwVer)
+			serverHdr = "MedEmbedded-HTTP/5.2.1"
+		default:
+			// Level 4: Universal Fallback
+			if osName == "" {
+				osName = "Embedded Linux 5.10.160"
+			}
+			fwVer = "v2.4.18"
+			vc := strings.TrimSpace(spec.Fingerprint.DHCP.VendorClassID)
+			if vc == "" {
+				vc = "Embedded-IoT"
+			}
+			ua = fmt.Sprintf("%s/2.4.18 (%s; %s; OS/%s; FW/%s; ID/%s)", strings.ReplaceAll(vc, " ", "-"), vendor, devType, osName, fwVer, spec.ID)
+			serverHdr = fmt.Sprintf("%s/2.4.18 (%s)", strings.ReplaceAll(vc, " ", "-"), osName)
+		}
+	}
+
+	lldpDesc := fmt.Sprintf("%s %s (%s) | OS: %s | FW: %s", vendor, model, devName, osName, fwVer)
+
+	// Build open TCP port map & authentic server banners for inbound scan/probe responder
+	openPorts := make(map[uint16][]byte)
+	httpBody := fmt.Sprintf(
+		`{"device_id":%q,"name":%q,"vendor":%q,"model":%q,"type":%q,"os":%q,"firmware":%q,"mac":%q,"status":"online"}`+"\n",
+		spec.ID, devName, vendor, model, devType, osName, fwVer, spec.MAC,
+	)
+	httpResp := fmt.Sprintf(
+		"HTTP/1.1 200 OK\r\nServer: %s\r\nContent-Type: application/json\r\nX-Device-Vendor: %s\r\nX-Device-Firmware: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s",
+		serverHdr, vendor, fwVer, len(httpBody), httpBody,
+	)
+	openPorts[80] = []byte(httpResp)
+
+	// Add protocol-configured ports
+	for _, p := range spec.Protocols {
+		switch strings.ToLower(strings.TrimSpace(p)) {
+		case "rtsp":
+			extraPorts = append(extraPorts, 554)
+		case "mqtt":
+			extraPorts = append(extraPorts, 1883)
+		}
+	}
+
+	for _, port := range extraPorts {
+		switch port {
+		case 554:
+			rtspResp := fmt.Sprintf(
+				"RTSP/1.0 200 OK\r\nCSeq: 1\r\nServer: %s (%s)\r\nPublic: OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE\r\n\r\n",
+				serverHdr, fwVer,
+			)
+			openPorts[554] = []byte(rtspResp)
+		case 1883:
+			// MQTT v3.1.1 CONNACK (Connection Accepted)
+			openPorts[1883] = []byte{0x20, 0x02, 0x00, 0x00}
+		case 102:
+			// Siemens ISO-TSAP / S7comm COTP Connection Confirm (TPKT + COTP CC)
+			openPorts[102] = []byte{0x03, 0x00, 0x00, 0x0b, 0x06, 0xd0, 0x00, 0x01, 0x00, 0x02, 0x00}
+		case 502:
+			// Modbus TCP Read Holding Registers Response
+			openPorts[502] = []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x05, 0x01, 0x03, 0x02, 0x00, 0x64}
+		case 9100:
+			// Printer PJL INFO ID banner
+			pjl := fmt.Sprintf("@PJL INFO ID\r\n\"%s %s (%s)\"\r\n\x0c", vendor, model, fwVer)
+			openPorts[9100] = []byte(pjl)
+		case 44818:
+			// EtherNet/IP ListIdentity Response header
+			openPorts[44818] = []byte{0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+		}
+	}
+
+	return iotPersona{
+		Vendor:         vendor,
+		Model:          model,
+		OS:             osName,
+		Firmware:       fwVer,
+		UserAgent:      ua,
+		LLDPSystemDesc: lldpDesc,
+		ServerHeader:   serverHdr,
+		OpenPorts:      openPorts,
+	}
 }
 
 type iotDeviceRunner struct {
 	spec           IoTDeviceSpec
+	persona        iotPersona
 	rawEng         *iotRawEngine
 	dhcpMode       string
 	macBytes       [6]byte
@@ -342,6 +780,7 @@ func newIoTDeviceRunner(parentCtx context.Context, spec IoTDeviceSpec, rawEng *i
 
 	return &iotDeviceRunner{
 		spec:           spec,
+		persona:        synthesizePersona(spec),
 		rawEng:         rawEng,
 		dhcpMode:       dhcpMode,
 		macBytes:       macBytes,
@@ -432,7 +871,7 @@ func (d *iotDeviceRunner) setIPAndGateway(ip, gw string) {
 		d.rawEng.UnregisterDeviceIP(oldIP)
 	}
 	if ip != "" && ip != "0.0.0.0" {
-		d.rawEng.RegisterDeviceIP(ip, d.macBytes)
+		d.rawEng.RegisterDeviceIP(ip, d.macBytes, d.persona.OpenPorts)
 		if ip != oldIP {
 			d.emitStats()
 		}
@@ -458,7 +897,7 @@ func (d *iotDeviceRunner) start() {
 
 	d.log("info", fmt.Sprintf("📡 [IOT-GO] System Interface: %s (Native AF_PACKET)", d.rawEng.ifaceName))
 	d.log("info", fmt.Sprintf("🚀 Starting device simulation: %s (%s) [DHCP: %s]", d.spec.Name, d.spec.ID, d.dhcpMode))
-	d.log("info", fmt.Sprintf("🆔 MAC addr: %s", d.spec.MAC))
+	d.log("info", fmt.Sprintf("🆔 MAC addr: %s | Persona: %s (%s · FW %s)", d.spec.MAC, d.persona.Model, d.persona.OS, d.persona.Firmware))
 	if d.spec.IPStart != "" {
 		d.log("info", fmt.Sprintf("📌 Fallback/Static IP: %s", d.spec.IPStart))
 	}
@@ -892,6 +1331,9 @@ func (d *iotDeviceRunner) dhcpRenewalLoop() {
 // ── Normal Protocol Workers ──────────────────────────────────────────────────
 
 func (d *iotDeviceRunner) httpUserAgent() string {
+	if d.persona.UserAgent != "" {
+		return d.persona.UserAgent
+	}
 	_, vendorClass, _, _ := d.dhcpFingerprintParams()
 	vc := strings.TrimSpace(vendorClass)
 	if vc == "" {
@@ -981,7 +1423,10 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 	switch proto {
 	case "lldp":
 		d.log("info", "📡 LLDP goroutine started")
-		sysDesc := strings.TrimSpace(fmt.Sprintf("%s %s", d.spec.Vendor, d.spec.Type))
+		sysDesc := d.persona.LLDPSystemDesc
+		if sysDesc == "" {
+			sysDesc = strings.TrimSpace(fmt.Sprintf("%s %s", d.spec.Vendor, d.spec.Type))
+		}
 		for {
 			frame := buildLLDPFrame(d.macBytes, d.spec.MAC, d.spec.Name, sysDesc)
 			d.sendFrame(frame, "lldp")

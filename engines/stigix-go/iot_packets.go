@@ -723,6 +723,75 @@ func parseTCPSynAck(frame []byte) (*parsedTCPSynAck, bool) {
 	return &res, true
 }
 
+type parsedInboundTCP struct {
+	SenderMAC  [6]byte
+	SrcIP      string
+	DstIP      string
+	SrcIP4     [4]byte
+	DstIP4     [4]byte
+	SrcPort    uint16
+	DstPort    uint16
+	Seq        uint32
+	Ack        uint32
+	Flags      uint8
+	PayloadLen int
+}
+
+// parseInboundTCP inspects an incoming Ethernet frame for an IPv4 TCP segment (SYN, PSH|ACK, or FIN)
+// targeting one of our virtual IoT device IPs.
+func parseInboundTCP(frame []byte) (*parsedInboundTCP, bool) {
+	if len(frame) < 14+20+20 {
+		return nil, false
+	}
+	etherType := binary.BigEndian.Uint16(frame[12:14])
+	ipOffset := 14
+	if etherType == 0x8100 {
+		if len(frame) < 18+20+20 {
+			return nil, false
+		}
+		etherType = binary.BigEndian.Uint16(frame[16:18])
+		ipOffset = 18
+	}
+	if etherType != etherTypeIPv4 {
+		return nil, false
+	}
+	ipHdr := frame[ipOffset:]
+	ihl := int(ipHdr[0]&0x0f) * 4
+	totalLen := int(binary.BigEndian.Uint16(ipHdr[2:4]))
+	if ihl < 20 || totalLen < ihl+20 || len(ipHdr) < totalLen {
+		return nil, false
+	}
+	if ipHdr[9] != 6 { // TCP
+		return nil, false
+	}
+	tcpSeg := ipHdr[ihl:totalLen]
+	dataOff := int(tcpSeg[12]>>4) * 4
+	if dataOff < 20 || len(tcpSeg) < dataOff {
+		return nil, false
+	}
+	flags := tcpSeg[13]
+	if (flags & tcpFlagRST) != 0 {
+		return nil, false
+	}
+	// Ignore SYN-ACK (handled by outbound 3-way handshake engine)
+	if (flags & (tcpFlagSYN | tcpFlagACK)) == (tcpFlagSYN | tcpFlagACK) {
+		return nil, false
+	}
+	var res parsedInboundTCP
+	copy(res.SenderMAC[:], frame[6:12])
+	copy(res.SrcIP4[:], ipHdr[12:16])
+	copy(res.DstIP4[:], ipHdr[16:20])
+	res.SrcIP = net.IP(ipHdr[12:16]).String()
+	res.DstIP = net.IP(ipHdr[16:20]).String()
+	res.SrcPort = binary.BigEndian.Uint16(tcpSeg[0:2])
+	res.DstPort = binary.BigEndian.Uint16(tcpSeg[2:4])
+	res.Seq = binary.BigEndian.Uint32(tcpSeg[4:8])
+	res.Ack = binary.BigEndian.Uint32(tcpSeg[8:12])
+	res.Flags = flags
+	res.PayloadLen = len(tcpSeg) - dataOff
+	return &res, true
+}
+
 // parseAndBuildICMPEchoReply checks if frame is an IPv4 ICMP Echo Request (ping) targeting one of our
 // virtual IoT device IPs, and if so returns a ready-to-send Ethernet ICMP Echo Reply frame.
 func parseAndBuildICMPEchoReply(frame []byte, lookupDeviceMAC func(targetIP string) ([6]byte, bool)) ([]byte, bool) {

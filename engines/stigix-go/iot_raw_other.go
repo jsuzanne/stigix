@@ -21,7 +21,7 @@ func (e *iotRawEngine) SendFrame(_ []byte) error {
 	return nil
 }
 
-func (e *iotRawEngine) RegisterDeviceIP(_ string, _ [6]byte) {}
+func (e *iotRawEngine) RegisterDeviceIP(_ string, _ [6]byte, _ map[uint16][]byte) {}
 
 func (e *iotRawEngine) UnregisterDeviceIP(_ string) {}
 

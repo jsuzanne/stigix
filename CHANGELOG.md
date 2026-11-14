@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.24] - 2026-11-14
+
+### Added & Enhanced
+- **4-Level Smart IoT Persona Synthesizer (`OS + Firmware + Model`) & Inbound Open-Port / Banner Responder (`engines/stigix-go/iot.go`, `engines/stigix-go/iot_raw_linux.go`, `engines/stigix-go/iot_packets.go`)**:
+  - **Automatic 4-Level Persona Synthesis (`synthesizePersona`)**: Synthesizes authentic OS, Firmware version, Model, HTTP `User-Agent`, and `LLDP System Description` strings across 4 levels: (1) explicit `_vuln_meta.os` / `description`, (2) IEEE OUI & Vendor/Brand knowledge base (Siemens `SIMATIC S7-1500 FW V2.9.4`, Hikvision `DS-2CD2142FWD-I FW V5.5.82`, Axis `AXIS OS 9.80.3.1`, NetApp `Data ONTAP 9.12.1P2`, F5 `TMOS 16.1.3.4`, Palo Alto `PAN-OS 10.2.8-h3`, Cisco `IOS 15.2(4)EA9`, Rockwell `ControlLogix FW v33.011`, APC `AOS v6.9.6`, Xbox, Hue, HP/Sharp printers, etc.), (3) device type / OS family keywords (`Camera`, `PLC`, `Printer`, `Medical`, `Windows 7/8.1/10`), and (4) universal embedded Linux fallback. Works seamlessly whether devices come from a Vulnerability CSV export or are created manually without `_vuln_meta`.
+  - **Inbound TCP `SYN` Open-Port & Service Banner Responder**: Virtual IoT device IPs now respond to inbound LAN port scans and active discovery probes in `iotRawEngine.readLoop` — replying `TCP SYN-ACK` + authentic application banners (`HTTP/1.1 200 OK` with `Server:` firmware header and JSON device telemetry on `:80`, `RTSP/1.0 200 OK` on `:554`, MQTT `CONNACK` on `:1883`, Siemens S7comm COTP on `:102`, Modbus TCP on `:502`, JetDirect PJL on `:9100`, EtherNet/IP on `:44818`) on open service ports, and `TCP RST|ACK` on closed ports for sub-second scan completion.
+
 ## [3.2.23] - 2026-11-14
 
 ### Added & Fixed

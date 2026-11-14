@@ -43,8 +43,9 @@ type iotRawEngine struct {
 
 	mu               sync.RWMutex
 	dhcpWaiters      map[uint32]chan *parsedDHCPReply
-	arpTable         map[string][6]byte // IP -> MAC
-	deviceIPs        map[string][6]byte // Virtual IoT IP -> Virtual IoT MAC
+	arpTable         map[string][6]byte            // IP -> MAC
+	deviceIPs        map[string][6]byte            // Virtual IoT IP -> Virtual IoT MAC
+	deviceOpenPorts  map[string]map[uint16][]byte  // Virtual IoT IP -> (Open TCP Port -> Server Response Banner)
 	pendingTCP       map[tcpFlowKey]pendingTCPFlow
 	defaultRouterMAC [6]byte
 	hasRouterMAC     bool
@@ -90,13 +91,14 @@ func newIoTRawEngine(ctx context.Context, ifaceName string) (*iotRawEngine, erro
 	_ = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 4*1024*1024)
 
 	eng := &iotRawEngine{
-		ifaceName:   ifaceName,
-		ifIndex:     ief.Index,
-		fd:          fd,
-		dhcpWaiters: make(map[uint32]chan *parsedDHCPReply),
-		arpTable:    make(map[string][6]byte),
-		deviceIPs:   make(map[string][6]byte),
-		pendingTCP:  make(map[tcpFlowKey]pendingTCPFlow),
+		ifaceName:       ifaceName,
+		ifIndex:         ief.Index,
+		fd:              fd,
+		dhcpWaiters:     make(map[uint32]chan *parsedDHCPReply),
+		arpTable:        make(map[string][6]byte),
+		deviceIPs:       make(map[string][6]byte),
+		deviceOpenPorts: make(map[string]map[uint16][]byte),
+		pendingTCP:      make(map[tcpFlowKey]pendingTCPFlow),
 	}
 
 	go eng.readLoop(ctx)
@@ -227,6 +229,53 @@ func (e *iotRawEngine) readLoop(ctx context.Context) {
 				finFrame := buildIPv4TCPFrameWithSeq(dstMAC, flow.devMAC, flow.devIP4, flow.dstIP4, flow.sport, flow.dport, seq, ack, tcpFlagFA, nil)
 				sendFn(finFrame)
 			}
+			continue
+		}
+
+		// 5. Check for Inbound TCP packets targeting any of our virtual IoT device IPs
+		//    (Port scans, active discovery probes, curl/HTTP/RTSP/S7comm/Modbus/JetDirect queries)
+		if inTCP, ok := parseInboundTCP(frame); ok {
+			e.mu.RLock()
+			devMAC, isTargetIoT := e.deviceIPs[inTCP.DstIP]
+			_, isSourceIoT := e.deviceIPs[inTCP.SrcIP]
+			openPorts := e.deviceOpenPorts[inTCP.DstIP]
+			e.mu.RUnlock()
+
+			// Only respond to external hosts/scanners (ignore our own outbound spoofed frames)
+			if isTargetIoT && !isSourceIoT {
+				dstMAC := inTCP.SenderMAC
+				if dstMAC == zeroMAC || dstMAC == broadcastMAC {
+					dstMAC = e.ResolveDstMAC(inTCP.SrcIP, "")
+				}
+				banner, portOpen := openPorts[inTCP.DstPort]
+
+				if (inTCP.Flags&tcpFlagSYN) != 0 && (inTCP.Flags&tcpFlagACK) == 0 {
+					if !portOpen {
+						// Closed port: reply immediately with TCP RST|ACK so nmap/scanners finish in milliseconds
+						rstFrame := buildIPv4TCPFrameWithSeq(dstMAC, devMAC, inTCP.DstIP4, inTCP.SrcIP4, inTCP.DstPort, inTCP.SrcPort, 0, inTCP.Seq+1, tcpFlagRST|tcpFlagACK, nil)
+						_ = e.SendFrame(rstFrame)
+					} else {
+						// Open service port: reply with TCP SYN|ACK
+						srvISN := uint32(0x53544758) ^ (uint32(inTCP.SrcPort) << 16) ^ uint32(inTCP.DstPort) ^ (inTCP.Seq & 0xffff)
+						synAckFrame := buildIPv4TCPFrameWithSeq(dstMAC, devMAC, inTCP.DstIP4, inTCP.SrcIP4, inTCP.DstPort, inTCP.SrcPort, srvISN, inTCP.Seq+1, tcpFlagSYN|tcpFlagACK, nil)
+						_ = e.SendFrame(synAckFrame)
+					}
+				} else if (inTCP.Flags&tcpFlagPSH) != 0 && (inTCP.Flags&tcpFlagACK) != 0 && inTCP.PayloadLen > 0 {
+					// Client sent an application request (e.g., HTTP GET, RTSP OPTIONS, S7comm, Modbus)
+					if portOpen && len(banner) > 0 {
+						seq := inTCP.Ack
+						ack := inTCP.Seq + uint32(inTCP.PayloadLen)
+						paFrame := buildIPv4TCPFrameWithSeq(dstMAC, devMAC, inTCP.DstIP4, inTCP.SrcIP4, inTCP.DstPort, inTCP.SrcPort, seq, ack, tcpFlagPA, banner)
+						_ = e.SendFrame(paFrame)
+						finFrame := buildIPv4TCPFrameWithSeq(dstMAC, devMAC, inTCP.DstIP4, inTCP.SrcIP4, inTCP.DstPort, inTCP.SrcPort, seq+uint32(len(banner)), ack, tcpFlagFA, nil)
+						_ = e.SendFrame(finFrame)
+					}
+				} else if (inTCP.Flags & tcpFlagFIN) != 0 {
+					// Client closed connection: acknowledge cleanly
+					ackFrame := buildIPv4TCPFrameWithSeq(dstMAC, devMAC, inTCP.DstIP4, inTCP.SrcIP4, inTCP.DstPort, inTCP.SrcPort, inTCP.Ack, inTCP.Seq+1, tcpFlagACK, nil)
+					_ = e.SendFrame(ackFrame)
+				}
+			}
 		}
 	}
 }
@@ -251,12 +300,17 @@ func (e *iotRawEngine) SendFrame(frame []byte) error {
 	return err
 }
 
-func (e *iotRawEngine) RegisterDeviceIP(ip string, mac [6]byte) {
+func (e *iotRawEngine) RegisterDeviceIP(ip string, mac [6]byte, openPorts map[uint16][]byte) {
 	if ip == "" || ip == "0.0.0.0" {
 		return
 	}
 	e.mu.Lock()
 	e.deviceIPs[ip] = mac
+	if len(openPorts) > 0 {
+		e.deviceOpenPorts[ip] = openPorts
+	} else {
+		delete(e.deviceOpenPorts, ip)
+	}
 	e.mu.Unlock()
 }
 
@@ -266,6 +320,7 @@ func (e *iotRawEngine) UnregisterDeviceIP(ip string) {
 	}
 	e.mu.Lock()
 	delete(e.deviceIPs, ip)
+	delete(e.deviceOpenPorts, ip)
 	e.mu.Unlock()
 }
 
