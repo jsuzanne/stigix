@@ -1467,7 +1467,6 @@ export default function Iot({ token }: IotProps) {
                         const seqNum = devices.findIndex(d => d.id === device.id) + 1;
                         const state = (device as any).deviceState || 'STOPPED';
                         const timing = (device as any).timing;
-                        const meta = (device as any)._vuln_meta;
                         const isSelected = selectedIds.includes(device.id);
                         const cum = timing?.cumulative;
                         const totalCum = cum ? (cum.active || 0) + (cum.idle || 0) + (cum.queued || 0) : 0;
@@ -1563,62 +1562,37 @@ export default function Iot({ token }: IotProps) {
                                     </div>
                                 </div>
 
-                                {/* Threat Intel + Attack Badges + Protocols (Strictly Single-Line in List View) */}
+                                {/* Live Action / Protocols (Clean Single-Line in List View — CVE/Attack badges kept in Grid View only) */}
                                 <div className="flex-1 min-w-0 hidden lg:flex items-center gap-1.5 flex-nowrap overflow-hidden">
-                                    {meta && (
-                                        <>
-                                            <span className="bg-orange-500/15 text-orange-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-orange-500/30 uppercase tracking-tight shrink-0 whitespace-nowrap" title={`${meta.cve_count || 0} CVEs · Max CVSS ${meta.max_cvss || 0}`}>
-                                                Score {meta.danger_score}
-                                            </span>
-                                            {meta.critical_cves > 0 && (
-                                                <span className="bg-red-500/15 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/25 uppercase tracking-tight shrink-0 whitespace-nowrap">
-                                                    {meta.critical_cves} Crit
-                                                </span>
-                                            )}
-                                            {meta.has_ics_cert && (
-                                                <span className="bg-yellow-500/15 text-yellow-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-yellow-500/25 uppercase tracking-tight shrink-0 whitespace-nowrap">
-                                                    ⚠ ICS
-                                                </span>
-                                            )}
-                                        </>
-                                    )}
-                                    {device.security?.bad_behavior && (device.security.behavior_type || []).slice(0, 2).map(bt => (
-                                        <span key={bt} className="bg-red-500/10 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/20 uppercase tracking-tight shrink-0 whitespace-nowrap">
-                                            {bt.replace(/_/g, ' ')}
-                                        </span>
-                                    ))}
-                                    {device.security?.bad_behavior && (device.security.behavior_type || []).length > 2 && (
-                                        <span className="text-[8px] font-bold text-red-400 shrink-0 whitespace-nowrap">+{(device.security.behavior_type || []).length - 2}</span>
-                                    )}
                                     {state === 'ACTIVE' && (() => {
                                         const liveLog = deviceLastLog[device.id] || (device.status as any)?.lastLog;
-                                        if (!liveLog?.message) return null;
-                                        const isT = isThreatLogMessage(liveLog.message, liveLog.level);
+                                        const msg = liveLog?.message || `🌐 Emitting ${device.protocols.slice(0, 3).map(p => p.toUpperCase()).join('/')} traffic...`;
+                                        const isT = isThreatLogMessage(msg, liveLog?.level);
                                         return (
                                             <span
                                                 onClick={() => setActiveLogDevice(device)}
-                                                title={`${liveLog.message} — Click to open live device console`}
+                                                title={`${msg} — Click to open live device console`}
                                                 className={cn(
-                                                    "ml-1 px-2 py-0.5 rounded border font-mono text-[9px] flex items-center gap-1.5 min-w-0 flex-1 max-w-[320px] truncate cursor-pointer",
+                                                    "px-2.5 py-1 rounded-lg border font-mono text-[10px] flex items-center gap-2 min-w-0 flex-1 truncate cursor-pointer transition-colors",
                                                     isT
-                                                        ? "bg-red-500/10 border-red-500/30 text-red-400"
-                                                        : "bg-card-secondary border-border text-cyan-400"
+                                                        ? "bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/15"
+                                                        : "bg-card-secondary border-border text-cyan-400 hover:border-blue-500/40"
                                                 )}
                                             >
                                                 <span className={cn("w-1.5 h-1.5 rounded-full animate-ping shrink-0", isT ? "bg-red-400" : "bg-cyan-400")} />
-                                                <span className="truncate">{liveLog.message}</span>
+                                                <span className="truncate">{msg}</span>
                                             </span>
                                         );
                                     })()}
-                                    {!(state === 'ACTIVE' && (deviceLastLog[device.id]?.message || (device.status as any)?.lastLog?.message)) && (
+                                    {state !== 'ACTIVE' && (
                                         <>
-                                            {device.protocols.slice(0, 4).map(p => (
+                                            {device.protocols.slice(0, 6).map(p => (
                                                 <span key={p} className="bg-card-secondary text-[8px] font-black px-1.5 py-0.5 rounded border border-border text-text-muted uppercase tracking-tight shrink-0 whitespace-nowrap">
                                                     {p}
                                                 </span>
                                             ))}
-                                            {device.protocols.length > 4 && (
-                                                <span className="text-[8px] font-bold text-text-muted shrink-0 whitespace-nowrap">+{device.protocols.length - 4}</span>
+                                            {device.protocols.length > 6 && (
+                                                <span className="text-[8px] font-bold text-text-muted shrink-0 whitespace-nowrap">+{device.protocols.length - 6}</span>
                                             )}
                                         </>
                                     )}
