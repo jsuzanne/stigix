@@ -1,12 +1,14 @@
-> **Last Updated:** 2026-05-12 | **Created:** 2026-02-15 (v1.2.1-patch.26)
+> **Last Updated:** 2026-11-14 | **Created:** 2026-11-14 (v2.0.64)
 
-# 🐍 IoT Device Generator - Python Script
+# 🐍 IoT Device Generator & Persistent Catalog (`iot_catalog.json`)
 
 ## Overview
 
-`generate_iot_devices.py` is a Python script that generates realistic IoT device configurations with DHCP fingerprints for the SD-WAN Traffic Generator and Palo Alto IoT Security labs.
+Stigix provides both an **in-app Fleet Generator & Persistent Auto-Learning Catalog** (`web-dashboard/iot-catalog.ts` backed by `config/iot_catalog.json` and `iot/wireshark_manuf.txt`) and a standalone Python CLI utility (`iot/generate_iot_devices.py`) that generates realistic IoT device configurations with DHCP fingerprints for Palo Alto Networks Device Security (IoT Security) labs.
 
-Unlike the LLM-based generation approach, this script provides:
+> **💡 Tip (v3.2.25+):** You can now generate vertical or prompt-driven IoT fleets directly from the Web Dashboard via **IoT Tab → `⚡ Fleet Generator`** without running any CLI script. Moreover, every CSV/JSON import automatically enriches `config/iot_catalog.json` and displays a **🎣 Catalog Harvest Report**.
+
+For offline CLI automation, `generate_iot_devices.py` provides:
 - **Deterministic output** - Same configuration every time for a given preset
 - **Offline generation** - No API calls or internet connection required
 - **Fast execution** - Generates 100+ devices in milliseconds
@@ -926,3 +928,11 @@ MIT License - See main repository LICENSE file
 
 - [LLM Generation Guide](IOT_LLM_GENERATION.md) - Generate configs using ChatGPT/Claude
 - [IoT Emulator Documentation](IOT_SIMULATION.md) - Main emulator documentation
+
+---
+
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-11-14 | `v2.0.64` | Stigix Core Team | Initial document creation |

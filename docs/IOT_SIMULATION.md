@@ -1,11 +1,16 @@
-> **Last Updated:** 2026-05-19 | **Created:** 2026-01-30 (v1.1.2-patch.33.7)
+> **Last Updated:** 2026-11-14 | **Created:** 2026-11-14 (v2.0.64)
 
-# 🤖 IoT Simulation & Device Management
+# 🤖 IoT Simulation, Device Security & Fleet Management
 
 ## 📑 Table of Contents
 
 - [Key Capabilities](#-key-capabilities)
-  - [Layer-2/3 Simulation (Scapy)](#-layer-23-simulation-scapy)
+  - [Native Go Layer-2/3/7 Raw-Socket Engine (`stigix-go iot`)](#-native-go-layer-237-raw-socket-engine-stigix-go-iot)
+  - [4-Level Smart Persona Synthesizer (`OS + Firmware + Model`)](#-4-level-smart-persona-synthesizer-os--firmware--model)
+  - [Inbound TCP Open-Port & Service Banner Responder](#-inbound-tcp-open-port--service-banner-responder)
+  - [OUI-Preserving MAC Suffix Rotation (`Renew MACs`) & 25ms-Paced `DHCPRELEASE`](#-oui-preserving-mac-suffix-rotation-renew-macs--25ms-paced-dhcprelease)
+  - [Persistent Auto-Learning IoT Catalog & Fleet Generator](#-persistent-auto-learning-iot-catalog--fleet-generator)
+  - [Live IoT Pulse, Fleet Stream & Packet Capture Integration](#-live-iot-pulse-fleet-stream--packet-capture-integration)
 - [Platform Compatibility](#platform-compatibility)
   - [Full IoT Support — Host Mode (Linux)](#-full-iot-support-host-mode---linux-only)
   - [Limited IoT Support — Bridge Mode (macOS / Windows)](#️-limited-iot-support-bridge-mode)
@@ -62,16 +67,43 @@
 
 ---
 
-The **SD-WAN Traffic Generator** includes a sophisticated IoT Simulation engine that allows network engineers to simulate a variety of IoT devices (cameras, sensors, smart plugs) on their network for testing security, segmentation, and failover.
+The **Stigix IoT & Device Security Engine** allows network and security engineers to emulate realistic fleets of 100+ IoT, IoMT (Healthcare), OT/ICS (Industrial), Retail/POS, and Smart Building devices on the physical wire to validate **Palo Alto Networks Device Security (IoT Security)**, SD-WAN segmentation, and threat prevention policies.
 
 ## 🚀 Key Capabilities
 
-### 📡 Layer-2/3 Simulation (Scapy)
-Unlike standard traffic generators that use high-level HTTP libraries, our IoT engine uses **Scapy** to forge raw packets at the network layer.
-- **DHCP Support**: Simulated devices can request and renew IP addresses from your real local DHCP server (Router/Core Switch).
-- **DHCP Lease Persistence**: Each device's assigned IP is saved to disk. On container restart, the device uses [RFC 2131 INIT-REBOOT](https://www.rfc-editor.org/rfc/rfc2131#section-3.2) to reclaim the same IP — no DISCOVER needed if the server accepts.
-- **ARP Handling**: Devices respond to ARP requests on the wire, making them appear "real" to networking equipment.
-- **MAC Spoofing**: Each simulated device has its own unique, configurable MAC address.
+### 📡 Native Go Layer-2/3/7 Raw-Socket Engine (`stigix-go iot`)
+Stigix uses a high-performance native Go raw-socket daemon (`engines/stigix-go/iot.go`, with automatic Python Scapy fallback) that forges L2 Ethernet frames directly via `AF_PACKET` with `<1%` CPU usage for 100+ devices:
+- **Authentic DHCP Fingerprinting**: Full DORA and [RFC 2131 INIT-REBOOT](https://www.rfc-editor.org/rfc/rfc2131#section-3.2) state machine with vendor-specific Option 12 (`Hostname`), Option 55 (`Parameter Request List`), Option 60 (`Vendor Class Identifier`), and Option 61 (`Client Identifier`).
+- **L2 ARP & Gratuitous ARP Responder**: Virtual IoT MACs and IPs respond in sub-millisecond time to LAN ARP queries from the SD-WAN ION gateway.
+- **Multi-Protocol Telemetry**: Native frame builders for `DHCP`, `ARP`, `LLDP`, `HTTP`, `DNS`, `NTP`, `SNMP`, `RTSP`, `MQTT`, `SSDP`, and `mDNS`.
+
+### 🧠 4-Level Smart Persona Synthesizer (`OS + Firmware + Model`)
+Even when a device is imported from a basic CSV without firmware details or created manually in the UI, `synthesizePersona()` automatically builds a complete hardware/software persona injected into outbound `HTTP User-Agent`, `Server:` headers, and `LLDP System Description` TLVs:
+1. **Level 1 — Explicit Metadata**: Uses `_vuln_meta.os`, `_vuln_meta.firmware` / `firmware`, or `OS:` from the device description when present.
+2. **Level 2 — IEEE OUI & Vendor Knowledge Base**: Maps 30+ major enterprise, medical, retail, and industrial vendors (`Siemens SIMATIC S7-1500 FW V2.9.4`, `Baxter Sigma Spectrum FW v8.02.01-WBM`, `Philips IntelliVue FW Rev M.02.04`, `GE CARESCAPE FW v3.2.4-CS`, `Dräger Infinity FW VF9.1.2`, `Rockwell ControlLogix FW v33.011`, `FANUC R-30iB FW V9.40P/23`, `Ingenico Lane/5000 FW 11.24.08.P2`, `Verifone VX820`, `Zebra Link-OS 6.7`, `Hikvision DS-2CD2142FWD-I FW V5.5.82`, `Axis VAPIX 9.80.3.1`, `NetApp Data ONTAP 9.12.1P2`, `F5 TMOS 16.1.3.4`, `Palo Alto PAN-OS 10.2.8-h3`, etc.).
+3. **Level 3 — Category & OS Family Synthesis**: Synthesizes realistic firmware/OS profiles for generic `Camera` (ONVIF), `PLC/SCADA` (VxWorks), `Printer` (ThreadX/JetDirect), `Medical`, or `Windows 7/8.1/10` devices.
+4. **Level 4 — Universal Embedded Fallback**: Guarantees every active IoT device emits structured OS and Firmware telemetry on the wire.
+
+### 🛡️ Inbound TCP Open-Port & Service Banner Responder
+Because virtual IoT device IPs do not exist in the Linux kernel network stack, `stigix-go` intercepts inbound TCP probes in `iotRawEngine.readLoop`:
+- **Open Service Ports (`TCP SYN` → `SYN-ACK` + Application Banner)**: Responds with a 3-way handshake and authentic service banner on `:80` (`HTTP/1.1 200 OK` with `Server:`, `X-Device-Firmware:`, and JSON telemetry), `:554` (`RTSP/1.0 200 OK`), `:1883` (`MQTT CONNACK`), `:102` (Siemens `S7comm` COTP), `:502` (`Modbus/TCP`), `:9100` (`HP JetDirect PJL`), and `:44818` (Rockwell `EtherNet/IP`).
+- **Closed Ports (`TCP SYN` → `TCP RST|ACK`)**: Immediately rejects closed ports so LAN discovery scanners complete in milliseconds without timeouts.
+
+### 🔄 OUI-Preserving MAC Suffix Rotation (`Renew MACs`) & 25ms-Paced `DHCPRELEASE`
+Clicking **`Renew MACs`** (or **`Renew MAC`** on a subset) opens the Stigix MAC Rotation Modal (`POST /api/iot/devices/rotate-macs`):
+- **Preserves the IEEE Vendor OUI (First 3 Octets)**: Only the last 3 octets (`XX:XX:XX:??:??:??`) and DHCP hostname suffix rotate so Palo Alto Device Security identifies the exact same manufacturer while registering a brand-new asset (`First Seen = Today`).
+- **25ms-Paced `DHCPRELEASE` (`40 pps`)**: Before rotating, `stigix-go` transmits an RFC 2131 `DHCPRELEASE` (Option 53 = 7) for every previous lease spaced at **`25ms` intervals** (`2.5 seconds` for 100 devices), preventing micro-bursts and ensuring the branch SD-WAN ION `/24` DHCP pool never saturates.
+
+### 📚 Persistent Auto-Learning IoT Catalog & Fleet Generator
+Stigix maintains an on-disk catalog at `/app/config/iot_catalog.json` (`web-dashboard/iot-catalog.ts`) backed by the **45,000+ IEEE OUI Wireshark database** (`iot/wireshark_manuf.txt`):
+- **Auto-Learning on Every Import ("🎣 Catalog Harvest Report")**: Importing a **Device Security Assets CSV**, **Vulnerability Report CSV**, or **JSON config** automatically resolves `"Unknown"` vendors via IEEE OUI lookup, enriches `iot_catalog.json` with newly discovered vendors, `(vendor, type)` profiles, OUIs, OS/Firmware versions, and CVEs, and displays a live harvest report in the UI.
+- **In-App `⚡ Fleet Generator` Modal (`POST /api/iot/catalog/generate`)**:
+  - **Mode 1 — 1-Click Business Verticals**: *🏥 Healthcare & IoMT*, *🏭 Manufacturing OT / ICS*, *🛒 Retail & POS Store*, *🏢 Smart Building & BMS*, and *🌐 Enterprise IT & Infra*.
+  - **Mode 2 — Scenario Prompt Compiler**: Describe a branch fleet in natural language (French or English, e.g., *"Clinique médicale avec 10 pompes Baxter, 4 IRM Siemens, 8 moniteurs Philips, 5 GE Carescape et 8 caméras Axis"*) to deterministically compile 5–100 certified devices.
+
+### 📊 Live IoT Pulse, Fleet Stream & Packet Capture Integration
+- **Live IoT Pulse**: Collapsible 3-column cockpit displaying real-time Network (`pps`) vs. Threat (`salvos`) throughput, Protocol & Threat Mix bars, and a multiplexed Live Fleet Stream with `All` / `💀 Threats` / `🌐 Net` filters.
+- **Packet Capture Integration**: The **Packet Capture** module resolves virtual IoT MACs and IPs into `[🤖 Device Name]` target badges and provides dynamic kernel BPF preset groups (`🏷️ IoT Security — By Vendor / Family` and `🤖 IoT Security — Devices (MAC + IP)`).
 
 ## Platform Compatibility
 
@@ -939,3 +971,11 @@ Go to **Settings → System Info → State Persistence** and toggle **IoT Simula
 
 ---
 *For more technical details on networking, see [SMART_NETWORKING.md](SMART_NETWORKING.md).*
+
+---
+
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-11-14 | `v2.0.64` | Stigix Core Team | Initial document creation |

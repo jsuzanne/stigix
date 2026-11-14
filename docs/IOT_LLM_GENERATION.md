@@ -1,12 +1,17 @@
-> **Last Updated:** 2026-02-27 | **Created:** 2026-02-15 (v1.2.1-patch.26)
+> **Last Updated:** 2026-11-14 | **Created:** 2026-11-14 (v2.0.64)
 
-# 🤖 Generate IoT Device Profiles with LLM
+# 🤖 IoT Fleet Generation — In-App Scenario Compiler & LLM Guide
 
 ## Overview
 
-Instead of manually creating IoT device configurations, use an LLM (ChatGPT, Claude, or Gemini) to generate realistic, context-aware device profiles for your SD-WAN Traffic Generator demos and labs.
+Stigix provides **two complementary ways** to generate realistic, industry-specific IoT device topologies with authentic IEEE OUI MAC prefixes, DHCP Option 55/60 fingerprints, OS/Firmware versions, and CVE vulnerability profiles:
 
-This approach allows you to quickly create industry-specific device topologies with proper DHCP fingerprints, vendor diversity, and realistic traffic patterns.
+1. **⚡ In-App Fleet Generator & Auto-Learning Catalog (Recommended — Built into the UI)**:
+   - Open **IoT Tab → `⚡ Fleet Generator`** (`POST /api/iot/catalog/generate`).
+   - **Mode 1 — 1-Click Business Verticals**: Instant generation of 5 to 100 devices for *🏥 Healthcare & IoMT* (Baxter, Siemens Healthineers, Philips IntelliVue, GE Carescape, Dräger, Axis), *🏭 Manufacturing OT / ICS* (Siemens SIMATIC S7-1500, Rockwell ControlLogix, FANUC, Schneider UPS, Moxa, JBT AGV), *🛒 Retail & POS Store* (Ingenico, Verifone, Zebra, ProFusion, Hikvision), *🏢 Smart Building & BMS* (Johnson Controls Metasys, LenelS2, Signify Hue, Poly, Cisco VoIP), or *🌐 Enterprise IT*.
+   - **Mode 2 — Scenario Prompt Compiler**: Type a natural-language scenario in French or English (e.g., *"Clinique médicale avec 10 pompes Baxter, 4 IRM Siemens, 8 moniteurs Philips, 5 GE Carescape et 8 caméras Axis"*) and Stigix deterministically compiles the fleet using `/app/config/iot_catalog.json` and the 45,000+ IEEE OUI database (`iot/wireshark_manuf.txt`) without any manual JSON copy-paste or MAC hallucination.
+2. **External LLM Prompt Template (ChatGPT / Claude / Gemini)**:
+   - Use the reference schema below to generate custom `.json` files externally and import them via **IoT Tab → `Import ▾` → `Stigix JSON Config`** (which also harvests new profiles into `iot_catalog.json`).
 
 ---
 
@@ -590,3 +595,11 @@ Generated configurations should be used for testing and demonstration purposes o
 
 - [Python Device Generator](IOT_DEVICE_GENERATOR.md) - Fast, deterministic device generation
 - [IoT Emulator Documentation](IOT_SIMULATION.md) - Main emulator documentation
+
+---
+
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-11-14 | `v2.0.64` | Stigix Core Team | Initial document creation |

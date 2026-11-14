@@ -83,6 +83,8 @@ export default function Iot({ token }: IotProps) {
     const importDropdownRef = useRef<HTMLDivElement>(null);
     const [rotatingMacs, setRotatingMacs] = useState(false);
     const [rotationNotice, setRotationNotice] = useState<string | null>(null);
+    const [showRenewMacModal, setShowRenewMacModal] = useState(false);
+    const [renewMacTargetIds, setRenewMacTargetIds] = useState<string[] | undefined>(undefined);
 
     // Persistent Catalog & Fleet Generator state
     const [showCatalogModal, setShowCatalogModal] = useState(false);
@@ -562,14 +564,19 @@ export default function Iot({ token }: IotProps) {
         }
     };
 
-    const handleRotateMacs = async (targetIds?: string[]) => {
+    const handleRotateMacs = (targetIds?: string[]) => {
         const isSubset = Array.isArray(targetIds) && targetIds.length > 0;
-        if (!isSubset) {
-            const confirmed = window.confirm(
-                `Renew MAC suffixes (keeping exact IEEE Vendor OUI first 3 octets) for all ${devices.length} IoT devices?\n\n• Sends RFC 2131 DHCP RELEASE for every old lease so the SD-WAN ION DHCP pool never saturates.\n• Palo Alto Device Security (IoT Security) will discover them as brand-new devices (First Seen = Today).`
-            );
-            if (!confirmed) return;
+        if (isSubset && targetIds.length === 1) {
+            // Single-device rotation from card/row executes directly without modal friction
+            void executeRotateMacs(targetIds);
+            return;
         }
+        setRenewMacTargetIds(isSubset ? targetIds : undefined);
+        setShowRenewMacModal(true);
+    };
+
+    const executeRotateMacs = async (targetIds?: string[]) => {
+        const isSubset = Array.isArray(targetIds) && targetIds.length > 0;
         setRotatingMacs(true);
         try {
             const res = await gFetch('/api/iot/devices/rotate-macs', {
@@ -581,9 +588,10 @@ export default function Iot({ token }: IotProps) {
             if (!res.ok || !data.success) {
                 throw new Error(data.error || `HTTP ${res.status}`);
             }
+            setShowRenewMacModal(false);
             await fetchDevices();
             setRotationNotice(
-                `Rotated ${data.rotated} MAC suffix${data.rotated === 1 ? '' : 'es'} (Vendor OUI preserved + DHCP RELEASE sent)`
+                `Rotated ${data.rotated} MAC suffix${data.rotated === 1 ? '' : 'es'} (Vendor OUI preserved + 25ms-paced DHCP RELEASE sent)`
             );
             setTimeout(() => setRotationNotice(null), 6500);
         } catch (e: any) {
@@ -1150,31 +1158,32 @@ export default function Iot({ token }: IotProps) {
 
                                 <div className="h-px bg-border my-1.5 mx-2" />
                                 <div className="px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px] text-text-muted">
-                                    <button
-                                        type="button"
-                                        onClick={() => { setShowImportDropdown(false); handleDownloadSampleJson(); }}
-                                        className="text-blue-400 hover:underline flex items-center gap-1 font-bold"
-                                        title="Download Sample JSON configuration file"
-                                    >
-                                        <FileJson size={10} /> Sample JSON
-                                    </button>
-                                    <span>·</span>
                                     <a
-                                        href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_DEVICE_GENERATOR.md"
+                                        href="https://github.com/jsuzanne/stigix/blob/v3/docs/IOT_SIMULATION.md"
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                                        title="IoT Simulation & Device Security Architecture Guide"
                                     >
-                                        <ExternalLink size={10} /> Python Gen
+                                        <ExternalLink size={10} /> IoT Docs
                                     </a>
                                     <span>·</span>
                                     <a
-                                        href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_LLM_GENERATION.md"
+                                        href="https://github.com/jsuzanne/stigix/blob/v3/docs/IOT_DEVICE_GENERATOR.md"
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-blue-400 hover:underline flex items-center gap-1 font-bold"
                                     >
-                                        <ExternalLink size={10} /> LLM Guide
+                                        <ExternalLink size={10} /> Catalog &amp; CLI
+                                    </a>
+                                    <span>·</span>
+                                    <a
+                                        href="https://github.com/jsuzanne/stigix/blob/v3/docs/IOT_LLM_GENERATION.md"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                                    >
+                                        <ExternalLink size={10} /> Fleet Guide
                                     </a>
                                 </div>
                             </div>
@@ -2539,6 +2548,120 @@ export default function Iot({ token }: IotProps) {
                     </div>
                 </div>
             )}
+
+            {/* ── Renew MACs Confirmation Modal ── */}
+            {showRenewMacModal && (() => {
+                const targetList = Array.isArray(renewMacTargetIds) && renewMacTargetIds.length > 0
+                    ? devices.filter(d => renewMacTargetIds.includes(d.id))
+                    : devices;
+                const activeCount = targetList.filter(d => (d as any).deviceState === 'ACTIVE' || d.running).length;
+                const leasedCount = targetList.filter(d => {
+                    const ip = (d as any).ip_address || d.status?.stats?.ip_address || d.ip_start;
+                    return ip && ip !== '0.0.0.0' && ip !== 'DHCP...';
+                }).length;
+                const pacingDurationSec = Math.max(0.1, ((leasedCount || targetList.length) * 25) / 1000).toFixed(1);
+
+                return (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                        <div className="bg-card border border-border rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
+                            <div className="p-5 border-b border-border flex items-center justify-between bg-card-secondary">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-cyan-500/15 rounded-xl border border-cyan-500/30">
+                                        <RefreshCcw size={20} className={cn("text-cyan-400", rotatingMacs && "animate-spin")} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-foreground">
+                                            Renew IoT MAC Suffixes &amp; DHCP Leases
+                                        </h3>
+                                        <p className="text-xs text-text-muted">
+                                            OUI-preserving identity rotation for Palo Alto Device Security
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => !rotatingMacs && setShowRenewMacModal(false)}
+                                    className="text-text-muted hover:text-foreground transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                {/* Summary KPIs */}
+                                <div className="grid grid-cols-3 gap-2.5 text-center">
+                                    <div className="bg-card-secondary border border-border rounded-2xl p-3">
+                                        <div className="text-lg font-black text-cyan-400">{targetList.length}</div>
+                                        <div className="text-[10px] font-bold text-text-muted uppercase">Target Devices</div>
+                                    </div>
+                                    <div className="bg-card-secondary border border-border rounded-2xl p-3">
+                                        <div className="text-lg font-black text-emerald-400">{activeCount}</div>
+                                        <div className="text-[10px] font-bold text-text-muted uppercase">Live Active</div>
+                                    </div>
+                                    <div className="bg-card-secondary border border-border rounded-2xl p-3">
+                                        <div className="text-lg font-black text-purple-400">~{pacingDurationSec}s</div>
+                                        <div className="text-[10px] font-bold text-text-muted uppercase">Paced Release</div>
+                                    </div>
+                                </div>
+
+                                {/* 3 Guarantees */}
+                                <div className="space-y-2.5 bg-card-secondary/70 border border-border rounded-2xl p-4 text-xs">
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="text-cyan-400 font-black mt-0.5">1.</span>
+                                        <div>
+                                            <span className="font-bold text-foreground">IEEE Vendor OUI Preserved (First 3 Octets)</span>
+                                            <p className="text-[11px] text-text-muted mt-0.5">
+                                                Only the last 3 octets (<code className="text-cyan-400">XX:XX:XX:??:??:??</code>) and hostname suffix rotate — Siemens, Baxter, Axis, NetApp, etc. keep their exact manufacturer identity.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="text-emerald-400 font-black mt-0.5">2.</span>
+                                        <div>
+                                            <span className="font-bold text-foreground">25ms-Paced RFC 2131 <code className="text-emerald-400">DHCPRELEASE</code> (40 pps)</span>
+                                            <p className="text-[11px] text-text-muted mt-0.5">
+                                                Every previous IP lease is cleanly released on the SD-WAN ION router without micro-bursts so the local `/24` DHCP pool never saturates.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="text-purple-400 font-black mt-0.5">3.</span>
+                                        <div>
+                                            <span className="font-bold text-foreground">Fresh Discovery in Strata Cloud Manager</span>
+                                            <p className="text-[11px] text-text-muted mt-0.5">
+                                                Active devices immediately perform a fresh <code className="text-purple-400">DORA</code> handshake; Queued/Idle devices acquire their new lease on their next slot (<code className="text-purple-400">First Seen = Today</code>).
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="px-6 pb-6 pt-3 flex gap-3 border-t border-border">
+                                <button
+                                    type="button"
+                                    disabled={rotatingMacs}
+                                    onClick={() => setShowRenewMacModal(false)}
+                                    className="flex-1 px-4 py-3 bg-card-secondary border border-border text-text-muted font-bold rounded-xl hover:bg-card-hover transition-all tracking-widest text-xs disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={rotatingMacs}
+                                    onClick={() => executeRotateMacs(renewMacTargetIds)}
+                                    className="flex-1 px-4 py-3 bg-cyan-600 text-white font-black rounded-xl hover:bg-cyan-500 transition-all shadow-lg shadow-cyan-900/25 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {rotatingMacs ? (
+                                        <><Loader2 size={15} className="animate-spin" /> Rotating {targetList.length} MACs...</>
+                                    ) : (
+                                        <><RefreshCcw size={15} /> Renew {targetList.length} MAC{targetList.length === 1 ? '' : 's'}</>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ── Fleet Generator & Persistent IoT Catalog Modal ── */}
             {showCatalogModal && (
