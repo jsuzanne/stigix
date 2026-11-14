@@ -373,6 +373,7 @@ func (d *iotDeviceRunner) setIPAndGateway(ip, gw string) {
 	}
 	if ip != "" && ip != "0.0.0.0" {
 		d.rawEng.RegisterDeviceIP(ip, d.macBytes)
+		d.emitStats()
 	}
 }
 
@@ -489,6 +490,11 @@ func (d *iotDeviceRunner) bootSequence() {
 	}
 
 	if iotBadBehaviorGlob.Load() && d.spec.Security.BadBehavior {
+		// Allow 5s of clean baseline protocol traffic (ARP, LLDP, DNS, HTTP/Cloud) after DHCP ACK
+		// before starting bad behavior so the device IP and normal identity are established first.
+		if !d.sleepOrDone(5 * time.Second) {
+			return
+		}
 		d.enableBadBehavior()
 	}
 }
@@ -823,6 +829,23 @@ func (d *iotDeviceRunner) dhcpRenewalLoop() {
 
 // ── Normal Protocol Workers ──────────────────────────────────────────────────
 
+func (d *iotDeviceRunner) httpUserAgent() string {
+	_, vendorClass, _, _ := d.dhcpFingerprintParams()
+	vc := strings.TrimSpace(vendorClass)
+	if vc == "" {
+		vc = "Embedded-IoT"
+	}
+	vendor := strings.TrimSpace(d.spec.Vendor)
+	if vendor == "" {
+		vendor = "Generic"
+	}
+	devType := strings.TrimSpace(d.spec.Type)
+	if devType == "" {
+		devType = "IoT"
+	}
+	return fmt.Sprintf("%s/2.4 (%s; %s; ID/%s)", strings.ReplaceAll(vc, " ", "-"), vendor, devType, d.spec.ID)
+}
+
 func (d *iotDeviceRunner) sendSpoofedTCP(dstIPStr string, dstPort uint16, flags uint8, payload []byte, protoLabel string) bool {
 	ipStr, gwStr := d.getIPAndGateway()
 	srcIP, err1 := parseIPv4(ipStr)
@@ -834,6 +857,34 @@ func (d *iotDeviceRunner) sendSpoofedTCP(dstIPStr string, dstPort uint16, flags 
 	sport := uint16(1024 + rand.Intn(64000))
 	frame := buildIPv4TCPFrame(dstMAC, d.macBytes, srcIP, dstIP, sport, dstPort, flags, payload)
 	d.sendFrame(frame, protoLabel)
+	return true
+}
+
+// sendSpoofedTCPFlow initiates a TCP 3-way handshake (SYN) and registers the L7 payload
+// so iotRawEngine replies with ACK + PSH|ACK (L7 payload) + FIN|ACK upon receiving SYN-ACK.
+func (d *iotDeviceRunner) sendSpoofedTCPFlow(dstIPStr string, dstPort uint16, l7Payload []byte, protoLabel string) bool {
+	ipStr, gwStr := d.getIPAndGateway()
+	srcIP, err1 := parseIPv4(ipStr)
+	dstIP, err2 := parseIPv4(dstIPStr)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	dstMAC := d.rawEng.ResolveDstMAC(dstIPStr, gwStr)
+	sport := uint16(32768 + rand.Intn(28231))
+	clientISN := rand.Uint32()
+	if len(l7Payload) > 0 {
+		d.rawEng.RegisterPendingTCP(
+			ipStr, dstIPStr,
+			d.macBytes, dstMAC,
+			srcIP, dstIP,
+			sport, dstPort,
+			clientISN,
+			l7Payload,
+			func(f []byte) { d.sendFrame(f, protoLabel) },
+		)
+	}
+	synFrame := buildIPv4TCPFrameWithSeq(dstMAC, d.macBytes, srcIP, dstIP, sport, dstPort, clientISN, 0, tcpFlagSYN, nil)
+	d.sendFrame(synFrame, protoLabel)
 	return true
 }
 
@@ -898,11 +949,13 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 
 	case "http":
 		d.log("debug", "🌐 HTTP goroutine started")
+		ua := d.httpUserAgent()
 		for {
 			_, gwStr := d.getIPAndGateway()
 			if gwStr != "" {
-				if d.sendSpoofedTCP(gwStr, 80, tcpFlagSYN, nil, "http") {
-					d.log("debug", fmt.Sprintf("📤 HTTP SYN sent to %s:80", gwStr))
+				l7 := buildHTTPGetPayload(gwStr, "/api/v1/status", ua)
+				if d.sendSpoofedTCPFlow(gwStr, 80, l7, "http") {
+					d.log("debug", fmt.Sprintf("📤 HTTP GET /api/v1/status sent to %s:80", gwStr))
 				}
 			}
 			if !d.sleepOrDone(interval) {
@@ -912,10 +965,18 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 
 	case "mqtt":
 		d.log("debug", "💬 MQTT goroutine started")
-		const mqttBroker = "192.168.207.150"
+		hostname, _, _, _ := d.dhcpFingerprintParams()
+		l7 := buildMQTTConnectPayload(hostname)
 		for {
-			if d.sendSpoofedTCP(mqttBroker, 1883, tcpFlagSYN, nil, "mqtt") {
-				d.log("debug", fmt.Sprintf("📤 MQTT Connect sent to %s:1883", mqttBroker))
+			_, gwStr := d.getIPAndGateway()
+			mqttBroker := "192.168.207.150"
+			if cloudCfg, ok := iotCloudDestinations[d.spec.Vendor]; ok && len(cloudCfg.Servers) > 0 {
+				mqttBroker = cloudCfg.Servers[0]
+			} else if gwStr != "" {
+				mqttBroker = gwStr
+			}
+			if d.sendSpoofedTCPFlow(mqttBroker, 1883, l7, "mqtt") {
+				d.log("debug", fmt.Sprintf("📤 MQTT CONNECT (%s) sent to %s:1883", hostname, mqttBroker))
 			}
 			if !d.sleepOrDone(interval) {
 				return
@@ -924,11 +985,13 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 
 	case "rtsp":
 		d.log("debug", "🎥 RTSP goroutine started")
+		ua := d.httpUserAgent()
 		for {
 			_, gwStr := d.getIPAndGateway()
 			if gwStr != "" {
-				if d.sendSpoofedTCP(gwStr, 554, tcpFlagSYN, nil, "rtsp") {
-					d.log("debug", fmt.Sprintf("📤 RTSP SYN sent to %s:554", gwStr))
+				l7 := buildRTSPOptionsPayload(gwStr, ua)
+				if d.sendSpoofedTCPFlow(gwStr, 554, l7, "rtsp") {
+					d.log("debug", fmt.Sprintf("📤 RTSP OPTIONS sent to %s:554", gwStr))
 				}
 			}
 			if !d.sleepOrDone(interval) {
@@ -952,18 +1015,25 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 		d.log("debug", "☁️ Cloud traffic goroutine started")
 		cloudCfg, ok := iotCloudDestinations[d.spec.Vendor]
 		if !ok || len(cloudCfg.Servers) == 0 {
-			cloudCfg = iotVendorCloud{Servers: []string{"8.8.8.8"}}
+			cloudCfg = iotVendorCloud{Servers: []string{"8.8.8.8"}, Domains: []string{"iot.cloud.local"}}
 		}
+		sniDomain := "iot.cloud.local"
+		if len(cloudCfg.Domains) > 0 && cloudCfg.Domains[0] != "" {
+			sniDomain = cloudCfg.Domains[0]
+		}
+		ua := d.httpUserAgent()
+		tlsHello := buildTLSClientHelloPayload(sniDomain)
+		httpBeat := buildHTTPGetPayload(sniDomain, "/v1/telemetry/heartbeat", ua)
 		for {
 			for _, srv := range cloudCfg.Servers {
-				if d.sendSpoofedTCP(srv, 443, tcpFlagSYN, nil, "cloud") {
-					d.log("info", fmt.Sprintf("☁️ Cloud HTTPS sent to %s:443", srv))
+				if d.sendSpoofedTCPFlow(srv, 443, tlsHello, "cloud") {
+					d.log("info", fmt.Sprintf("☁️ Cloud HTTPS (SNI: %s) sent to %s:443", sniDomain, srv))
 				}
 				if !d.sleepOrDone(2 * time.Second) {
 					return
 				}
-				if d.sendSpoofedTCP(srv, 80, tcpFlagSYN, nil, "cloud") {
-					d.log("info", fmt.Sprintf("☁️ Cloud HTTP sent to %s:80", srv))
+				if d.sendSpoofedTCPFlow(srv, 80, httpBeat, "cloud") {
+					d.log("info", fmt.Sprintf("☁️ Cloud HTTP GET (%s) sent to %s:80", sniDomain, srv))
 				}
 				if !d.sleepOrDone(3 * time.Second) {
 					return
@@ -985,7 +1055,8 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 			for _, domain := range domains {
 				for _, dnsSrv := range iotPublicDNS {
 					q := buildDNSQueryPayload(domain)
-					if d.sendSpoofedUDP(dnsSrv, 53000, 53, q, "dns") {
+					sport := uint16(49152 + rand.Intn(16383))
+					if d.sendSpoofedUDP(dnsSrv, sport, 53, q, "dns") {
 						d.log("info", fmt.Sprintf("🌐 DNS query sent: %s → %s", domain, dnsSrv))
 					}
 					if !d.sleepOrDone(1 * time.Second) {
@@ -1137,15 +1208,18 @@ func (d *iotDeviceRunner) badBeacon(bCtx context.Context) {
 	const beaconDomain = "c2.malware-test.org"
 	const beaconIP = "198.51.100.66"
 	dnsSrv := iotPublicDNS[0]
+	ua := d.httpUserAgent()
+	l7Beacon := buildHTTPGetPayload(beaconDomain, "/gate.php?id="+d.spec.ID, ua)
 
 	for d.isBadBehaviorActive(bCtx) {
-		if d.sendSpoofedUDP(dnsSrv, 53000, 53, buildDNSQueryPayload(beaconDomain), "bad_beacon") {
+		sport := uint16(49152 + rand.Intn(16383))
+		if d.sendSpoofedUDP(dnsSrv, sport, 53, buildDNSQueryPayload(beaconDomain), "bad_beacon") {
 			d.log("warning", fmt.Sprintf("💀 [beacon] DNS: %s", beaconDomain))
 		}
 		if !d.sleepBadBehavior(bCtx, 2*time.Second) {
 			return
 		}
-		if d.sendSpoofedTCP(beaconIP, 8443, tcpFlagSYN, nil, "bad_beacon") {
+		if d.sendSpoofedTCPFlow(beaconIP, 8443, l7Beacon, "bad_beacon") {
 			d.log("warning", fmt.Sprintf("💀 [beacon] HTTP: %s:8443", beaconIP))
 		}
 		if !d.sleepBadBehavior(bCtx, 45*time.Second) {
@@ -1212,14 +1286,17 @@ func (d *iotDeviceRunner) badPANTestDomains(bCtx context.Context) {
 			return
 		}
 		path := iotPANURLTestPaths[rand.Intn(len(iotPANURLTestPaths))]
-		if d.sendSpoofedTCP(panURLIP, 443, tcpFlagSYN, nil, "bad_pan_url") {
-			d.log("warning", fmt.Sprintf("💀 [pan_test] URL Filter HTTPS: urlfiltering.paloaltonetworks.com%s → %s:443", path, panURLIP))
+		const panHost = "urlfiltering.paloaltonetworks.com"
+		tlsHello := buildTLSClientHelloPayload(panHost)
+		httpReq := buildHTTPGetPayload(panHost, path, d.httpUserAgent())
+		if d.sendSpoofedTCPFlow(panURLIP, 443, tlsHello, "bad_pan_url") {
+			d.log("warning", fmt.Sprintf("💀 [pan_test] URL Filter HTTPS: %s%s → %s:443", panHost, path, panURLIP))
 		}
 		if !d.sleepBadBehavior(bCtx, 3*time.Second) {
 			return
 		}
-		if d.sendSpoofedTCP(panURLIP, 80, tcpFlagSYN, nil, "bad_pan_url") {
-			d.log("warning", fmt.Sprintf("💀 [pan_test] URL Filter HTTP: urlfiltering.paloaltonetworks.com%s → %s:80", path, panURLIP))
+		if d.sendSpoofedTCPFlow(panURLIP, 80, httpReq, "bad_pan_url") {
+			d.log("warning", fmt.Sprintf("💀 [pan_test] URL Filter HTTP: %s%s → %s:80", panHost, path, panURLIP))
 		}
 		if !d.sleepBadBehavior(bCtx, 90*time.Second) {
 			return
@@ -1249,7 +1326,8 @@ func (d *iotDeviceRunner) badRandomMix(bCtx context.Context) {
 				}
 			}
 		case 2:
-			if d.sendSpoofedUDP(iotPublicDNS[0], 53000, 53, buildDNSQueryPayload("c2.malware-test.org"), "bad_beacon") {
+			sport := uint16(49152 + rand.Intn(16383))
+			if d.sendSpoofedUDP(iotPublicDNS[0], sport, 53, buildDNSQueryPayload("c2.malware-test.org"), "bad_beacon") {
 				d.log("warning", "💀 [random] Beacon: c2.malware-test.org")
 			}
 		}

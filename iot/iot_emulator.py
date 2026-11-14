@@ -352,6 +352,9 @@ class IoTDevice:
                 self.log("error", "\u274c No IP obtained after DHCP — protocol threads and bad behavior will NOT start")
                 return
 
+            self.stats["current_ip"] = self.ip
+            if JSON_OUTPUT:
+                emit_json("stats", device_id=self.id, stats=self.stats)
             self.log("info", f"\u2705 IP ready: {self.ip} — starting protocol threads")
 
             # 2. Protocol threads (non-DHCP)
@@ -372,8 +375,12 @@ class IoTDevice:
             if "dhcp" in self.protocols and self.running and not self._cancelled:
                 threading.Thread(target=self.dhcp_renewal_loop, daemon=True).start()
 
-            # 4. Bad behavior — only if IP is valid
+            # 4. Bad behavior — only if IP is valid (after 5s baseline warm-up)
             if ENABLE_BAD_BEHAVIOR and self.bad_behavior and self.running and not self._cancelled:
+                if self._stop_event.wait(timeout=5.0):
+                    return
+                if not self.running or self._cancelled or not ENABLE_BAD_BEHAVIOR:
+                    return
                 self.stats["bad_behavior_active"] = True
                 self.log("warning", f"\u26a0\ufe0f  BAD BEHAVIOR ENABLED (types: {', '.join(self.behavior_types)}) — IP: {self.ip}")
                 if JSON_OUTPUT:
@@ -549,7 +556,7 @@ class IoTDevice:
             try:
                 # DNS beacon
                 pkt_dns = IP(src=self.ip, dst=dns_server) / \
-                          UDP(sport=53000, dport=53) / \
+                          UDP(sport=random.randint(49152, 65534), dport=53) / \
                           DNS(rd=1, qd=DNSQR(qname=beacon_domain, qtype="A"))
                 
                 self._send(pkt_dns, protocol="bad_beacon", verbose=0)
@@ -710,7 +717,7 @@ class IoTDevice:
         dns_server = self.PUBLIC_SERVICES["dns"][0]
         
         pkt = IP(src=self.ip, dst=dns_server) / \
-              UDP(sport=53000, dport=53) / \
+              UDP(sport=random.randint(49152, 65534), dport=53) / \
               DNS(rd=1, qd=DNSQR(qname=beacon_domain, qtype="A"))
         
         self._send(pkt, protocol="bad_beacon", verbose=0)
@@ -1219,7 +1226,8 @@ class IoTDevice:
         while self.running:
             try:
                 pkt = IP(src=self.ip, dst="224.0.0.251") / \
-                      UDP(sport=5353, dport=5353)
+                      UDP(sport=5353, dport=5353) / \
+                      DNS(rd=1, qd=DNSQR(qname="_services._dns-sd._udp.local", qtype="PTR"))
                 
                 self._send(pkt, protocol="mdns", verbose=0)
                 self.log("debug", "📤 mDNS query sent")
@@ -1275,7 +1283,7 @@ class IoTDevice:
                 for domain in domains:
                     for dns_server in dns_servers:
                         pkt = IP(src=self.ip, dst=dns_server) / \
-                              UDP(sport=53000, dport=53) / \
+                              UDP(sport=random.randint(49152, 65534), dport=53) / \
                               DNS(rd=1, qd=DNSQR(qname=domain))
                         
                         self._send(pkt, protocol="dns", verbose=0)
@@ -1296,7 +1304,8 @@ class IoTDevice:
             try:
                 for ntp_server in ntp_servers:
                     pkt = IP(src=self.ip, dst=ntp_server) / \
-                          UDP(sport=123, dport=123)
+                          UDP(sport=123, dport=123) / \
+                          Raw(load=b"\x1b" + b"\x00" * 47)
                     
                     self._send(pkt, protocol="ntp", verbose=0)
                     self.log("info", f"🕐 NTP request sent to {ntp_server}")
@@ -1524,7 +1533,7 @@ def daemon_loop(interface: str, dhcp_mode: str = "auto"):
                 # Each new device waits (running_count × 1s + 0–1s jitter) before starting.
                 # 1s/slot lets 30 devices boot in ~30s instead of ~60s.
                 startup_index = len(devices)
-                stagger_delay = startup_index * 1.0 + random.uniform(0, 1.0)
+                stagger_delay = min(4.0, startup_index * 0.25) + random.uniform(0, 0.3)
 
                 dev = IoTDevice(cfg, interface=interface, dhcp_mode=dhcp_mode)
                 devices[device_id] = dev

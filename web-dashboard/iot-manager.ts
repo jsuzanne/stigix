@@ -208,6 +208,19 @@ export class IoTManager extends EventEmitter {
         this.ensureDaemon();
         await this.waitForDaemonReady(8000);
         this.runningDevices.set(config.id, config);
+        // Reset stale lastLog from previous cycle so card shows clean boot state during DHCP stagger
+        const logs = this.logsCache.get(config.id) || [];
+        const bootLog = {
+            type: 'log',
+            device_id: config.id,
+            level: 'info',
+            message: '🔄 Cycle starting — negotiating DHCP lease...',
+            timestamp: new Date().toISOString(),
+        };
+        logs.push(bootLog);
+        if (logs.length > 100) logs.shift();
+        this.logsCache.set(config.id, logs);
+
         const prevStats = this.cumulativeStats.get(config.id);
         const configWithStats = { ...config, enabled: true, previous_stats: prevStats || {} };
         this.sendCommand({ cmd: 'start', device: configWithStats });
@@ -715,8 +728,23 @@ export class IoTManager extends EventEmitter {
                 this.emit('device:log', enriched);
                 break;
             }
+            case 'dhcp_ack': {
+                if (msg.assigned_ip) {
+                    const existing = this.statsCache.get(device_id) || {
+                        packets_sent: 0,
+                        bytes_sent: 0,
+                        uptime_seconds: 0,
+                        protocols: {},
+                        bad_behavior_active: false,
+                    };
+                    const updated = { ...existing, current_ip: msg.assigned_ip };
+                    this.statsCache.set(device_id, updated);
+                    this.emit('device:stats', { device_id, stats: updated });
+                }
+                this.emit(`device:${type}`, msg);
+                break;
+            }
             case 'dhcp_offer':
-            case 'dhcp_ack':
             case 'dhcp_discover':
                 this.emit(`device:${type}`, msg);
                 break;

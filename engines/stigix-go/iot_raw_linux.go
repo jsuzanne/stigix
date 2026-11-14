@@ -15,6 +15,26 @@ func htons16(v uint16) uint16 {
 	return (v << 8) | (v >> 8)
 }
 
+type tcpFlowKey struct {
+	devIP string
+	dstIP string
+	sport uint16
+	dport uint16
+}
+
+type pendingTCPFlow struct {
+	devMAC    [6]byte
+	dstMAC    [6]byte
+	devIP4    [4]byte
+	dstIP4    [4]byte
+	sport     uint16
+	dport     uint16
+	clientISN uint32
+	payload   []byte
+	createdAt time.Time
+	onSendFrame func(frame []byte)
+}
+
 type iotRawEngine struct {
 	ifaceName string
 	ifIndex   int
@@ -25,6 +45,7 @@ type iotRawEngine struct {
 	dhcpWaiters      map[uint32]chan *parsedDHCPReply
 	arpTable         map[string][6]byte // IP -> MAC
 	deviceIPs        map[string][6]byte // Virtual IoT IP -> Virtual IoT MAC
+	pendingTCP       map[tcpFlowKey]pendingTCPFlow
 	defaultRouterMAC [6]byte
 	hasRouterMAC     bool
 }
@@ -75,6 +96,7 @@ func newIoTRawEngine(ctx context.Context, ifaceName string) (*iotRawEngine, erro
 		dhcpWaiters: make(map[uint32]chan *parsedDHCPReply),
 		arpTable:    make(map[string][6]byte),
 		deviceIPs:   make(map[string][6]byte),
+		pendingTCP:  make(map[tcpFlowKey]pendingTCPFlow),
 	}
 
 	go eng.readLoop(ctx)
@@ -150,6 +172,61 @@ func (e *iotRawEngine) readLoop(ctx context.Context) {
 					_ = e.SendFrame(arpReply)
 				}
 			}
+			continue
+		}
+
+		// 3. Check for ICMP Echo Request (Ping) targeting any of our virtual IoT device IPs
+		if icmpReply, ok := parseAndBuildICMPEchoReply(frame, func(targetIP string) ([6]byte, bool) {
+			e.mu.RLock()
+			mac, exists := e.deviceIPs[targetIP]
+			e.mu.RUnlock()
+			return mac, exists
+		}); ok {
+			_ = e.SendFrame(icmpReply)
+			continue
+		}
+
+		// 4. Check for TCP SYN-ACK to complete 3-way handshake and transmit L7 application payload
+		if synAck, ok := parseTCPSynAck(frame); ok {
+			key := tcpFlowKey{
+				devIP: synAck.DstIP,
+				dstIP: synAck.SrcIP,
+				sport: synAck.DstPort,
+				dport: synAck.SrcPort,
+			}
+			e.mu.Lock()
+			flow, waiting := e.pendingTCP[key]
+			if waiting {
+				delete(e.pendingTCP, key)
+			}
+			e.mu.Unlock()
+
+			if waiting {
+				seq := synAck.Ack
+				ack := synAck.Seq + 1
+				dstMAC := synAck.SenderMAC
+				if dstMAC == zeroMAC || dstMAC == broadcastMAC {
+					dstMAC = flow.dstMAC
+				}
+				sendFn := flow.onSendFrame
+				if sendFn == nil {
+					sendFn = func(f []byte) { _ = e.SendFrame(f) }
+				}
+				// 4a. Send TCP ACK (completes 3-way handshake for stateful firewall / ION)
+				ackFrame := buildIPv4TCPFrameWithSeq(dstMAC, flow.devMAC, flow.devIP4, flow.dstIP4, flow.sport, flow.dport, seq, ack, tcpFlagACK, nil)
+				sendFn(ackFrame)
+
+				// 4b. Send TCP PSH|ACK with L7 application payload (HTTP GET, TLS ClientHello SNI, MQTT CONNECT, RTSP OPTIONS)
+				if len(flow.payload) > 0 {
+					paFrame := buildIPv4TCPFrameWithSeq(dstMAC, flow.devMAC, flow.devIP4, flow.dstIP4, flow.sport, flow.dport, seq, ack, tcpFlagPA, flow.payload)
+					sendFn(paFrame)
+					seq += uint32(len(flow.payload))
+				}
+
+				// 4c. Send clean TCP FIN|ACK to close session gracefully
+				finFrame := buildIPv4TCPFrameWithSeq(dstMAC, flow.devMAC, flow.devIP4, flow.dstIP4, flow.sport, flow.dport, seq, ack, tcpFlagFA, nil)
+				sendFn(finFrame)
+			}
 		}
 	}
 }
@@ -190,6 +267,67 @@ func (e *iotRawEngine) UnregisterDeviceIP(ip string) {
 	e.mu.Lock()
 	delete(e.deviceIPs, ip)
 	e.mu.Unlock()
+}
+
+func (e *iotRawEngine) RegisterPendingTCP(
+	devIP, dstIP string,
+	devMAC, dstMAC [6]byte,
+	devIP4, dstIP4 [4]byte,
+	sport, dport uint16,
+	clientISN uint32,
+	payload []byte,
+	onSendFrame func(frame []byte),
+) {
+	if len(payload) == 0 {
+		return
+	}
+	now := time.Now()
+	key := tcpFlowKey{devIP: devIP, dstIP: dstIP, sport: sport, dport: dport}
+	flow := pendingTCPFlow{
+		devMAC:      devMAC,
+		dstMAC:      dstMAC,
+		devIP4:      devIP4,
+		dstIP4:      dstIP4,
+		sport:       sport,
+		dport:       dport,
+		clientISN:   clientISN,
+		payload:     payload,
+		createdAt:   now,
+		onSendFrame: onSendFrame,
+	}
+
+	e.mu.Lock()
+	if len(e.pendingTCP) > 256 {
+		for k, v := range e.pendingTCP {
+			if now.Sub(v.createdAt) > 3*time.Second {
+				delete(e.pendingTCP, k)
+			}
+		}
+	}
+	e.pendingTCP[key] = flow
+	e.mu.Unlock()
+
+	// Fallback: if target is a synthetic/unreachable lab IP and no SYN-ACK arrives within 350ms,
+	// still emit the PSH|ACK L7 payload so packet captures and mid-stream DPI inspect the L7 header.
+	time.AfterFunc(350*time.Millisecond, func() {
+		e.mu.Lock()
+		pending, stillWaiting := e.pendingTCP[key]
+		if stillWaiting {
+			delete(e.pendingTCP, key)
+		}
+		e.mu.Unlock()
+		if !stillWaiting {
+			return
+		}
+		seq := pending.clientISN + 1
+		ack := uint32(1)
+		sendFn := pending.onSendFrame
+		if sendFn == nil {
+			sendFn = func(f []byte) { _ = e.SendFrame(f) }
+		}
+		paFrame := buildIPv4TCPFrameWithSeq(pending.dstMAC, pending.devMAC, pending.devIP4, pending.dstIP4, pending.sport, pending.dport, seq, ack, tcpFlagPA, pending.payload)
+		sendFn(paFrame)
+	})
 }
 
 func (e *iotRawEngine) ResolveDstMAC(dstIP, gatewayIP string) [6]byte {

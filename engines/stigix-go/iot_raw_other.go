@@ -25,6 +25,17 @@ func (e *iotRawEngine) RegisterDeviceIP(_ string, _ [6]byte) {}
 
 func (e *iotRawEngine) UnregisterDeviceIP(_ string) {}
 
+func (e *iotRawEngine) RegisterPendingTCP(
+	_, _ string,
+	_, _ [6]byte,
+	_, _ [4]byte,
+	_, _ uint16,
+	_ uint32,
+	_ []byte,
+	_ func(frame []byte),
+) {
+}
+
 func (e *iotRawEngine) ResolveDstMAC(dstIP, _ string) [6]byte {
 	if dstIP == "224.0.0.251" {
 		return mdnsMulticastMAC

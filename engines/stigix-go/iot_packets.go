@@ -22,7 +22,13 @@ const (
 	etherTypeARP  = 0x0806
 	etherTypeLLDP = 0x88cc
 
+	tcpFlagFIN = 0x01
 	tcpFlagSYN = 0x02
+	tcpFlagRST = 0x04
+	tcpFlagPSH = 0x08
+	tcpFlagACK = 0x10
+	tcpFlagFA  = 0x11 // FIN | ACK
+	tcpFlagSA  = 0x12 // SYN | ACK
 	tcpFlagPA  = 0x18 // PSH | ACK
 )
 
@@ -197,15 +203,19 @@ func buildIPv4UDPFrame(dstMAC, srcMAC [6]byte, srcIP, dstIP [4]byte, srcPort, ds
 }
 
 func buildIPv4TCPFrame(dstMAC, srcMAC [6]byte, srcIP, dstIP [4]byte, srcPort, dstPort uint16, flags uint8, payload []byte) []byte {
+	return buildIPv4TCPFrameWithSeq(dstMAC, srcMAC, srcIP, dstIP, srcPort, dstPort, rand.Uint32(), 0, flags, payload)
+}
+
+func buildIPv4TCPFrameWithSeq(dstMAC, srcMAC [6]byte, srcIP, dstIP [4]byte, srcPort, dstPort uint16, seq, ack uint32, flags uint8, payload []byte) []byte {
 	tcpLen := 20 + len(payload)
 	tcp := make([]byte, tcpLen)
 	binary.BigEndian.PutUint16(tcp[0:2], srcPort)
 	binary.BigEndian.PutUint16(tcp[2:4], dstPort)
-	binary.BigEndian.PutUint32(tcp[4:8], rand.Uint32()) // Seq
-	binary.BigEndian.PutUint32(tcp[8:12], 0)            // Ack
-	tcp[12] = 5 << 4                                    // Data offset: 20 bytes
+	binary.BigEndian.PutUint32(tcp[4:8], seq)
+	binary.BigEndian.PutUint32(tcp[8:12], ack)
+	tcp[12] = 5 << 4 // Data offset: 20 bytes
 	tcp[13] = flags
-	binary.BigEndian.PutUint16(tcp[14:16], 8192) // Window
+	binary.BigEndian.PutUint16(tcp[14:16], 16384) // Window
 	copy(tcp[20:], payload)
 	cs := l4Checksum(srcIP, dstIP, 6, tcp)
 	binary.BigEndian.PutUint16(tcp[16:18], cs)
@@ -469,4 +479,262 @@ func buildNTPPayload() []byte {
 	pkt := make([]byte, 48)
 	pkt[0] = 0x1b // LI=0, VN=3, Mode=3 (Client)
 	return pkt
+}
+
+// buildHTTPGetPayload constructs a realistic HTTP/1.1 GET request with Host and vendor User-Agent
+// for Palo Alto NGFW / Prisma SD-WAN App-ID (web-browsing), URL Filtering, and IoT Security fingerprinting.
+func buildHTTPGetPayload(host, path, userAgent string) []byte {
+	if path == "" {
+		path = "/"
+	}
+	if host == "" {
+		host = "iot.local"
+	}
+	if userAgent == "" {
+		userAgent = "Mozilla/5.0 (Embedded; Linux armv7l) IoTDevice/1.0"
+	}
+	req := fmt.Sprintf(
+		"GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\nAccept: */*\r\nConnection: close\r\n\r\n",
+		path, host, userAgent,
+	)
+	return []byte(req)
+}
+
+// buildTLSClientHelloPayload constructs a valid TLS 1.2 ClientHello record containing the
+// cleartext Server Name Indication (SNI) extension so Palo Alto App-ID / URL Filtering
+// identifies the HTTPS domain and application without requiring full TLS crypto.
+func buildTLSClientHelloPayload(serverName string) []byte {
+	sni := strings.TrimSpace(serverName)
+	if sni == "" {
+		sni = "iot.cloud.local"
+	}
+	sniBytes := []byte(sni)
+
+	// Extension: server_name (0x0000)
+	// ServerNameList length (2) + NameType host_name (1 = 0x00) + HostName length (2) + HostName
+	sniEntryLen := 1 + 2 + len(sniBytes)
+	sniListLen := sniEntryLen
+	var extBuf bytes.Buffer
+	binary.Write(&extBuf, binary.BigEndian, uint16(0x0000))             // Extension Type: server_name
+	binary.Write(&extBuf, binary.BigEndian, uint16(2+sniListLen))       // Extension Length
+	binary.Write(&extBuf, binary.BigEndian, uint16(sniListLen))         // Server Name List Length
+	extBuf.WriteByte(0x00)                                              // Name Type: host_name (0)
+	binary.Write(&extBuf, binary.BigEndian, uint16(len(sniBytes)))      // Host Name Length
+	extBuf.Write(sniBytes)
+
+	// Extension: supported_groups (0x000a) -> secp256r1 (0x0017), x25519 (0x001d)
+	extBuf.Write([]byte{0x00, 0x0a, 0x00, 0x06, 0x00, 0x04, 0x00, 0x1d, 0x00, 0x17})
+	// Extension: ec_point_formats (0x000b) -> uncompressed (0x00)
+	extBuf.Write([]byte{0x00, 0x0b, 0x00, 0x02, 0x01, 0x00})
+	// Extension: signature_algorithms (0x000d)
+	extBuf.Write([]byte{0x00, 0x0d, 0x00, 0x08, 0x00, 0x06, 0x04, 0x03, 0x04, 0x01, 0x02, 0x01})
+
+	extensions := extBuf.Bytes()
+
+	// ClientHello body
+	var chBody bytes.Buffer
+	chBody.Write([]byte{0x03, 0x03}) // Client Version: TLS 1.2 (0x0303)
+	randomBytes := make([]byte, 32)
+	for i := range randomBytes {
+		randomBytes[i] = byte(rand.Intn(256))
+	}
+	chBody.Write(randomBytes)
+	chBody.WriteByte(0x00) // Session ID Length: 0
+
+	// Cipher Suites (4 suites = 8 bytes)
+	cipherSuites := []byte{
+		0xc0, 0x2f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+		0xc0, 0x30, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+		0x00, 0x9c, // TLS_RSA_WITH_AES_128_GCM_SHA256
+		0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
+	}
+	binary.Write(&chBody, binary.BigEndian, uint16(len(cipherSuites)))
+	chBody.Write(cipherSuites)
+
+	// Compression Methods: 1 byte (null = 0x00)
+	chBody.Write([]byte{0x01, 0x00})
+
+	// Extensions length + bytes
+	binary.Write(&chBody, binary.BigEndian, uint16(len(extensions)))
+	chBody.Write(extensions)
+
+	bodyBytes := chBody.Bytes()
+
+	// Handshake Header: Type 1 (ClientHello) + 3-byte length
+	var handshake bytes.Buffer
+	handshake.WriteByte(0x01)
+	handshake.WriteByte(byte((len(bodyBytes) >> 16) & 0xff))
+	handshake.WriteByte(byte((len(bodyBytes) >> 8) & 0xff))
+	handshake.WriteByte(byte(len(bodyBytes) & 0xff))
+	handshake.Write(bodyBytes)
+
+	hsBytes := handshake.Bytes()
+
+	// TLS Record Header: ContentType 22 (0x16 Handshake), Version TLS 1.0 (0x0301), 2-byte length
+	var record bytes.Buffer
+	record.WriteByte(0x16)
+	record.Write([]byte{0x03, 0x01})
+	binary.Write(&record, binary.BigEndian, uint16(len(hsBytes)))
+	record.Write(hsBytes)
+	return record.Bytes()
+}
+
+// buildMQTTConnectPayload constructs a valid MQTT v3.1.1 CONNECT packet for Palo Alto App-ID (mqtt).
+func buildMQTTConnectPayload(clientID string) []byte {
+	cid := strings.TrimSpace(clientID)
+	if cid == "" {
+		cid = "iot-sensor"
+	}
+	if len(cid) > 64 {
+		cid = cid[:64]
+	}
+	var varHdrAndPayload bytes.Buffer
+	// Protocol Name: "MQTT"
+	varHdrAndPayload.Write([]byte{0x00, 0x04, 'M', 'Q', 'T', 'T'})
+	// Protocol Level: 4 (MQTT 3.1.1)
+	varHdrAndPayload.WriteByte(0x04)
+	// Connect Flags: 0x02 (Clean Session)
+	varHdrAndPayload.WriteByte(0x02)
+	// Keep Alive: 60 seconds
+	varHdrAndPayload.Write([]byte{0x00, 0x3c})
+	// Payload: Client Identifier (2-byte length + string)
+	binary.Write(&varHdrAndPayload, binary.BigEndian, uint16(len(cid)))
+	varHdrAndPayload.WriteString(cid)
+
+	body := varHdrAndPayload.Bytes()
+	out := make([]byte, 2+len(body))
+	out[0] = 0x10 // MQTT Control Packet Type: CONNECT (1 << 4)
+	out[1] = uint8(len(body))
+	copy(out[2:], body)
+	return out
+}
+
+// buildRTSPOptionsPayload constructs a valid RTSP/1.0 OPTIONS request for Palo Alto App-ID (rtsp).
+func buildRTSPOptionsPayload(host, userAgent string) []byte {
+	if host == "" {
+		host = "192.168.1.1"
+	}
+	if userAgent == "" {
+		userAgent = "LibVLC/3.0.18 (LIVE555 Streaming Media)"
+	}
+	req := fmt.Sprintf(
+		"OPTIONS rtsp://%s:554/Streaming/Channels/101 RTSP/1.0\r\nCSeq: 1\r\nUser-Agent: %s\r\n\r\n",
+		host, userAgent,
+	)
+	return []byte(req)
+}
+
+type parsedTCPSynAck struct {
+	SenderMAC [6]byte
+	SrcIP     string
+	DstIP     string
+	SrcIP4    [4]byte
+	DstIP4    [4]byte
+	SrcPort   uint16
+	DstPort   uint16
+	Seq       uint32
+	Ack       uint32
+}
+
+// parseTCPSynAck inspects an incoming Ethernet frame for an IPv4 TCP SYN-ACK packet.
+func parseTCPSynAck(frame []byte) (*parsedTCPSynAck, bool) {
+	if len(frame) < 14+20+20 {
+		return nil, false
+	}
+	etherType := binary.BigEndian.Uint16(frame[12:14])
+	ipOffset := 14
+	if etherType == 0x8100 {
+		if len(frame) < 18+20+20 {
+			return nil, false
+		}
+		etherType = binary.BigEndian.Uint16(frame[16:18])
+		ipOffset = 18
+	}
+	if etherType != etherTypeIPv4 {
+		return nil, false
+	}
+	ipHdr := frame[ipOffset:]
+	ihl := int(ipHdr[0]&0x0f) * 4
+	if ihl < 20 || len(ipHdr) < ihl+20 {
+		return nil, false
+	}
+	if ipHdr[9] != 6 { // TCP
+		return nil, false
+	}
+	tcpHdr := ipHdr[ihl:]
+	flags := tcpHdr[13]
+	if (flags & (tcpFlagSYN | tcpFlagACK)) != (tcpFlagSYN | tcpFlagACK) {
+		return nil, false
+	}
+	if (flags & tcpFlagRST) != 0 {
+		return nil, false
+	}
+	var res parsedTCPSynAck
+	copy(res.SenderMAC[:], frame[6:12])
+	copy(res.SrcIP4[:], ipHdr[12:16])
+	copy(res.DstIP4[:], ipHdr[16:20])
+	res.SrcIP = net.IP(ipHdr[12:16]).String()
+	res.DstIP = net.IP(ipHdr[16:20]).String()
+	res.SrcPort = binary.BigEndian.Uint16(tcpHdr[0:2])
+	res.DstPort = binary.BigEndian.Uint16(tcpHdr[2:4])
+	res.Seq = binary.BigEndian.Uint32(tcpHdr[4:8])
+	res.Ack = binary.BigEndian.Uint32(tcpHdr[8:12])
+	return &res, true
+}
+
+// parseAndBuildICMPEchoReply checks if frame is an IPv4 ICMP Echo Request (ping) targeting one of our
+// virtual IoT device IPs, and if so returns a ready-to-send Ethernet ICMP Echo Reply frame.
+func parseAndBuildICMPEchoReply(frame []byte, lookupDeviceMAC func(targetIP string) ([6]byte, bool)) ([]byte, bool) {
+	if len(frame) < 14+20+8 {
+		return nil, false
+	}
+	etherType := binary.BigEndian.Uint16(frame[12:14])
+	ipOffset := 14
+	if etherType == 0x8100 {
+		if len(frame) < 18+20+8 {
+			return nil, false
+		}
+		etherType = binary.BigEndian.Uint16(frame[16:18])
+		ipOffset = 18
+	}
+	if etherType != etherTypeIPv4 {
+		return nil, false
+	}
+	ipHdr := frame[ipOffset:]
+	ihl := int(ipHdr[0]&0x0f) * 4
+	totalLen := int(binary.BigEndian.Uint16(ipHdr[2:4]))
+	if ihl < 20 || totalLen < ihl+8 || len(ipHdr) < totalLen {
+		return nil, false
+	}
+	if ipHdr[9] != 1 { // ICMP
+		return nil, false
+	}
+	icmpIn := ipHdr[ihl:totalLen]
+	if icmpIn[0] != 8 || icmpIn[1] != 0 { // Type 8 = Echo Request, Code 0
+		return nil, false
+	}
+	targetIP := net.IP(ipHdr[16:20]).String()
+	devMAC, ok := lookupDeviceMAC(targetIP)
+	if !ok {
+		return nil, false
+	}
+
+	var senderMAC [6]byte
+	copy(senderMAC[:], frame[6:12])
+	var srcIP4, dstIP4 [4]byte
+	copy(srcIP4[:], ipHdr[16:20]) // Virtual IoT device IP becomes source
+	copy(dstIP4[:], ipHdr[12:16]) // Pinger IP becomes destination
+
+	icmpReply := make([]byte, len(icmpIn))
+	copy(icmpReply, icmpIn)
+	icmpReply[0] = 0 // Type 0 = Echo Reply
+	icmpReply[1] = 0
+	icmpReply[2] = 0
+	icmpReply[3] = 0
+	cs := ipv4Checksum(icmpReply)
+	binary.BigEndian.PutUint16(icmpReply[2:4], cs)
+
+	replyIPHdr := buildIPv4Header(srcIP4, dstIP4, 1, len(icmpReply))
+	replyPkt := append(replyIPHdr, icmpReply...)
+	return buildEthernetFrame(senderMAC, devMAC, etherTypeIPv4, replyPkt), true
 }
