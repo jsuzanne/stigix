@@ -501,7 +501,7 @@ func synthesizePersona(spec IoTDeviceSpec) iotPersona {
 			serverHdr = "PanWebServer/10.2.8-h3"
 		}
 
-	case strings.Contains(combined, "schneider") || strings.Contains(combined, "apc"):
+	case strings.Contains(combined, "schneider") || strings.Contains(combined, "apc ") || strings.Contains(combined, "smart-ups"):
 		model = "Smart-UPS SRT 5000 (AP9641)"
 		osName = "APC AOS v6.9.6"
 		fwVer = "v6.9.6"
