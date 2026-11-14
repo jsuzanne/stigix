@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **ICMP Echo Reply (Ping Responder) for Virtual IoT IPs**: `iotRawEngine.readLoop` now answers incoming IPv4 `ICMP Echo Request` packets targeting any active virtual IoT device IP with an immediate `ICMP Echo Reply`.
   - **Immediate DHCP IP Propagation & 5s Baseline Warm-Up**: Devices now emit updated `current_ip` stats immediately upon `dhcp_ack` (without waiting for the 5s stats ticker), reset stale `lastLog` entries when starting a new rotation cycle, and run 5 seconds of baseline protocol traffic before arming `Bad Behavior` workers.
   - **Randomized Ephemeral DNS Source Ports & Dynamic MQTT Broker Target**: Replaced fixed UDP source port `53000` on DNS queries with randomized ephemeral ports (`49152–65534`) so stateful firewalls track distinct DNS sessions, and dynamically target vendor cloud or local gateway IPs for MQTT traffic.
+  - **Pre-Connection DNS Queries & Live IP Resolution for PAN URL Filtering & Cloud Traffic**: `badPANTestDomains` (`urlfiltering.paloaltonetworks.com`) and vendor `cloud` workers now emit a spoofed DNS `A` query from the virtual IoT device IP immediately before initiating TCP `:443` / `:80` connections and dynamically resolve the live destination IPv4 (replacing the stale `35.223.6.162` IP with live resolution / `34.111.236.155` fallback) so Palo Alto NGFW / Prisma Access URL Filtering block pages and SYN-ACK handshakes trigger reliably.
 
 ## [3.2.21] - 2026-11-14
 

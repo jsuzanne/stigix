@@ -640,8 +640,21 @@ class IoTDevice:
                 # URL Filtering tests — 1 target per cycle (was 3)
                 if self.running and (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
                     host, path = random.choice(self.PAN_URL_TEST_TARGETS)
-                    
-                    pan_url_ip = "35.223.6.162"
+                    dns_server = random.choice(dns_servers)
+
+                    # 1. Send DNS query for urlfiltering.paloaltonetworks.com first
+                    pkt_dns = IP(src=self.ip, dst=dns_server) / \
+                              UDP(sport=random.randint(49152, 65534), dport=53) / \
+                              DNS(rd=1, qd=DNSQR(qname=host, qtype="A"))
+                    self._send(pkt_dns, protocol="bad_pan_dns", verbose=0)
+                    time.sleep(0.25)
+
+                    # 2. Resolve live IP of urlfiltering.paloaltonetworks.com (fallback 34.111.236.155)
+                    import socket
+                    try:
+                        pan_url_ip = socket.gethostbyname(host)
+                    except Exception:
+                        pan_url_ip = "34.111.236.155"
                     
                     # HTTPS (443)
                     pkt_https = IP(src=self.ip, dst=pan_url_ip) / \

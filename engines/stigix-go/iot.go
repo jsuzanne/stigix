@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -27,7 +28,47 @@ var (
 	activeIoTDevices   atomic.Int32
 	totalIoTPackets    atomic.Int64
 	totalIoTBytes      atomic.Int64
+
+	iotDNSCacheMu sync.RWMutex
+	iotDNSCache   = make(map[string]iotDNSCacheEntry)
 )
+
+type iotDNSCacheEntry struct {
+	ip        string
+	expiresAt time.Time
+}
+
+// resolveDomainIPv4 resolves a domain name to its live IPv4 address (cached for 10 minutes),
+// falling back to fallbackIP if resolution fails.
+func resolveDomainIPv4(domain, fallbackIP string) string {
+	clean := strings.TrimSpace(domain)
+	if clean == "" || clean == "iot.cloud.local" {
+		return fallbackIP
+	}
+	now := time.Now()
+	iotDNSCacheMu.RLock()
+	if entry, ok := iotDNSCache[clean]; ok && now.Before(entry.expiresAt) && entry.ip != "" {
+		iotDNSCacheMu.RUnlock()
+		return entry.ip
+	}
+	iotDNSCacheMu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, clean)
+	if err == nil {
+		for _, a := range addrs {
+			if ip4 := a.IP.To4(); ip4 != nil && !ip4.IsLoopback() {
+				resolved := ip4.String()
+				iotDNSCacheMu.Lock()
+				iotDNSCache[clean] = iotDNSCacheEntry{ip: resolved, expiresAt: now.Add(10 * time.Minute)}
+				iotDNSCacheMu.Unlock()
+				return resolved
+			}
+		}
+	}
+	return fallbackIP
+}
 
 type IoTGoMetrics struct {
 	PID              int     `json:"pid"`
@@ -1015,9 +1056,9 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 		d.log("debug", "☁️ Cloud traffic goroutine started")
 		cloudCfg, ok := iotCloudDestinations[d.spec.Vendor]
 		if !ok || len(cloudCfg.Servers) == 0 {
-			cloudCfg = iotVendorCloud{Servers: []string{"8.8.8.8"}, Domains: []string{"iot.cloud.local"}}
+			cloudCfg = iotVendorCloud{Servers: []string{"8.8.8.8"}, Domains: []string{"www.google.com"}}
 		}
-		sniDomain := "iot.cloud.local"
+		sniDomain := "www.google.com"
 		if len(cloudCfg.Domains) > 0 && cloudCfg.Domains[0] != "" {
 			sniDomain = cloudCfg.Domains[0]
 		}
@@ -1025,19 +1066,28 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 		tlsHello := buildTLSClientHelloPayload(sniDomain)
 		httpBeat := buildHTTPGetPayload(sniDomain, "/v1/telemetry/heartbeat", ua)
 		for {
-			for _, srv := range cloudCfg.Servers {
-				if d.sendSpoofedTCPFlow(srv, 443, tlsHello, "cloud") {
-					d.log("info", fmt.Sprintf("☁️ Cloud HTTPS (SNI: %s) sent to %s:443", sniDomain, srv))
-				}
-				if !d.sleepOrDone(2 * time.Second) {
-					return
-				}
-				if d.sendSpoofedTCPFlow(srv, 80, httpBeat, "cloud") {
-					d.log("info", fmt.Sprintf("☁️ Cloud HTTP GET (%s) sent to %s:80", sniDomain, srv))
-				}
-				if !d.sleepOrDone(3 * time.Second) {
-					return
-				}
+			// Emit spoofed DNS query from the IoT device IP before initiating the TCP connection
+			_, gw := d.getIPAndGateway()
+			dnsSrv := iotPublicDNS[0]
+			if gw != "" {
+				dnsSrv = gw
+			}
+			sport := uint16(49152 + rand.Intn(16383))
+			d.sendSpoofedUDP(dnsSrv, sport, 53, buildDNSQueryPayload(sniDomain), "dns")
+			if !d.sleepOrDone(200 * time.Millisecond) {
+				return
+			}
+
+			fallbackSrv := cloudCfg.Servers[0]
+			targetSrv := resolveDomainIPv4(sniDomain, fallbackSrv)
+			if d.sendSpoofedTCPFlow(targetSrv, 443, tlsHello, "cloud") {
+				d.log("info", fmt.Sprintf("☁️ Cloud HTTPS (SNI: %s) sent to %s:443", sniDomain, targetSrv))
+			}
+			if !d.sleepOrDone(2 * time.Second) {
+				return
+			}
+			if d.sendSpoofedTCPFlow(targetSrv, 80, httpBeat, "cloud") {
+				d.log("info", fmt.Sprintf("☁️ Cloud HTTP GET (%s) sent to %s:80", sniDomain, targetSrv))
 			}
 			if !d.sleepOrDone(interval * 2) {
 				return
@@ -1260,7 +1310,8 @@ func (d *iotDeviceRunner) badDataExfil(bCtx context.Context) {
 
 func (d *iotDeviceRunner) badPANTestDomains(bCtx context.Context) {
 	d.log("warning", "💀 PAN TEST DOMAINS behavior started (DNS Security + URL Filtering)")
-	const panURLIP = "35.223.6.162"
+	const panFallbackIP = "34.111.236.155"
+	const panHost = "urlfiltering.paloaltonetworks.com"
 
 	for d.isBadBehaviorActive(bCtx) {
 		_, gw := d.getIPAndGateway()
@@ -1274,7 +1325,7 @@ func (d *iotDeviceRunner) badPANTestDomains(bCtx context.Context) {
 			}
 			domain := iotPANDNSTestDomains[rand.Intn(len(iotPANDNSTestDomains))]
 			srv := servers[rand.Intn(len(servers))]
-			sport := uint16(50000 + rand.Intn(10000))
+			sport := uint16(49152 + rand.Intn(16383))
 			if d.sendSpoofedUDP(srv, sport, 53, buildDNSQueryPayload(domain), "bad_pan_dns") {
 				d.log("warning", fmt.Sprintf("💀 [pan_test] DNS Security: %s → %s", domain, srv))
 			}
@@ -1285,8 +1336,18 @@ func (d *iotDeviceRunner) badPANTestDomains(bCtx context.Context) {
 		if !d.sleepBadBehavior(bCtx, 10*time.Second) {
 			return
 		}
+
+		// 1. Send DNS query for urlfiltering.paloaltonetworks.com from the IoT device IP first
+		dnsSrv := servers[rand.Intn(len(servers))]
+		sport := uint16(49152 + rand.Intn(16383))
+		d.sendSpoofedUDP(dnsSrv, sport, 53, buildDNSQueryPayload(panHost), "bad_pan_dns")
+		if !d.sleepBadBehavior(bCtx, 250*time.Millisecond) {
+			return
+		}
+
+		// 2. Resolve live IP of urlfiltering.paloaltonetworks.com (fallback 34.111.236.155)
+		panURLIP := resolveDomainIPv4(panHost, panFallbackIP)
 		path := iotPANURLTestPaths[rand.Intn(len(iotPANURLTestPaths))]
-		const panHost = "urlfiltering.paloaltonetworks.com"
 		tlsHello := buildTLSClientHelloPayload(panHost)
 		httpReq := buildHTTPGetPayload(panHost, path, d.httpUserAgent())
 		if d.sendSpoofedTCPFlow(panURLIP, 443, tlsHello, "bad_pan_url") {
