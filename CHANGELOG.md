@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.22] - 2026-11-14
+
+### Added & Enhanced
+- **IoT Dataplane Emulation Realism & Boot Sequencing (`engines/stigix-go/iot.go`, `engines/stigix-go/iot_raw_linux.go`, `engines/stigix-go/iot_packets.go`, `iot/iot_emulator.py`, `web-dashboard/iot-manager.ts`)**:
+  - **Stateless TCP 3-Way Handshake & Authentic L7 Application Payloads**: Upgraded raw socket TCP flows (`http`, `cloud`, `mqtt`, `rtsp`, `bad_beacon`, `bad_pan_url`) from bare `SYN` packets to complete 3-way handshakes (`SYN` $\rightarrow$ `SYN-ACK` $\rightarrow$ `ACK` + `PSH|ACK` L7 payload + `FIN|ACK`), transmitting realistic HTTP `GET` headers with vendor `User-Agent`, valid TLS 1.2 `ClientHello` records with cleartext SNI, MQTT v3.1.1 `CONNECT` frames, and RTSP `OPTIONS` requests for Palo Alto App-ID, URL Filtering, and IoT Security fingerprinting.
+  - **ICMP Echo Reply (Ping Responder) for Virtual IoT IPs**: `iotRawEngine.readLoop` now answers incoming IPv4 `ICMP Echo Request` packets targeting any active virtual IoT device IP with an immediate `ICMP Echo Reply`.
+  - **Immediate DHCP IP Propagation & 5s Baseline Warm-Up**: Devices now emit updated `current_ip` stats immediately upon `dhcp_ack` (without waiting for the 5s stats ticker), reset stale `lastLog` entries when starting a new rotation cycle, and run 5 seconds of baseline protocol traffic before arming `Bad Behavior` workers.
+  - **Randomized Ephemeral DNS Source Ports & Dynamic MQTT Broker Target**: Replaced fixed UDP source port `53000` on DNS queries with randomized ephemeral ports (`49152–65534`) so stateful firewalls track distinct DNS sessions, and dynamically target vendor cloud or local gateway IPs for MQTT traffic.
+
 ## [3.2.21] - 2026-11-14
 
 ### Added & Enhanced
@@ -14,11 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Adaptive Protocol & Threat Equalizer**: Automatically switches between `Protocol & Threat Mix` (`DNS / HTTP`, `DHCP / ARP`, `💀 Port Scan`, `💀 C2 & PAN DNS`) in `Attacks ON` mode and `Clean Protocol Mix` (`DNS Queries`, `HTTP / App-ID`, `DHCP / ARP`, `NTP / Telemetry`) in `Clean` mode.
   - **Multiplexed Live Fleet Stream (`iot:fleet-stream`)**: Added a real-time WebSocket stream and `/api/iot/fleet-logs` endpoint multiplexing live logs across all active IoT devices with `All | 💀 Threats | 🌐 Net` filters and 1-click drill-down into any device console.
   - **Live Action Line on Active Device Cards**: Active IoT cards (in both Grid and List views) now display the latest real-time protocol or security action inline with a pulsing status indicator.
-- **IoT Dataplane Emulation Realism & Boot Sequencing (`engines/stigix-go/iot.go`, `engines/stigix-go/iot_raw_linux.go`, `engines/stigix-go/iot_packets.go`, `iot/iot_emulator.py`, `web-dashboard/iot-manager.ts`)**:
-  - **Stateless TCP 3-Way Handshake & Authentic L7 Application Payloads**: Upgraded raw socket TCP flows (`http`, `cloud`, `mqtt`, `rtsp`, `bad_beacon`, `bad_pan_url`) from bare `SYN` packets to complete 3-way handshakes (`SYN` $\rightarrow$ `SYN-ACK` $\rightarrow$ `ACK` + `PSH|ACK` L7 payload + `FIN|ACK`), transmitting realistic HTTP `GET` headers with vendor `User-Agent`, valid TLS 1.2 `ClientHello` records with cleartext SNI, MQTT v3.1.1 `CONNECT` frames, and RTSP `OPTIONS` requests for Palo Alto App-ID, URL Filtering, and IoT Security fingerprinting.
-  - **ICMP Echo Reply (Ping Responder) for Virtual IoT IPs**: `iotRawEngine.readLoop` now answers incoming IPv4 `ICMP Echo Request` packets targeting any active virtual IoT device IP with an immediate `ICMP Echo Reply`.
-  - **Immediate DHCP IP Propagation & 5s Baseline Warm-Up**: Devices now emit updated `current_ip` stats immediately upon `dhcp_ack` (without waiting for the 5s stats ticker), reset stale `lastLog` entries when starting a new rotation cycle, and run 5 seconds of baseline protocol traffic before arming `Bad Behavior` workers.
-  - **Randomized Ephemeral DNS Source Ports & Dynamic MQTT Broker Target**: Replaced fixed UDP source port `53000` on DNS queries with randomized ephemeral ports (`49152–65534`) so stateful firewalls track distinct DNS sessions, and dynamically target vendor cloud or local gateway IPs for MQTT traffic.
 
 ## [3.2.20] - 2026-11-13
 
