@@ -81,6 +81,8 @@ export default function Iot({ token }: IotProps) {
     const [vulnResult, setVulnResult] = useState<{ imported: number; bad_behavior: number; ics_cert_devices: number } | null>(null);
     const [showImportDropdown, setShowImportDropdown] = useState(false);
     const importDropdownRef = useRef<HTMLDivElement>(null);
+    const [rotatingMacs, setRotatingMacs] = useState(false);
+    const [rotationNotice, setRotationNotice] = useState<string | null>(null);
 
     // Concurrency state
     const [iotSettings, setIotSettings] = useState<{ max: number; active: number; queued: number; idle: number }>({ max: 30, active: 0, queued: 0, idle: 0 });
@@ -548,6 +550,38 @@ export default function Iot({ token }: IotProps) {
         }
     };
 
+    const handleRotateMacs = async (targetIds?: string[]) => {
+        const isSubset = Array.isArray(targetIds) && targetIds.length > 0;
+        if (!isSubset) {
+            const confirmed = window.confirm(
+                `Renew MAC suffixes (keeping exact IEEE Vendor OUI first 3 octets) for all ${devices.length} IoT devices?\n\n• Sends RFC 2131 DHCP RELEASE for every old lease so the SD-WAN ION DHCP pool never saturates.\n• Palo Alto Device Security (IoT Security) will discover them as brand-new devices (First Seen = Today).`
+            );
+            if (!confirmed) return;
+        }
+        setRotatingMacs(true);
+        try {
+            const res = await gFetch('/api/iot/devices/rotate-macs', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify(isSubset ? { ids: targetIds } : { all: true }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+            await fetchDevices();
+            setRotationNotice(
+                `Rotated ${data.rotated} MAC suffix${data.rotated === 1 ? '' : 'es'} (Vendor OUI preserved + DHCP RELEASE sent)`
+            );
+            setTimeout(() => setRotationNotice(null), 6500);
+        } catch (e: any) {
+            console.error('Failed to rotate MACs', e);
+            alert('MAC rotation failed: ' + (e.message || 'Unknown error'));
+        } finally {
+            setRotatingMacs(false);
+        }
+    };
+
     const handleDownloadSampleJson = async () => {
         try {
             const res = await gFetch('/api/iot/config/sample', { headers: authHeaders() });
@@ -912,6 +946,12 @@ export default function Iot({ token }: IotProps) {
 
                 {/* Right Actions */}
                 <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+                    {rotationNotice && (
+                        <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-xl text-xs font-bold animate-in fade-in duration-200">
+                            <CheckCircle2 size={13} className="shrink-0" />
+                            <span>{rotationNotice}</span>
+                        </div>
+                    )}
                     {selectedIds.length > 0 && (
                         <div className="flex items-center gap-1.5 bg-blue-600/10 px-3 py-1.5 rounded-xl border border-blue-500/30 animate-in slide-in-from-right duration-200">
                             <span className="text-xs font-bold text-blue-400 whitespace-nowrap">{selectedIds.length} selected</span>
@@ -928,8 +968,26 @@ export default function Iot({ token }: IotProps) {
                             >
                                 <Square size={12} /> Stop
                             </button>
+                            <div className="w-px h-4 bg-blue-500/30 mx-0.5" />
+                            <button
+                                onClick={() => handleRotateMacs(selectedIds)}
+                                disabled={rotatingMacs}
+                                className="flex items-center gap-1 text-xs font-bold text-cyan-400 hover:text-cyan-300 transition-colors whitespace-nowrap px-2 py-1 rounded-lg hover:bg-cyan-500/10 disabled:opacity-50"
+                                title="Rotate last 3 MAC octets (preserving Vendor OUI) & send DHCP RELEASE for selected devices"
+                            >
+                                <RefreshCcw size={12} className={cn(rotatingMacs && "animate-spin")} /> Renew MAC
+                            </button>
                         </div>
                     )}
+
+                    <button
+                        onClick={() => handleRotateMacs()}
+                        disabled={rotatingMacs || devices.length === 0}
+                        className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-hover text-cyan-500 dark:text-cyan-400 hover:text-cyan-300 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-cyan-500/30 hover:border-cyan-500/50 disabled:opacity-50"
+                        title="Renew MAC Suffixes (Keep IEEE Vendor OUI + Send DHCP RELEASE) so Palo Alto Device Security discovers fresh assets"
+                    >
+                        <RefreshCcw size={13} className={cn(rotatingMacs && "animate-spin")} /> Renew MACs
+                    </button>
 
                     <button
                         onClick={handleExportJson}

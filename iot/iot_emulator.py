@@ -57,6 +57,32 @@ def get_dhcp_lease(mac: str) -> dict | None:
     """Return saved lease dict {ip, gateway} for a MAC, or None."""
     return _load_dhcp_leases().get(mac)
 
+def remove_dhcp_lease(mac: str) -> dict | None:
+    """Remove and return saved lease dict for a MAC, or None."""
+    if not mac:
+        return None
+    try:
+        if not os.path.exists(DHCP_LEASE_FILE):
+            return None
+        with open(DHCP_LEASE_FILE, 'a+') as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                f.seek(0)
+                try:
+                    leases = json.load(f)
+                except Exception:
+                    leases = {}
+                entry = leases.pop(mac, None) or leases.pop(mac.lower(), None)
+                f.seek(0)
+                f.truncate()
+                json.dump(leases, f, indent=2)
+                return entry
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+    except Exception as e:
+        logging.getLogger(__name__).warning(f'Could not remove DHCP lease for {mac}: {e}')
+    return None
+
 # Suppress Scapy import errors by redirecting stderr temporarily
 _original_stderr = sys.stderr
 sys.stderr = open(os.devnull, 'w')
@@ -1613,6 +1639,35 @@ def daemon_loop(interface: str, dhcp_mode: str = "auto"):
                 # They will stop on next iteration naturally
             emit_json("bad_behavior_disabled")
             logger.info("✅ Bad behavior DISABLED globally")
+
+        elif action == "release_dhcp":
+            mac = (cmd.get("mac") or "").strip().lower()
+            rel_ip = (cmd.get("ip") or "").strip()
+            rel_gw = (cmd.get("gateway") or "").strip()
+            entry = remove_dhcp_lease(mac)
+            if not rel_ip and entry:
+                rel_ip = entry.get("ip") or ""
+            if not rel_gw and entry:
+                rel_gw = entry.get("gateway") or ""
+            if mac and rel_ip and rel_ip != "0.0.0.0":
+                try:
+                    chaddr_bytes = bytes.fromhex(mac.replace(":", "")) + b"\x00" * 10
+                    dst_ip = rel_gw if rel_gw and rel_gw != "0.0.0.0" else "255.255.255.255"
+                    opts = [("message-type", "release")]
+                    if rel_gw and rel_gw != "0.0.0.0":
+                        opts.append(("server_id", rel_gw))
+                    opts.append("end")
+                    pkt = (
+                        Ether(src=mac, dst="ff:ff:ff:ff:ff:ff")
+                        / IP(src=rel_ip, dst=dst_ip)
+                        / UDP(sport=68, dport=67)
+                        / BOOTP(op=1, chaddr=chaddr_bytes, ciaddr=rel_ip, xid=random.randint(1, 0xFFFFFFFF))
+                        / DHCP(options=opts)
+                    )
+                    sendp(pkt, iface=interface, verbose=False)
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not send DHCP RELEASE for {mac}: {e}")
+            emit_json("dhcp_released", mac=mac, ip=rel_ip)
 
         else:
             emit_json("daemon_error", error=f"Unknown command: {action}")

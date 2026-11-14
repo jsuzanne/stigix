@@ -347,7 +347,10 @@ interface ResolvedTarget {
     label: string;
     isKnownTarget: boolean;
     isLocal: boolean;
-    type: 'stigix' | 'local' | 'lan' | 'wan' | 'special';
+    type: 'stigix' | 'local' | 'iot' | 'lan' | 'wan' | 'special';
+    vendor?: string;
+    deviceType?: string;
+    mac?: string;
 }
 
 function cleanHost(host: string): string {
@@ -372,6 +375,9 @@ function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (l
     } else if (target.type === 'local') {
         colorClass = 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25 hover:border-cyan-500/50 hover:bg-cyan-500/20';
         icon = <Server size={10} className="shrink-0 text-cyan-500 dark:text-cyan-400" />;
+    } else if (target.type === 'iot') {
+        colorClass = 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25 hover:border-emerald-500/50 hover:bg-emerald-500/20';
+        icon = <Cpu size={10} className="shrink-0 text-emerald-500 dark:text-emerald-400" />;
     } else if (target.type === 'wan') {
         colorClass = 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25 hover:border-amber-500/50 hover:bg-amber-500/20';
         icon = <Globe size={10} className="shrink-0 text-amber-500 dark:text-amber-400" />;
@@ -380,6 +386,10 @@ function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (l
     } else if (target.type === 'special') {
         colorClass = 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25 hover:border-purple-500/50 hover:bg-purple-500/20';
     }
+
+    const tooltip = target.type === 'iot' && (target.vendor || target.deviceType)
+        ? `IoT Device: ${target.label} (${[target.vendor, target.deviceType].filter(Boolean).join(' · ')}) — Click to filter`
+        : `Filter by target: ${target.label}`;
 
     return (
         <button
@@ -390,7 +400,7 @@ function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (l
                     onClick(target.label);
                 }
             }}
-            title={`Filter by target: ${target.label}`}
+            title={tooltip}
             className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border max-w-full truncate transition-colors cursor-pointer select-none ${colorClass}`}
         >
             {icon}
@@ -417,6 +427,7 @@ export default function PacketCapture({
     const [interfaces, setInterfaces] = useState<InterfaceItem[]>([]);
     const [presets, setPresets] = useState<PresetItem[]>([]);
     const [targets, setTargets] = useState<TargetDefinition[]>([]);
+    const [iotDevices, setIotDevices] = useState<any[]>([]);
     const [selectedInterface, setSelectedInterface] = useState<string>('any');
     const [selectedPreset, setSelectedPreset] = useState<string>('all');
     const [bpfFilter, setBpfFilter] = useState<string>('');
@@ -487,6 +498,71 @@ export default function PacketCapture({
         } catch {}
     }, [customBpfPresets]);
 
+    // Dynamic BPF Presets for IoT Security Devices & Vendors
+    const iotBpfPresets = useMemo(() => {
+        const deviceOptions: Array<{ id: string; label: string; sublabel: string; bpf: string }> = [];
+        const vendorMap = new Map<string, { count: number; clauses: string[] }>();
+
+        const sorted = [...iotDevices].sort((a, b) => {
+            const aActive = a.deviceState === 'ACTIVE' || a.running ? 0 : a.enabled ? 1 : 2;
+            const bActive = b.deviceState === 'ACTIVE' || b.running ? 0 : b.enabled ? 1 : 2;
+            if (aActive !== bActive) return aActive - bActive;
+            return String(a.name || a.id).localeCompare(String(b.name || b.id));
+        });
+
+        for (const d of sorted) {
+            const mac = String(d.mac || '').trim().toLowerCase();
+            const rawIp = String(d.status?.stats?.current_ip || d.ip_start || '').trim();
+            const validIp = rawIp && rawIp !== '0.0.0.0' && rawIp !== '-' ? rawIp : '';
+            if (!mac && !validIp) continue;
+
+            const clauses: string[] = [];
+            if (mac) clauses.push(`ether host ${mac}`);
+            if (validIp) clauses.push(`host ${validIp}`);
+            const bpf = clauses.join(' or ');
+
+            const isActive = d.deviceState === 'ACTIVE' || d.running;
+            const stateDot = isActive ? '🟢 ' : d.enabled ? '🔵 ' : '';
+            const vendorSuffix = d.vendor ? ` (${d.vendor})` : '';
+
+            deviceOptions.push({
+                id: `iot_dev_${d.id}`,
+                label: `${stateDot}${d.name || d.id}${vendorSuffix}`,
+                sublabel: `${validIp ? `${validIp} · ` : ''}${mac || ''} → ${bpf}`,
+                bpf,
+            });
+
+            const vendorName = String(d.vendor || '').trim();
+            if (vendorName) {
+                const existing = vendorMap.get(vendorName) || { count: 0, clauses: [] };
+                existing.count += 1;
+                if (existing.clauses.length < 16) {
+                    if (mac) existing.clauses.push(`ether host ${mac}`);
+                    if (validIp) existing.clauses.push(`host ${validIp}`);
+                }
+                vendorMap.set(vendorName, existing);
+            }
+        }
+
+        const vendorOptions: Array<{ id: string; label: string; sublabel: string; bpf: string }> = [];
+        Array.from(vendorMap.entries())
+            .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+            .forEach(([vendor, info]) => {
+                const uniqueClauses = Array.from(new Set(info.clauses));
+                if (uniqueClauses.length === 0) return;
+                const bpf = uniqueClauses.join(' or ');
+                const slug = vendor.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                vendorOptions.push({
+                    id: `iot_vendor_${slug}`,
+                    label: `${vendor} (${info.count} device${info.count > 1 ? 's' : ''})`,
+                    sublabel: bpf,
+                    bpf,
+                });
+            });
+
+        return { deviceOptions, vendorOptions };
+    }, [iotDevices]);
+
     const handlePresetSelect = (presetId: string) => {
         setSelectedPreset(presetId);
         if (presetId === 'custom') return;
@@ -498,6 +574,16 @@ export default function PacketCapture({
         const custom = customBpfPresets.find(p => p.id === presetId);
         if (custom) {
             setBpfFilter(custom.bpf);
+            return;
+        }
+        const iotDev = iotBpfPresets.deviceOptions.find(p => p.id === presetId);
+        if (iotDev) {
+            setBpfFilter(iotDev.bpf);
+            return;
+        }
+        const iotVendor = iotBpfPresets.vendorOptions.find(p => p.id === presetId);
+        if (iotVendor) {
+            setBpfFilter(iotVendor.bpf);
             return;
         }
     };
@@ -690,11 +776,12 @@ export default function PacketCapture({
 
     const tableEndRef = useRef<HTMLDivElement>(null);
 
-    // Initial load: interfaces, presets, targets, trace sites, trace history, and configured probes (re-run when activePeerId changes)
+    // Initial load: interfaces, presets, targets, IoT devices, trace sites, trace history, and configured probes (re-run when activePeerId changes)
     useEffect(() => {
         fetchInterfaces();
         fetchPresets();
         fetchTargets();
+        fetchIotDevices();
         checkActiveStatus();
         fetchTraceSites();
         fetchTraceHistory();
@@ -1295,6 +1382,18 @@ export default function PacketCapture({
         }
     };
 
+    const fetchIotDevices = async () => {
+        try {
+            const res = await gFetch('/api/iot/devices', { credentials: 'include', headers: authHeaders });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) setIotDevices(data);
+            }
+        } catch (e) {
+            console.error('Failed to load IoT devices for Packet Capture resolution', e);
+        }
+    };
+
     const checkActiveStatus = async () => {
         try {
             const res = await gFetch('/api/capture/status', { credentials: 'include', headers: authHeaders });
@@ -1406,6 +1505,7 @@ export default function PacketCapture({
         setPackets([]);
         setSelectedPacketNo(null);
         setActivePcapFile(targetFile);
+        fetchIotDevices();
 
         try {
             const fileQuery = `?file=${encodeURIComponent(targetFile)}&limit=250`;
@@ -1729,10 +1829,32 @@ export default function PacketCapture({
             }
         });
 
-        return map;
-    }, [targets, interfaces, peers, activePeer]);
+        // 5. Register IoT Security devices (by current DHCP IP, static IP, and L2 MAC address)
+        iotDevices.forEach(dev => {
+            const devLabel = dev.name || dev.id;
+            const mac = String(dev.mac || '').trim().toLowerCase();
+            const currentIp = cleanHost(String(dev.status?.stats?.current_ip || dev.ip_start || ''));
+            const entry: ResolvedTarget = {
+                label: devLabel,
+                isKnownTarget: true,
+                isLocal: false,
+                type: 'iot',
+                vendor: dev.vendor || '',
+                deviceType: dev.type || '',
+                mac
+            };
+            if (currentIp && currentIp !== '-' && currentIp !== '0.0.0.0' && !map.has(currentIp)) {
+                map.set(currentIp, entry);
+            }
+            if (mac && !map.has(mac)) {
+                map.set(mac, entry);
+            }
+        });
 
-    // Resolve an IP address to a Stigix Target, LAN, WAN, or special category
+        return map;
+    }, [targets, interfaces, peers, activePeer, iotDevices]);
+
+    // Resolve an IP address to a Stigix Target, IoT Device, LAN, WAN, or special category
     const resolveTarget = useCallback((rawIp: string): ResolvedTarget => {
         if (!rawIp) {
             return { label: '-', isKnownTarget: false, isLocal: false, type: 'special' };
@@ -1743,6 +1865,9 @@ export default function PacketCapture({
         }
         if (ipToTargetMap.has(ip)) {
             return ipToTargetMap.get(ip)!;
+        }
+        if (ipToTargetMap.has(ip.toLowerCase())) {
+            return ipToTargetMap.get(ip.toLowerCase())!;
         }
 
         // Loopback
@@ -1793,9 +1918,13 @@ export default function PacketCapture({
             if (q === 'syn' && p.info.includes('SYN')) return true;
             if (q === 'ack' && p.info.includes('ACK')) return true;
             const srcTarget = resolveTarget(p.source);
-            if (srcTarget.label.toLowerCase().includes(q)) return true;
             const dstTarget = resolveTarget(p.destination);
+            if (q === 'iot' && (srcTarget.type === 'iot' || dstTarget.type === 'iot')) return true;
+            if (srcTarget.label.toLowerCase().includes(q)) return true;
             if (dstTarget.label.toLowerCase().includes(q)) return true;
+            if (srcTarget.vendor?.toLowerCase().includes(q) || dstTarget.vendor?.toLowerCase().includes(q)) return true;
+            if (srcTarget.deviceType?.toLowerCase().includes(q) || dstTarget.deviceType?.toLowerCase().includes(q)) return true;
+            if (srcTarget.mac?.includes(q) || dstTarget.mac?.includes(q)) return true;
             return false;
         });
     }, [packets, displayFilter, resolveTarget]);
@@ -2647,6 +2776,26 @@ export default function PacketCapture({
                                     value: cp.id,
                                     label: cp.name,
                                     sublabel: cp.bpf
+                                }))
+                            });
+                        }
+                        if (iotBpfPresets.vendorOptions.length > 0) {
+                            presetGroups.push({
+                                label: '🏷️ IoT Security — By Vendor / Family',
+                                options: iotBpfPresets.vendorOptions.map(vp => ({
+                                    value: vp.id,
+                                    label: vp.label,
+                                    sublabel: vp.sublabel
+                                }))
+                            });
+                        }
+                        if (iotBpfPresets.deviceOptions.length > 0) {
+                            presetGroups.push({
+                                label: '🤖 IoT Security — Devices (MAC + IP)',
+                                options: iotBpfPresets.deviceOptions.map(dp => ({
+                                    value: dp.id,
+                                    label: dp.label,
+                                    sublabel: dp.sublabel
                                 }))
                             });
                         }
@@ -4698,7 +4847,7 @@ export default function PacketCapture({
                         type="text"
                         value={displayFilter}
                         onChange={(e) => setDisplayFilter(e.target.value)}
-                        placeholder="Filter by protocol, IP, target (e.g. 'DC1', 'WAN', 'tcp', 'rst', '8080')..."
+                        placeholder="Filter by protocol, IP, IoT device/vendor (e.g. 'iot', 'siemens', 'netapp', 'xbox', 'DC1', 'tcp', 'rst')..."
                         className="bg-transparent border-0 text-xs text-text-primary font-mono placeholder:text-text-muted/50 focus:outline-none w-full min-w-0"
                     />
                     {displayFilter && (
@@ -4710,17 +4859,22 @@ export default function PacketCapture({
 
                 <div className="flex items-center gap-2 shrink-0 text-[10px] font-mono text-text-muted flex-nowrap">
                     <div className="hidden md:flex gap-1 shrink-0">
-                        {['tcp', 'udp', 'icmp', 'dns', 'rst'].map(tag => (
+                        {['tcp', 'udp', 'icmp', 'dns', 'rst', 'iot'].map(tag => (
                             <button
                                 key={tag}
-                                onClick={() => setDisplayFilter(tag)}
+                                onClick={() => setDisplayFilter(displayFilter.toLowerCase() === tag ? '' : tag)}
                                 className={`px-2 py-0.5 rounded uppercase text-[9px] font-black border cursor-pointer transition-colors ${
                                     displayFilter.toLowerCase() === tag
-                                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                        ? tag === 'iot'
+                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                            : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                        : tag === 'iot'
+                                        ? 'bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 hover:text-emerald-300 border-emerald-500/30'
                                         : 'bg-card-secondary text-text-muted hover:text-text-primary border-border/40'
                                 }`}
+                                title={tag === 'iot' ? 'Filter packets matching any emulated IoT Security device (IP or MAC)' : `Filter by ${tag.toUpperCase()}`}
                             >
-                                {tag}
+                                {tag === 'iot' ? '🤖 iot' : tag}
                             </button>
                         ))}
                     </div>

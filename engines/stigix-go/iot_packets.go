@@ -312,6 +312,47 @@ func buildDHCPFrame(
 	return buildIPv4UDPFrame(broadcastMAC, srcMAC, srcIP, dstIP, 68, 67, dhcpPayload)
 }
 
+// buildDHCPReleaseFrame builds an RFC 2131 DHCPRELEASE (Option 53 = 7) frame to free an IP lease on the router
+// when rotating a virtual IoT device's MAC suffix.
+func buildDHCPReleaseFrame(xid uint32, dstMAC, srcMAC [6]byte, clientIP, serverIP string) ([]byte, bool) {
+	cliIP4, err := parseIPv4(clientIP)
+	if err != nil {
+		return nil, false
+	}
+	dstIP4 := [4]byte{255, 255, 255, 255}
+	if srvIP4, err2 := parseIPv4(serverIP); err2 == nil {
+		dstIP4 = srvIP4
+	}
+	if dstMAC == zeroMAC {
+		dstMAC = broadcastMAC
+	}
+
+	var bootp [240]byte
+	bootp[0] = 1 // BOOTREQUEST
+	bootp[1] = 1 // Ethernet
+	bootp[2] = 6 // hlen = 6
+	binary.BigEndian.PutUint32(bootp[4:8], xid)
+	copy(bootp[12:16], cliIP4[:]) // ciaddr = client's leased IP
+	copy(bootp[28:34], srcMAC[:]) // chaddr
+	copy(bootp[236:240], dhcpMagicCookie[:])
+
+	var opts bytes.Buffer
+	// Option 53: DHCP Message Type = 7 (DHCPRELEASE)
+	opts.Write([]byte{53, 1, 7})
+	// Option 61: Client-identifier (type 1 + MAC)
+	opts.Write([]byte{61, 7, 1})
+	opts.Write(srcMAC[:])
+	// Option 54: Server Identifier
+	if srvIP4, err2 := parseIPv4(serverIP); err2 == nil {
+		opts.Write([]byte{54, 4})
+		opts.Write(srvIP4[:])
+	}
+	opts.WriteByte(255)
+
+	dhcpPayload := append(bootp[:], opts.Bytes()...)
+	return buildIPv4UDPFrame(dstMAC, srcMAC, cliIP4, dstIP4, 68, 67, dhcpPayload), true
+}
+
 type parsedDHCPReply struct {
 	XID       uint32
 	MsgType   uint8 // 2 = OFFER, 5 = ACK, 6 = NAK

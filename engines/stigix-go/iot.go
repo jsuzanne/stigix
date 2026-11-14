@@ -132,6 +132,25 @@ func saveDHCPLease(mac, ip, gateway string) {
 	_ = writeAtomicJSONIndent(leaseFile, leases)
 }
 
+func removeDHCPLease(mac string) (dhcpLeaseEntry, bool) {
+	iotLeaseMu.Lock()
+	defer iotLeaseMu.Unlock()
+	leaseFile := getDHCPLeaseFile()
+	leases := make(map[string]dhcpLeaseEntry)
+	if raw, err := os.ReadFile(leaseFile); err == nil {
+		_ = json.Unmarshal(raw, &leases)
+	}
+	entry, ok := leases[mac]
+	if !ok {
+		entry, ok = leases[strings.ToLower(mac)]
+	}
+	delete(leases, mac)
+	delete(leases, strings.ToLower(mac))
+	delete(leases, strings.ToUpper(mac))
+	_ = writeAtomicJSONIndent(leaseFile, leases)
+	return entry, ok
+}
+
 func emitIoTJSON(msgType string, fields map[string]any) {
 	if !iotJSONOutput {
 		return
@@ -414,7 +433,9 @@ func (d *iotDeviceRunner) setIPAndGateway(ip, gw string) {
 	}
 	if ip != "" && ip != "0.0.0.0" {
 		d.rawEng.RegisterDeviceIP(ip, d.macBytes)
-		d.emitStats()
+		if ip != oldIP {
+			d.emitStats()
+		}
 	}
 }
 
@@ -1439,6 +1460,9 @@ func runIoTMetricsReporter(ctx context.Context) {
 type iotDaemonCommand struct {
 	Cmd      string        `json:"cmd"`
 	DeviceID string        `json:"device_id"`
+	MAC      string        `json:"mac"`
+	IP       string        `json:"ip"`
+	Gateway  string        `json:"gateway"`
 	Device   IoTDeviceSpec `json:"device"`
 }
 
@@ -1625,6 +1649,33 @@ func runIoTDaemonLoop(ctx context.Context, rawEng *iotRawEngine, dhcpMode string
 				}
 				devMu.Unlock()
 				emitIoTJSON("bad_behavior_disabled", map[string]any{})
+
+			case "release_dhcp":
+				oldMAC := strings.TrimSpace(cmd.MAC)
+				if oldMAC != "" {
+					saved, hadLease := removeDHCPLease(oldMAC)
+					releaseIP := strings.TrimSpace(cmd.IP)
+					if releaseIP == "" && hadLease {
+						releaseIP = saved.IP
+					}
+					releaseGW := strings.TrimSpace(cmd.Gateway)
+					if releaseGW == "" && hadLease {
+						releaseGW = saved.Gateway
+					}
+					if releaseGW == "" {
+						releaseGW = detectHostDefaultGateway()
+					}
+					if releaseIP != "" && releaseIP != "0.0.0.0" {
+						rawEng.UnregisterDeviceIP(releaseIP)
+						if macBytes, err := parseMAC(oldMAC); err == nil {
+							dstMAC := rawEng.ResolveDstMAC(releaseGW, releaseGW)
+							if frame, ok := buildDHCPReleaseFrame(rand.Uint32(), dstMAC, macBytes, releaseIP, releaseGW); ok {
+								_ = rawEng.SendFrame(frame)
+							}
+						}
+					}
+					emitIoTJSON("dhcp_released", map[string]any{"mac": oldMAC, "ip": releaseIP})
+				}
 
 			default:
 				emitIoTJSON("daemon_error", map[string]any{"error": fmt.Sprintf("Unknown command: %s", cmd.Cmd)})

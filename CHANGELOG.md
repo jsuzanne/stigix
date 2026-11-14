@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.23] - 2026-11-14
+
+### Added & Fixed
+- **OUI-Preserving MAC Suffix Rotation & RFC 2131 `DHCPRELEASE` for Palo Alto Device Security (`web-dashboard/server.ts`, `web-dashboard/iot-manager.ts`, `web-dashboard/src/Iot.tsx`, `engines/stigix-go/iot.go`, `engines/stigix-go/iot_packets.go`, `iot/iot_emulator.py`)**:
+  - **Renew MACs (Keep IEEE Vendor OUI)**: Added `POST /api/iot/devices/rotate-macs` and `Renew MACs` / `Renew MAC` controls in the IoT Emulation header and bulk selection bar. Rotates the last 3 octets (`NIC` suffix) of selected or all IoT devices while strictly preserving the first 3 octets (`OUI`, e.g., `00:a0:03` for Siemens, `00:a0:98` for NetApp, `00:1b:17` for Palo Alto Networks) and updating the DHCP Option 12 hostname suffix so Strata Cloud Manager (SCM) Device Security discovers them as brand-new assets (`First Seen = Today`).
+  - **Clean `DHCPRELEASE` on MAC Rotation**: Before rotating a device's MAC address, the Go and Python IoT daemons transmit an RFC 2131 `DHCPRELEASE` (Option 53 = 7) packet for the previous lease and purge the old entry from `dhcp_leases.json`, preventing DHCP pool exhaustion on the branch SD-WAN ION router.
+- **IoT Security Device & Vendor Filtering + Target Badges in Packet Capture (`web-dashboard/src/PacketCapture.tsx`)**:
+  - **Pre-Capture Kernel BPF Presets (`🏷️ IoT Security — By Vendor / Family` & `🤖 IoT Security — Devices`)**: Added dynamic preset groups in the Packet Capture `BPF Preset` selector that generate `ether host <mac> or host <ip>` expressions for individual IoT devices or entire vendor families, capturing both L2 (`DHCP`, `ARP`, `LLDP`) and L3–L7 traffic.
+  - **Live Display Filter & Table Target Resolution**: Packet Capture now resolves active and configured IoT device IPs and L2 MAC addresses into interactive `[🤖 Device Name]` emerald badges (`Src Target` / `Dst Target`) and supports real-time filtering in the `Display Filter` bar by device name, vendor, device type, MAC address, or the quick `🤖 iot` tag.
+- **Fixed Sub-Millisecond `1000+ pps` Rate Spike on IoT Boot (`engines/stigix-go/iot.go`, `web-dashboard/iot-manager.ts`)**:
+  - Eliminated the duplicate `emitStats()` call 1ms after DHCP lease acquisition in `iot.go` (`setIPAndGateway`) and enforced a minimum `1.0s` sampling window in `iot-manager.ts` (`handlePythonMessage`) so sub-second stat updates never divide by `0.001s` to produce artificial `1000 pps` spikes.
+
 ## [3.2.22] - 2026-11-14
 
 ### Added & Enhanced

@@ -648,6 +648,7 @@ export class IoTManager extends EventEmitter {
         }
         if (type === 'daemon_error') { log('IOT', `Daemon error: ${msg.error}`, 'error'); return; }
         if (type === 'daemon_status') { this.emit('daemon:status', msg); return; }
+        if (type === 'dhcp_released') { log('IOT', `DHCP lease released for MAC=${msg.mac} IP=${msg.ip || 'none'}`); return; }
         if (!device_id) return;
 
         switch (type) {
@@ -682,25 +683,31 @@ export class IoTManager extends EventEmitter {
                     protocols: incoming.protocols || {},
                     uptime_seconds: incoming.uptime_seconds || 0
                 });
-                // ── Rate calculation ─────────────────────────────────────────
+                // ── Rate calculation (minimum 1.0s window to prevent sub-millisecond 1000+ pps spikes) ──
                 const now_ms = Date.now();
                 const prev = this.lastStatsSnapshot.get(device_id);
-                if (prev) {
+                if (!prev) {
+                    this.lastStatsSnapshot.set(device_id, {
+                        packets: incoming.packets_sent || 0,
+                        bytes:   incoming.bytes_sent   || 0,
+                        ts:      now_ms,
+                    });
+                } else {
                     const deltaSec = (now_ms - prev.ts) / 1000;
-                    if (deltaSec > 0) {
+                    if (deltaSec >= 1.0) {
                         const deltaP = Math.max(0, (incoming.packets_sent || 0) - prev.packets);
                         const deltaB = Math.max(0, (incoming.bytes_sent   || 0) - prev.bytes);
                         this.deviceRates.set(device_id, {
                             pps: deltaP / deltaSec,
                             bps: deltaB / deltaSec,
                         });
+                        this.lastStatsSnapshot.set(device_id, {
+                            packets: incoming.packets_sent || 0,
+                            bytes:   incoming.bytes_sent   || 0,
+                            ts:      now_ms,
+                        });
                     }
                 }
-                this.lastStatsSnapshot.set(device_id, {
-                    packets: incoming.packets_sent || 0,
-                    bytes:   incoming.bytes_sent   || 0,
-                    ts:      now_ms,
-                });
                 this.emit('device:stats', msg);
                 break;
             }
@@ -839,6 +846,57 @@ export class IoTManager extends EventEmitter {
     }
 
     getRunningDevices(): string[] { return Array.from(this.runningDevices.keys()); }
+
+    /**
+     * Releases the DHCP lease for an old MAC address:
+     * 1. Removes the lease entry from dhcp_leases.json on disk.
+     * 2. Clears the old cached current_ip for deviceId in statsCache.
+     * 3. Sends `release_dhcp` to the running daemon (if active) so it transmits
+     *    an RFC 2131 DHCPRELEASE packet to the SD-WAN ION DHCP server.
+     */
+    releaseDhcpLease(deviceId: string, mac: string, ip?: string, gateway?: string): void {
+        const cleanMac = String(mac || '').trim().toLowerCase();
+        if (!cleanMac) return;
+
+        let resolvedIp = ip || this.statsCache.get(deviceId)?.current_ip || '';
+        let resolvedGw = gateway || '';
+
+        try {
+            const leasePath = path.join(this.configDir, 'dhcp_leases.json');
+            if (fs.existsSync(leasePath)) {
+                const raw = fs.readFileSync(leasePath, 'utf8');
+                const leases = JSON.parse(raw || '{}');
+                const entry = leases[cleanMac] || leases[mac];
+                if (entry) {
+                    if (!resolvedIp && entry.ip) resolvedIp = entry.ip;
+                    if (!resolvedGw && entry.gateway) resolvedGw = entry.gateway;
+                    delete leases[cleanMac];
+                    delete leases[mac];
+                    fs.writeFileSync(leasePath, JSON.stringify(leases, null, 2));
+                }
+            }
+        } catch (e: any) {
+            log('IOT', `Failed to purge DHCP lease for ${cleanMac}: ${e.message}`, 'warn');
+        }
+
+        const existingStats = this.statsCache.get(deviceId);
+        if (existingStats) {
+            const updated = { ...existingStats };
+            delete updated.current_ip;
+            this.statsCache.set(deviceId, updated);
+        }
+        this.deviceRates.delete(deviceId);
+        this.lastStatsSnapshot.delete(deviceId);
+
+        if (this.daemonProcess && this.daemonReady) {
+            this.sendCommand({
+                cmd: 'release_dhcp',
+                mac: cleanMac,
+                ip: resolvedIp,
+                gateway: resolvedGw,
+            });
+        }
+    }
 
     setBadBehavior(enabled: boolean): void {
         this.badBehaviorEnabled = enabled;

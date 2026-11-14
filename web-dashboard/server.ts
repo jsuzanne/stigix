@@ -16996,6 +16996,136 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
     res.json({ success: true });
 });
 
+/**
+ * POST /api/iot/devices/rotate-macs
+ * Rotates the last 3 octets (NIC suffix) of target IoT devices while strictly
+ * preserving the first 3 octets (IEEE Vendor OUI, e.g. 00:a0:03 for Siemens).
+ * Sends an RFC 2131 DHCPRELEASE for each old MAC/IP so the SD-WAN ION DHCP pool
+ * never saturates, and restarts previously active/managed devices so Palo Alto
+ * Device Security (IoT Security) discovers them as brand-new assets (First Seen = Today).
+ */
+app.post('/api/iot/devices/rotate-macs', authenticateToken, async (req, res) => {
+    try {
+        const { ids } = req.body || {};
+        const config = getIoTConfig();
+        const devices: any[] = Array.isArray(config.devices) ? config.devices : [];
+        const gateway = config.network?.gateway;
+        const targetIdSet = Array.isArray(ids) && ids.length > 0 ? new Set(ids.map(String)) : null;
+
+        const deviceStates = iotManager.getDeviceStates();
+        const allStats = iotManager.getAllStats();
+        const usedMacs = new Set<string>(
+            devices.map(d => String(d.mac || '').trim().toLowerCase()).filter(Boolean)
+        );
+
+        const generateNewMacKeepOUI = (oldMac: string): { newMac: string; suffixHex: string } => {
+            const parts = String(oldMac || '').trim().toLowerCase().split(':');
+            const oui = parts.length >= 3 && parts.slice(0, 3).every(p => /^[0-9a-f]{2}$/.test(p))
+                ? parts.slice(0, 3).join(':')
+                : '00:1b:1b';
+            for (let attempt = 0; attempt < 50; attempt++) {
+                const b4 = Math.floor(Math.random() * 254) + 1; // 0x01..0xfe
+                const b5 = Math.floor(Math.random() * 256);
+                const b6 = Math.floor(Math.random() * 254) + 1; // 0x01..0xfe
+                const hex4 = b4.toString(16).padStart(2, '0');
+                const hex5 = b5.toString(16).padStart(2, '0');
+                const hex6 = b6.toString(16).padStart(2, '0');
+                const candidate = `${oui}:${hex4}:${hex5}:${hex6}`.toLowerCase();
+                if (!usedMacs.has(candidate) && candidate !== oldMac.toLowerCase()) {
+                    usedMacs.add(candidate);
+                    return { newMac: candidate, suffixHex: `${hex5}${hex6}`.toUpperCase() };
+                }
+            }
+            const fallback6 = ((Date.now() & 0xfd) + 1).toString(16).padStart(2, '0');
+            const fallback = `${oui}:4a:8f:${fallback6}`.toLowerCase();
+            usedMacs.add(fallback);
+            return { newMac: fallback, suffixHex: `8F${fallback6}`.toUpperCase() };
+        };
+
+        const rotateHostnameSuffix = (hostname: string | undefined, suffixHex: string): string | undefined => {
+            if (!hostname || typeof hostname !== 'string') return hostname;
+            const trimmed = hostname.trim();
+            if (!trimmed) return hostname;
+            // Replace trailing -XXXX or -XX hex/number tag if present, otherwise append -XXXX
+            if (/-[0-9a-fA-F]{2,6}$/.test(trimmed)) {
+                return trimmed.replace(/-[0-9a-fA-F]{2,6}$/, `-${suffixHex}`);
+            }
+            return `${trimmed}-${suffixHex}`;
+        };
+
+        const rotatedSummary: Array<{ id: string; name: string; vendor: string; oldMac: string; newMac: string; releasedIp?: string }> = [];
+        const devicesToRestart: any[] = [];
+
+        const updatedDevices: any[] = [];
+        for (const d of devices) {
+            if (targetIdSet && !targetIdSet.has(String(d.id))) {
+                updatedDevices.push(d);
+                continue;
+            }
+
+            const oldMac = String(d.mac || '').trim();
+            const oldIp = allStats[d.id]?.current_ip || undefined;
+            const wasManaged = Boolean(deviceStates[d.id] && deviceStates[d.id] !== 'STOPPED');
+
+            if (wasManaged) {
+                await iotManager.stopDevice(d.id);
+            }
+
+            // Send RFC 2131 DHCPRELEASE for old MAC/IP and remove from dhcp_leases.json
+            iotManager.releaseDhcpLease(d.id, oldMac, oldIp, d.gateway || gateway);
+
+            const { newMac, suffixHex } = generateNewMacKeepOUI(oldMac);
+            const nextDevice = {
+                ...d,
+                mac: newMac,
+            };
+
+            if (nextDevice.fingerprint?.dhcp?.hostname) {
+                nextDevice.fingerprint = {
+                    ...nextDevice.fingerprint,
+                    dhcp: {
+                        ...nextDevice.fingerprint.dhcp,
+                        hostname: rotateHostnameSuffix(nextDevice.fingerprint.dhcp.hostname, suffixHex),
+                    },
+                };
+            }
+
+            updatedDevices.push(nextDevice);
+            rotatedSummary.push({
+                id: d.id,
+                name: d.name || d.id,
+                vendor: d.vendor || '',
+                oldMac,
+                newMac,
+                releasedIp: oldIp,
+            });
+
+            if (wasManaged) {
+                devicesToRestart.push(nextDevice);
+            }
+        }
+
+        saveIoTConfig({ ...config, devices: updatedDevices });
+
+        for (const dev of devicesToRestart) {
+            iotManager.startDevice({ ...dev, gateway }).catch(err =>
+                log('IOT', `Failed to restart ${dev.id} after MAC rotation: ${err.message}`, 'error')
+            );
+        }
+
+        log('IOT', `Rotated MAC suffix (kept OUI) for ${rotatedSummary.length} IoT device(s); restarted ${devicesToRestart.length}`);
+        res.json({
+            success: true,
+            rotated: rotatedSummary.length,
+            restarted: devicesToRestart.length,
+            devices: rotatedSummary,
+        });
+    } catch (err: any) {
+        log('IOT', `MAC rotation error: ${err.message}`, 'error');
+        res.status(500).json({ error: err.message || 'Failed to rotate IoT MAC addresses' });
+    }
+});
+
 // --- Local Registry API & Provisioning Engine (Hybrid Leader) ---
 const provisioningManager = new ProvisioningManager(APP_CONFIG.configDir);
 provisioningManager.setCertificateManager(certificateManager);
