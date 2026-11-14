@@ -64,7 +64,7 @@ export default function Iot({ token }: IotProps) {
         merge: false,
     });
     const [prismaLoading, setPrismaLoading] = useState(false);
-    const [prismaResult, setPrismaResult] = useState<{ imported: number; bad_behavior: number } | null>(null);
+    const [prismaResult, setPrismaResult] = useState<{ imported: number; bad_behavior: number; catalog_harvest?: any } | null>(null);
     const [expandedThreats, setExpandedThreats] = useState<{ [deviceId: string]: boolean }>({});
     const toggleThreat = (id: string) => setExpandedThreats(prev => ({ ...prev, [id]: !prev[id] }));
     // Vulnerability CSV import state
@@ -78,11 +78,23 @@ export default function Iot({ token }: IotProps) {
         merge: false,
     });
     const [vulnLoading, setVulnLoading] = useState(false);
-    const [vulnResult, setVulnResult] = useState<{ imported: number; bad_behavior: number; ics_cert_devices: number } | null>(null);
+    const [vulnResult, setVulnResult] = useState<{ imported: number; bad_behavior: number; ics_cert_devices: number; catalog_harvest?: any } | null>(null);
     const [showImportDropdown, setShowImportDropdown] = useState(false);
     const importDropdownRef = useRef<HTMLDivElement>(null);
     const [rotatingMacs, setRotatingMacs] = useState(false);
     const [rotationNotice, setRotationNotice] = useState<string | null>(null);
+
+    // Persistent Catalog & Fleet Generator state
+    const [showCatalogModal, setShowCatalogModal] = useState(false);
+    const [catalogStats, setCatalogStats] = useState<any>(null);
+    const [fleetMode, setFleetMode] = useState<'vertical' | 'prompt'>('vertical');
+    const [fleetVertical, setFleetVertical] = useState<'healthcare' | 'industrial' | 'retail' | 'smart_building' | 'enterprise'>('healthcare');
+    const [fleetPrompt, setFleetPrompt] = useState('');
+    const [fleetCount, setFleetCount] = useState(30);
+    const [fleetBadPct, setFleetBadPct] = useState(25);
+    const [fleetMerge, setFleetMerge] = useState(false);
+    const [fleetGenerating, setFleetGenerating] = useState(false);
+    const [fleetResult, setFleetResult] = useState<any>(null);
 
     // Concurrency state
     const [iotSettings, setIotSettings] = useState<{ max: number; active: number; queued: number; idle: number }>({ max: 30, active: 0, queued: 0, idle: 0 });
@@ -582,6 +594,57 @@ export default function Iot({ token }: IotProps) {
         }
     };
 
+    const fetchCatalogStats = async () => {
+        try {
+            const res = await gFetch('/api/iot/catalog/stats', { headers: authHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setCatalogStats(data);
+            }
+        } catch (e) {
+            console.error('Failed to fetch IoT catalog stats', e);
+        }
+    };
+
+    const handleOpenCatalogModal = () => {
+        setFleetResult(null);
+        setShowCatalogModal(true);
+        fetchCatalogStats();
+    };
+
+    const handleGenerateFleet = async () => {
+        setFleetGenerating(true);
+        setFleetResult(null);
+        try {
+            const body: Record<string, any> = {
+                count: fleetCount,
+                bad_behavior_pct: fleetBadPct,
+                merge: fleetMerge,
+            };
+            if (fleetMode === 'prompt' && fleetPrompt.trim().length > 2) {
+                body.prompt = fleetPrompt.trim();
+            } else {
+                body.vertical = fleetVertical;
+            }
+            const res = await gFetch('/api/iot/catalog/generate', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+            }
+            setFleetResult(data);
+            fetchDevices();
+            fetchCatalogStats();
+        } catch (e: any) {
+            alert('❌ Fleet generation failed: ' + e.message);
+        } finally {
+            setFleetGenerating(false);
+        }
+    };
+
     const handleDownloadSampleJson = async () => {
         try {
             const res = await gFetch('/api/iot/config/sample', { headers: authHeaders() });
@@ -704,7 +767,7 @@ export default function Iot({ token }: IotProps) {
             const data = await res.json();
 
             if (data.success) {
-                setPrismaResult({ imported: data.imported, bad_behavior: data.bad_behavior });
+                setPrismaResult({ imported: data.imported, bad_behavior: data.bad_behavior, catalog_harvest: data.catalog_harvest });
                 fetchDevices();
             } else {
                 alert('❌ Import failed: ' + (data.detail || data.error));
@@ -759,7 +822,7 @@ export default function Iot({ token }: IotProps) {
             const data = await res.json();
 
             if (data.success) {
-                setVulnResult({ imported: data.imported, bad_behavior: data.bad_behavior, ics_cert_devices: data.ics_cert_devices || 0 });
+                setVulnResult({ imported: data.imported, bad_behavior: data.bad_behavior, ics_cert_devices: data.ics_cert_devices || 0, catalog_harvest: data.catalog_harvest });
                 fetchDevices();
             } else {
                 alert('❌ Import failed: ' + (data.detail || data.error));
@@ -981,10 +1044,18 @@ export default function Iot({ token }: IotProps) {
                     )}
 
                     <button
+                        onClick={handleOpenCatalogModal}
+                        className="flex items-center gap-1.5 bg-purple-600/15 hover:bg-purple-600/25 text-purple-400 hover:text-purple-300 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-purple-500/35 hover:border-purple-500/50"
+                        title="Open Persistent IoT Catalog & Scenario / Vertical Fleet Generator (Healthcare, OT/ICS, Retail, Smart Building, or Prompt)"
+                    >
+                        <Zap size={13} /> Fleet Generator
+                    </button>
+
+                    <button
                         onClick={() => handleRotateMacs()}
                         disabled={rotatingMacs || devices.length === 0}
                         className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-hover text-cyan-500 dark:text-cyan-400 hover:text-cyan-300 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-cyan-500/30 hover:border-cyan-500/50 disabled:opacity-50"
-                        title="Renew MAC Suffixes (Keep IEEE Vendor OUI + Send DHCP RELEASE) so Palo Alto Device Security discovers fresh assets"
+                        title="Renew MAC Suffixes (Keep IEEE Vendor OUI + Send 25ms-paced DHCP RELEASE) so Palo Alto Device Security discovers fresh assets"
                     >
                         <RefreshCcw size={13} className={cn(rotatingMacs && "animate-spin")} /> Renew MACs
                     </button>
@@ -2187,12 +2258,44 @@ export default function Iot({ token }: IotProps) {
 
                             {/* Result banner */}
                             {prismaResult && (
-                                <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-2xl px-4 py-3 animate-in fade-in duration-300">
-                                    <CheckCircle2 size={18} className="text-green-400 shrink-0" />
-                                    <div>
-                                        <p className="text-sm font-bold text-green-400">Import successful!</p>
-                                        <p className="text-xs text-text-muted">{prismaResult.imported} devices imported — {prismaResult.bad_behavior} with bad behavior</p>
+                                <div className="space-y-2.5 animate-in fade-in duration-300">
+                                    <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-2xl px-4 py-3">
+                                        <CheckCircle2 size={18} className="text-green-400 shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-bold text-green-400">Import successful!</p>
+                                            <p className="text-xs text-text-muted">{prismaResult.imported} devices imported — {prismaResult.bad_behavior} with bad behavior</p>
+                                        </div>
                                     </div>
+                                    {prismaResult.catalog_harvest && (
+                                        <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-3.5 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-black text-purple-300 flex items-center gap-1.5">
+                                                    🎣 Catalog Harvest Report (<code className="text-[10px]">iot_catalog.json</code>)
+                                                </span>
+                                                <span className="text-[10px] font-bold text-purple-400 bg-purple-500/20 px-2 py-0.5 rounded-full">
+                                                    Total: {prismaResult.catalog_harvest.catalog_totals?.vendors} Vendors · {prismaResult.catalog_harvest.catalog_totals?.profiles} Profiles · {prismaResult.catalog_harvest.catalog_totals?.cves} CVEs
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-4 gap-2 text-center">
+                                                <div className="bg-card-secondary rounded-xl p-2 border border-border">
+                                                    <div className="text-sm font-black text-emerald-400">+{prismaResult.catalog_harvest.new_vendors_count}</div>
+                                                    <div className="text-[9px] text-text-muted uppercase font-bold">New Vendors</div>
+                                                </div>
+                                                <div className="bg-card-secondary rounded-xl p-2 border border-border">
+                                                    <div className="text-sm font-black text-cyan-400">+{prismaResult.catalog_harvest.new_profiles_count}</div>
+                                                    <div className="text-[9px] text-text-muted uppercase font-bold">New Profiles</div>
+                                                </div>
+                                                <div className="bg-card-secondary rounded-xl p-2 border border-border">
+                                                    <div className="text-sm font-black text-orange-400">+{prismaResult.catalog_harvest.new_cves_count}</div>
+                                                    <div className="text-[9px] text-text-muted uppercase font-bold">New CVEs</div>
+                                                </div>
+                                                <div className="bg-card-secondary rounded-xl p-2 border border-border">
+                                                    <div className="text-sm font-black text-purple-400">{prismaResult.catalog_harvest.oui_resolved_vendors}</div>
+                                                    <div className="text-[9px] text-text-muted uppercase font-bold">OUI Resolved</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -2365,15 +2468,53 @@ export default function Iot({ token }: IotProps) {
 
                             {/* Result banner */}
                             {vulnResult && (
-                                <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-2xl px-4 py-3 animate-in fade-in duration-300">
-                                    <CheckCircle2 size={18} className="text-green-400 shrink-0" />
-                                    <div>
-                                        <p className="text-sm font-bold text-green-400">Import successful!</p>
-                                        <p className="text-xs text-text-muted">
-                                            {vulnResult.imported} devices imported — {vulnResult.bad_behavior} with bad behavior
-                                            {vulnResult.ics_cert_devices > 0 && <span className="text-orange-400 font-bold ml-1">· {vulnResult.ics_cert_devices} ICS-CERT ⚠️</span>}
-                                        </p>
+                                <div className="space-y-2.5 animate-in fade-in duration-300">
+                                    <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/30 rounded-2xl px-4 py-3">
+                                        <CheckCircle2 size={18} className="text-green-400 shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-bold text-green-400">Import successful!</p>
+                                            <p className="text-xs text-text-muted">
+                                                {vulnResult.imported} devices imported — {vulnResult.bad_behavior} with bad behavior
+                                                {vulnResult.ics_cert_devices > 0 && <span className="text-orange-400 font-bold ml-1">· {vulnResult.ics_cert_devices} ICS-CERT ⚠️</span>}
+                                            </p>
+                                        </div>
                                     </div>
+                                    {vulnResult.catalog_harvest && (
+                                        <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-3.5 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-black text-purple-300 flex items-center gap-1.5">
+                                                    🎣 Catalog Harvest Report (<code className="text-[10px]">iot_catalog.json</code>)
+                                                </span>
+                                                <span className="text-[10px] font-bold text-purple-400 bg-purple-500/20 px-2 py-0.5 rounded-full">
+                                                    Total: {vulnResult.catalog_harvest.catalog_totals?.vendors} Vendors · {vulnResult.catalog_harvest.catalog_totals?.profiles} Profiles · {vulnResult.catalog_harvest.catalog_totals?.cves} CVEs
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-4 gap-2 text-center">
+                                                <div className="bg-card-secondary rounded-xl p-2 border border-border">
+                                                    <div className="text-sm font-black text-emerald-400">+{vulnResult.catalog_harvest.new_vendors_count}</div>
+                                                    <div className="text-[9px] text-text-muted uppercase font-bold">New Vendors</div>
+                                                </div>
+                                                <div className="bg-card-secondary rounded-xl p-2 border border-border">
+                                                    <div className="text-sm font-black text-cyan-400">+{vulnResult.catalog_harvest.new_profiles_count}</div>
+                                                    <div className="text-[9px] text-text-muted uppercase font-bold">New Profiles</div>
+                                                </div>
+                                                <div className="bg-card-secondary rounded-xl p-2 border border-border">
+                                                    <div className="text-sm font-black text-orange-400">+{vulnResult.catalog_harvest.new_cves_count}</div>
+                                                    <div className="text-[9px] text-text-muted uppercase font-bold">New CVEs</div>
+                                                </div>
+                                                <div className="bg-card-secondary rounded-xl p-2 border border-border">
+                                                    <div className="text-sm font-black text-purple-400">{vulnResult.catalog_harvest.oui_resolved_vendors}</div>
+                                                    <div className="text-[9px] text-text-muted uppercase font-bold">OUI Resolved</div>
+                                                </div>
+                                            </div>
+                                            {vulnResult.catalog_harvest.new_profiles_list?.length > 0 && (
+                                                <div className="text-[10px] text-text-muted">
+                                                    <span className="font-bold text-purple-300">Learned Profiles: </span>
+                                                    {vulnResult.catalog_harvest.new_profiles_list.slice(0, 5).join(' · ')}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -2394,6 +2535,294 @@ export default function Iot({ token }: IotProps) {
                                     {vulnLoading ? <><Loader2 size={16} className="animate-spin" /> Analyzing...</> : <><AlertTriangle size={16} /> Analyze & Import</>}
                                 </button>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Fleet Generator & Persistent IoT Catalog Modal ── */}
+            {showCatalogModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
+                    <div className="bg-card border border-border rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                        <div className="p-5 border-b border-border flex items-center justify-between bg-card-secondary shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-purple-500/20 rounded-xl border border-purple-500/30">
+                                    <Zap size={20} className="text-purple-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                        IoT Fleet Generator &amp; Auto-Learning Catalog
+                                    </h3>
+                                    <p className="text-xs text-text-muted">
+                                        Generate authentic Palo Alto Device Security fleets by business vertical or natural-language prompt
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowCatalogModal(false)} className="text-text-muted hover:text-foreground transition-colors shrink-0">
+                                <X size={22} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-5 overflow-y-auto">
+                            {/* Persistent Catalog Status Strip */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 bg-purple-500/10 border border-purple-500/25 rounded-2xl px-4 py-2.5">
+                                <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
+                                    <span>📚 Persistent Catalog (<code className="text-[10px]">config/iot_catalog.json</code>)</span>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap text-[11px] font-bold">
+                                    <span className="bg-card-secondary border border-border px-2.5 py-0.5 rounded-lg text-emerald-400">
+                                        {catalogStats?.totals?.vendors ?? 28} Vendors
+                                    </span>
+                                    <span className="bg-card-secondary border border-border px-2.5 py-0.5 rounded-lg text-cyan-400">
+                                        {catalogStats?.totals?.profiles ?? 32} Device Profiles
+                                    </span>
+                                    <span className="bg-card-secondary border border-border px-2.5 py-0.5 rounded-lg text-orange-400">
+                                        {catalogStats?.totals?.cves ?? 65} CVEs
+                                    </span>
+                                    <span className="bg-card-secondary border border-border px-2.5 py-0.5 rounded-lg text-purple-400">
+                                        {(catalogStats?.totals?.ieee_oui_database ?? 37000).toLocaleString()} IEEE OUIs
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Mode Switcher */}
+                            <div className="grid grid-cols-2 gap-2 bg-card-secondary p-1 rounded-2xl border border-border">
+                                <button
+                                    type="button"
+                                    onClick={() => setFleetMode('vertical')}
+                                    className={cn(
+                                        "py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                                        fleetMode === 'vertical'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/25"
+                                            : "text-text-muted hover:text-text-primary"
+                                    )}
+                                >
+                                    🏢 Mode 1 — 1-Click Business Verticals
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFleetMode('prompt')}
+                                    className={cn(
+                                        "py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                                        fleetMode === 'prompt'
+                                            ? "bg-purple-600 text-white shadow-lg shadow-purple-900/25"
+                                            : "text-text-muted hover:text-text-primary"
+                                    )}
+                                >
+                                    ✨ Mode 2 — Scenario Prompt Compiler
+                                </button>
+                            </div>
+
+                            {fleetMode === 'vertical' ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                    {[
+                                        {
+                                            id: 'healthcare',
+                                            icon: '🏥',
+                                            title: 'Healthcare & IoMT',
+                                            desc: 'Baxter Infusion Pumps, Siemens MRI, Philips IntelliVue, GE Carescape, Dräger, Axis Cam'
+                                        },
+                                        {
+                                            id: 'industrial',
+                                            icon: '🏭',
+                                            title: 'Manufacturing OT / ICS',
+                                            desc: 'Siemens SIMATIC S7-1500, Rockwell ControlLogix, FANUC Robots, Schneider UPS, Moxa, AGV'
+                                        },
+                                        {
+                                            id: 'retail',
+                                            icon: '🛒',
+                                            title: 'Retail & POS Store',
+                                            desc: 'Ingenico Lane/5000, Verifone VX820, Zebra Barcode Printers, ProFusion Signage, Hikvision'
+                                        },
+                                        {
+                                            id: 'smart_building',
+                                            icon: '🏢',
+                                            title: 'Smart Building & BMS',
+                                            desc: 'Johnson Controls Metasys, LenelS2 Access Control, Philips Hue, Poly Studio X50, Cisco VoIP'
+                                        },
+                                        {
+                                            id: 'enterprise',
+                                            icon: '🌐',
+                                            title: 'Enterprise IT & Infra',
+                                            desc: 'HP LaserJet M611, SHARP MFP, Avigilon NVR, NetApp FAS8300 SAN, F5 BIG-IP ADC'
+                                        }
+                                    ].map(v => (
+                                        <button
+                                            key={v.id}
+                                            type="button"
+                                            onClick={() => setFleetVertical(v.id as any)}
+                                            className={cn(
+                                                "p-3.5 rounded-2xl border text-left transition-all flex flex-col gap-1.5",
+                                                fleetVertical === v.id
+                                                    ? "bg-purple-600/15 border-purple-500 text-foreground shadow-md"
+                                                    : "bg-card-secondary border-border text-text-secondary hover:border-purple-500/40"
+                                            )}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-base">{v.icon}</span>
+                                                {fleetVertical === v.id && (
+                                                    <span className="text-[9px] font-black uppercase tracking-wider bg-purple-600 text-white px-2 py-0.5 rounded-full">
+                                                        Selected
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-xs font-black text-foreground">{v.title}</div>
+                                            <div className="text-[10px] text-text-muted leading-relaxed">{v.desc}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <label className="text-[11px] font-bold text-text-secondary block">
+                                        Describe your target SD-WAN branch scenario (French or English — matches Catalog &amp; 45k IEEE OUIs):
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        value={fleetPrompt}
+                                        onChange={e => setFleetPrompt(e.target.value)}
+                                        placeholder="Ex: Clinique de 35 équipements avec 10 pompes Baxter, 4 IRM Siemens, 8 moniteurs Philips, 5 GE Carescape et 8 caméras Axis..."
+                                        className="w-full bg-card-secondary border border-border rounded-2xl p-3.5 text-xs text-foreground focus:ring-1 focus:ring-purple-500 outline-none"
+                                    />
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {[
+                                            { label: '🏥 Clinique IoMT (35 dev)', prompt: 'Clinique médicale avec 10 pompes Baxter, 4 IRM Siemens, 8 moniteurs Philips, 5 GE Carescape et 8 caméras Axis', count: 35 },
+                                            { label: '🏭 Usine OT/ICS (40 dev)', prompt: 'Usine industrielle avec 12 automates Siemens S7, 8 automates Rockwell, 6 robots Fanuc, 6 onduleurs Schneider et 8 passerelles Moxa', count: 40 },
+                                            { label: '🛒 Hypermarché Retail (30 dev)', prompt: 'Magasin retail avec 12 terminaux Ingenico, 6 Verifone, 5 imprimantes Zebra, 3 ProFusion Signage et 4 caméras Hikvision', count: 30 },
+                                        ].map(sample => (
+                                            <button
+                                                key={sample.label}
+                                                type="button"
+                                                onClick={() => { setFleetPrompt(sample.prompt); setFleetCount(sample.count); }}
+                                                className="px-2.5 py-1 rounded-lg bg-card-secondary hover:bg-purple-500/15 border border-border hover:border-purple-500/40 text-[10px] font-bold text-text-secondary hover:text-purple-300 transition-all"
+                                            >
+                                                {sample.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Sliders: Device Count + Bad Behavior % + Replace/Merge */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                <div className="p-3.5 bg-card-secondary rounded-2xl border border-border space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Fleet Size (Devices)</span>
+                                        <span className="text-xs font-black text-purple-400">{fleetCount} devices</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={5}
+                                        max={100}
+                                        step={5}
+                                        value={fleetCount}
+                                        onChange={e => setFleetCount(Number(e.target.value))}
+                                        className="w-full accent-purple-500"
+                                    />
+                                </div>
+                                <div className="p-3.5 bg-card-secondary rounded-2xl border border-border space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Threat / Bad Behavior Ratio</span>
+                                        <span className="text-xs font-black text-red-400">{fleetBadPct}% ({Math.round((fleetCount * fleetBadPct) / 100)} attacking)</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={100}
+                                        step={5}
+                                        value={fleetBadPct}
+                                        onChange={e => setFleetBadPct(Number(e.target.value))}
+                                        className="w-full accent-red-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between p-3 bg-card-secondary rounded-2xl border border-border">
+                                <div>
+                                    <p className="text-xs font-bold text-text-secondary">Deployment Mode</p>
+                                    <p className="text-[10px] text-text-muted">
+                                        {fleetMerge
+                                            ? 'Append generated devices to current fleet'
+                                            : 'Send paced DHCP RELEASE (25ms spacing) for old leases & replace fleet'}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setFleetMerge(!fleetMerge)}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-xl text-xs font-bold border transition-all",
+                                        fleetMerge
+                                            ? "bg-green-500/20 border-green-500/40 text-green-400"
+                                            : "bg-orange-500/20 border-orange-500/40 text-orange-400"
+                                    )}
+                                >
+                                    {fleetMerge ? '➕ Merge' : '🔄 Replace & Release DHCP'}
+                                </button>
+                            </div>
+
+                            {/* Blueprint Summary Result */}
+                            {fleetResult && (
+                                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 space-y-3 animate-in fade-in duration-300">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+                                            <div>
+                                                <p className="text-sm font-black text-emerald-400">{fleetResult.scenario_title}</p>
+                                                <p className="text-[11px] text-text-muted">
+                                                    Compiled {fleetResult.generated} devices ({fleetResult.bad_behavior} with active threat telemetry) — click <b>Start All</b> to launch on the wire.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {Array.isArray(fleetResult.blueprint_summary) && fleetResult.blueprint_summary.length > 0 && (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-[11px]">
+                                                <thead>
+                                                    <tr className="border-b border-border text-text-muted uppercase text-[9px]">
+                                                        <th className="py-1.5 pr-2">Vendor</th>
+                                                        <th className="py-1.5 pr-2">Model / Type</th>
+                                                        <th className="py-1.5 pr-2">IEEE OUI</th>
+                                                        <th className="py-1.5 pr-2">OS &amp; Firmware</th>
+                                                        <th className="py-1.5 text-right">Qty</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-border/40">
+                                                    {fleetResult.blueprint_summary.map((item: any, i: number) => (
+                                                        <tr key={i}>
+                                                            <td className="py-1.5 pr-2 font-bold text-foreground">{item.vendor}</td>
+                                                            <td className="py-1.5 pr-2 text-text-secondary">{item.model}</td>
+                                                            <td className="py-1.5 pr-2 font-mono text-cyan-400">{item.oui}</td>
+                                                            <td className="py-1.5 pr-2 text-text-muted">{item.os} · <span className="font-mono text-purple-300">{item.firmware}</span></td>
+                                                            <td className="py-1.5 text-right font-black text-emerald-400">×{item.count}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-6 pb-6 pt-4 flex gap-3 shrink-0 border-t border-border">
+                            <button
+                                type="button"
+                                onClick={() => setShowCatalogModal(false)}
+                                className="flex-1 px-4 py-3 bg-card-secondary border border-border text-text-muted font-bold rounded-xl hover:bg-card-hover transition-all tracking-widest text-xs"
+                            >
+                                {fleetResult ? 'Done' : 'Cancel'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleGenerateFleet}
+                                disabled={fleetGenerating || (fleetMode === 'prompt' && fleetPrompt.trim().length < 3)}
+                                className="flex-1 px-4 py-3 bg-purple-600 text-white font-black rounded-xl hover:bg-purple-500 transition-all shadow-lg shadow-purple-900/25 uppercase tracking-widest text-xs disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {fleetGenerating ? (
+                                    <><Loader2 size={16} className="animate-spin" /> Compiling Fleet...</>
+                                ) : (
+                                    <><Zap size={16} /> Generate {fleetCount} Certified IoT Devices</>
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>

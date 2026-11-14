@@ -287,7 +287,8 @@ type iotPreviousStats struct {
 }
 
 type iotVulnMeta struct {
-	OS string `json:"os"`
+	OS       string `json:"os"`
+	Firmware string `json:"firmware,omitempty"`
 }
 
 type IoTDeviceSpec struct {
@@ -302,6 +303,7 @@ type IoTDeviceSpec struct {
 	TrafficInterval int               `json:"traffic_interval"`
 	Gateway         string            `json:"gateway"`
 	Description     string            `json:"description"`
+	Firmware        string            `json:"firmware,omitempty"`
 	Fingerprint     iotFingerprintCfg `json:"fingerprint"`
 	Security        iotSecurityCfg    `json:"security"`
 	VulnMeta        *iotVulnMeta      `json:"_vuln_meta"`
@@ -340,6 +342,10 @@ func synthesizePersona(spec IoTDeviceSpec) iotPersona {
 		} else {
 			explicitOS = rest
 		}
+	}
+	explicitFW := strings.TrimSpace(spec.Firmware)
+	if explicitFW == "" && spec.VulnMeta != nil {
+		explicitFW = strings.TrimSpace(spec.VulnMeta.Firmware)
 	}
 
 	// OUI-based Vendor enrichment when Vendor is empty/Unknown/Generic
@@ -616,6 +622,89 @@ func synthesizePersona(spec IoTDeviceSpec) iotPersona {
 		ua = fmt.Sprintf("CrKey/1.68.374976 (Linux; Android 12; Chromecast; Build/STTE.231215.005; Google Inc.)")
 		serverHdr = "Eureka-HTTP/1.68"
 
+	case strings.Contains(combined, "baxter"):
+		model = "Sigma Spectrum Infusion Pump"
+		if osName == "" {
+			osName = "VxWorks Medical RTOS 6.8"
+		}
+		fwVer = "v8.02.01-WBM"
+		ua = fmt.Sprintf("Baxter-SigmaSpectrum/8.02.01 (Baxter Healthcare; %s; %s; WBM/v20D29; FW/%s)", model, osName, fwVer)
+		serverHdr = "GoAhead-Webs/2.5.0 Baxter-WBM/8.02"
+
+	case strings.Contains(combined, "draeger") || strings.Contains(combined, "dräger"):
+		model = "Infinity Delta XL Patient Monitor"
+		if osName == "" {
+			osName = "VxWorks 6.9 Medical"
+		}
+		fwVer = "VF9.1.2"
+		ua = fmt.Sprintf("Draeger-Infinity/VF9.1.2 (Draeger Medical; %s; %s; FW/%s)", model, osName, fwVer)
+		serverHdr = "Draeger-Embedded-Web/VF9.1"
+
+	case strings.Contains(combined, "ge healthcare") || strings.Contains(combined, "carescape"):
+		model = "CARESCAPE B650 Monitor"
+		if osName == "" {
+			osName = "GE Embedded Linux 4.14"
+		}
+		fwVer = "v3.2.4-CS"
+		ua = fmt.Sprintf("GE-CARESCAPE/3.2.4 (GE Healthcare; %s; %s; DICOM/HL7; FW/%s)", model, osName, fwVer)
+		serverHdr = "GE-Healthcare-HTTP/3.2.4"
+
+	case strings.Contains(combined, "intellivue") || (strings.Contains(combined, "philips") && (strings.Contains(combined, "patient") || strings.Contains(combined, "monitor") || strings.Contains(combined, "medical"))):
+		model = "IntelliVue MX800"
+		if osName == "" {
+			osName = "Philips Medical RTOS"
+		}
+		fwVer = "Rev M.02.04"
+		ua = fmt.Sprintf("Philips-IntelliVue/M.02.04 (Philips Healthcare; %s; %s; FW/%s)", model, osName, fwVer)
+		serverHdr = "Philips-MedWeb/M.02"
+
+	case strings.Contains(combined, "ingenico"):
+		model = "Lane/5000 POS Terminal"
+		if osName == "" {
+			osName = "Telium TETRA OS"
+		}
+		fwVer = "11.24.08.P2"
+		ua = fmt.Sprintf("Ingenico-TeliumTetra/11.24.08 (Ingenico Group; %s; %s; PCI-PTS/5.x; FW/%s)", model, osName, fwVer)
+		serverHdr = "TeliumTetra-HTTP/11.24"
+
+	case strings.Contains(combined, "verifone"):
+		model = "VX820 Payment Terminal"
+		if osName == "" {
+			osName = "Verifone V/OS (Embedded Linux)"
+		}
+		fwVer = "release-30811100"
+		ua = fmt.Sprintf("Verifone-VOS/30811100 (Verifone Inc.; %s; %s; FW/%s)", model, osName, fwVer)
+		serverHdr = "Verifone-Web/3.08"
+
+	case strings.Contains(combined, "zebra"):
+		model = "ZT411 Industrial Label Printer"
+		if osName == "" {
+			osName = "Zebra Link-OS 6.7"
+		}
+		fwVer = "V84.20.23Z"
+		ua = fmt.Sprintf("Zebra-LinkOS/6.7 (Zebra Technologies; %s; %s; FW/%s)", model, osName, fwVer)
+		serverHdr = "Zebra-WebPrint/6.7"
+		extraPorts = append(extraPorts, 9100)
+
+	case strings.Contains(combined, "moxa"):
+		model = "NPort 5150A Serial Gateway"
+		if osName == "" {
+			osName = "Moxa Embedded RTOS"
+		}
+		fwVer = "v1.6 Build 21041514"
+		ua = fmt.Sprintf("Moxa-NPort/1.6 (Moxa Inc.; %s; %s; FW/%s)", model, osName, fwVer)
+		serverHdr = "MoxaHttp/1.0"
+		extraPorts = append(extraPorts, 502)
+
+	case strings.Contains(combined, "johnson controls") || strings.Contains(combined, "metasys"):
+		model = "Metasys NAE5510 Controller"
+		if osName == "" {
+			osName = "VxWorks / Windows Embedded"
+		}
+		fwVer = "11.0.2.104"
+		ua = fmt.Sprintf("JCI-Metasys/11.0.2 (Johnson Controls; %s; BACnet/IP; FW/%s)", model, fwVer)
+		serverHdr = "Metasys-Web/11.0"
+
 	default:
 		// Level 3: Synthesize by OS family or Device Type keywords (for user-created or unknown vendor devices)
 		switch {
@@ -674,6 +763,10 @@ func synthesizePersona(spec IoTDeviceSpec) iotPersona {
 			ua = fmt.Sprintf("%s/2.4.18 (%s; %s; OS/%s; FW/%s; ID/%s)", strings.ReplaceAll(vc, " ", "-"), vendor, devType, osName, fwVer, spec.ID)
 			serverHdr = fmt.Sprintf("%s/2.4.18 (%s)", strings.ReplaceAll(vc, " ", "-"), osName)
 		}
+	}
+
+	if explicitFW != "" && explicitFW != "-" {
+		fwVer = explicitFW
 	}
 
 	lldpDesc := fmt.Sprintf("%s %s (%s) | OS: %s | FW: %s", vendor, model, devName, osName, fwVer)
@@ -1922,8 +2015,10 @@ func generateLAAMAC() string {
 
 func runIoTDaemonLoop(ctx context.Context, rawEng *iotRawEngine, dhcpMode string) {
 	var (
-		devMu   sync.Mutex
-		devices = make(map[string]*iotDeviceRunner)
+		devMu           sync.Mutex
+		devices         = make(map[string]*iotDeviceRunner)
+		releaseMu       sync.Mutex
+		nextReleaseTime time.Time
 	)
 
 	defer func() {
@@ -1943,7 +2038,7 @@ func runIoTDaemonLoop(ctx context.Context, rawEng *iotRawEngine, dhcpMode string
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
 
-	cmdCh := make(chan string, 64)
+	cmdCh := make(chan string, 512)
 	go func() {
 		for scanner.Scan() {
 			cmdCh <- scanner.Text()
@@ -2113,13 +2208,35 @@ func runIoTDaemonLoop(ctx context.Context, rawEng *iotRawEngine, dhcpMode string
 					if releaseIP != "" && releaseIP != "0.0.0.0" {
 						rawEng.UnregisterDeviceIP(releaseIP)
 						if macBytes, err := parseMAC(oldMAC); err == nil {
-							dstMAC := rawEng.ResolveDstMAC(releaseGW, releaseGW)
-							if frame, ok := buildDHCPReleaseFrame(rand.Uint32(), dstMAC, macBytes, releaseIP, releaseGW); ok {
-								_ = rawEng.SendFrame(frame)
+							// Pace DHCPRELEASE frames at 25ms intervals (40 pps -> 2.5s for 100 devices)
+							// so bulk MAC rotations never burst-flood the SD-WAN ION DHCP server.
+							releaseMu.Lock()
+							now := time.Now()
+							var waitDur time.Duration
+							if nextReleaseTime.After(now) {
+								waitDur = nextReleaseTime.Sub(now)
+								nextReleaseTime = nextReleaseTime.Add(25 * time.Millisecond)
+							} else {
+								nextReleaseTime = now.Add(25 * time.Millisecond)
 							}
+							releaseMu.Unlock()
+
+							go func(mStr string, mBytes [6]byte, rIP, rGW string, delay time.Duration) {
+								if delay > 0 {
+									time.Sleep(delay)
+								}
+								dstMAC := rawEng.ResolveDstMAC(rGW, rGW)
+								if frame, ok := buildDHCPReleaseFrame(rand.Uint32(), dstMAC, mBytes, rIP, rGW); ok {
+									_ = rawEng.SendFrame(frame)
+								}
+								emitIoTJSON("dhcp_released", map[string]any{"mac": mStr, "ip": rIP})
+							}(oldMAC, macBytes, releaseIP, releaseGW, waitDur)
+						} else {
+							emitIoTJSON("dhcp_released", map[string]any{"mac": oldMAC, "ip": releaseIP})
 						}
+					} else {
+						emitIoTJSON("dhcp_released", map[string]any{"mac": oldMAC, "ip": releaseIP})
 					}
-					emitIoTJSON("dhcp_released", map[string]any{"mac": oldMAC, "ip": releaseIP})
 				}
 
 			default:

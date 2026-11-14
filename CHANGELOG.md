@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.25] - 2026-11-14
+
+### Added & Enhanced
+- **Persistent Auto-Learning IoT Catalog (`iot_catalog.json`), CSV Harvest Report & Vertical / Scenario Fleet Generator (`web-dashboard/iot-catalog.ts`, `web-dashboard/server.ts`, `web-dashboard/src/Iot.tsx`, `engines/stigix-go/iot.go`)**:
+  - **Persistent & Auto-Learning IoT Catalog (`config/iot_catalog.json` + `iot/wireshark_manuf.txt`)**: Introduced `IoTCatalogManager` backed by a persistent JSON knowledge base (`config/iot_catalog.json`) and indexed against the 45,000+ IEEE OUI Wireshark database (`iot/wireshark_manuf.txt`). Pre-seeded with certified Palo Alto Device Security archetypes across 5 verticals (*Healthcare / IoMT*, *Manufacturing OT / ICS*, *Retail & POS Logistics*, *Smart Building & BMS*, and *Enterprise IT*) plus all archetypes harvested from `iot-devices-sample.json`.
+  - **Automatic CSV/JSON Import Harvesting ("Catalog Harvest Report")**: Every import via `POST /api/iot/import-prisma-csv`, `POST /api/iot/import-vuln-csv`, or `POST /api/iot/config/import` automatically resolves `"Unknown"` vendors via IEEE OUI lookup, enriches `iot_catalog.json` with newly discovered vendors, `(vendor, type)` device profiles, OUIs, OS/Firmware strings, and CVEs, and displays a live **🎣 Catalog Harvest Report** (`+New Vendors`, `+New Profiles`, `+New CVEs`, `OUI Resolved`, and total catalog counts) in the import modal.
+  - **Vertical & Natural-Language IoT Fleet Generator (`POST /api/iot/catalog/generate` + `✨ Fleet Generator` Modal)**: Supports 1-click vertical fleet generation (*🏥 Healthcare & IoMT*, *🏭 Manufacturing OT / ICS*, *🛒 Retail & POS Store*, *🏢 Smart Building & BMS*, *🌐 Enterprise IT*) as well as natural-language scenario prompts (e.g., *"Clinique médicale avec 10 pompes Baxter, 4 IRM Siemens, 8 moniteurs Philips, 5 GE Carescape et 8 caméras Axis"*), compiling 100% authentic IEEE OUIs, DHCP Option 55/60 fingerprints, OS/Firmware versions, and CVE metadata.
+  - **25ms-Paced `DHCPRELEASE` Queue (`40 pps`) & Extended Medical/Retail/OT Personas (`engines/stigix-go/iot.go`)**: Bulk MAC rotations and fleet replacements now pace `DHCPRELEASE` frames at `25ms` intervals (`2.5s` for 100 devices) so the branch SD-WAN ION DHCP server is never burst-flooded, and `synthesizePersona` now includes dedicated profiles for `Baxter`, `Dräger`, `GE Healthcare`, `Philips IntelliVue`, `Ingenico`, `Verifone`, `Zebra`, `Moxa`, and `Johnson Controls`.
+
 ## [3.2.24] - 2026-11-14
 
 ### Added & Enhanced

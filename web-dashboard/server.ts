@@ -18,6 +18,7 @@ import { TestLogger, TestResult } from './test-logger.js';
 import { ConnectivityLogger, ConnectivityResult } from './connectivity-logger.js';
 import { URL_CATEGORIES, DNS_TEST_DOMAINS } from './shared/security-categories.js';
 import { IoTManager, IoTDeviceConfig } from './iot-manager.js';
+import { IoTCatalogManager } from './iot-catalog.js';
 import { VyosManager } from './vyos-manager.js';
 import { VyosScheduler } from './vyos-scheduler.js';
 import { SiteManager } from './site-manager.js';
@@ -21174,6 +21175,7 @@ app.post('/api/iot/config/import', authenticateToken, (req, res) => {
             return clean;
         });
 
+        const catalogHarvest = iotCatalog.harvestDevices(config.devices, 'json-import');
 
         // Backup current file into config/backups/
         if (fs.existsSync(IOT_DEVICES_FILE)) {
@@ -21183,10 +21185,77 @@ app.post('/api/iot/config/import', authenticateToken, (req, res) => {
 
         console.log(`[IOT-REQ] Success: Importing structured config with ${config.devices.length} devices`);
         saveIoTConfig(config);
-        res.json({ success: true, message: 'IoT configuration imported successfully' });
+        res.json({ success: true, message: 'IoT configuration imported successfully', catalog_harvest: catalogHarvest });
     } catch (err: any) {
         console.error('[IOT-REQ] FATAL Import error:', err.message);
         res.status(500).json({ error: 'Import failed', details: err?.message });
+    }
+});
+
+const iotCatalog = new IoTCatalogManager(APP_CONFIG.configDir, PROJECT_ROOT);
+
+/** GET /api/iot/catalog/stats — Returns Persistent IoT Catalog stats & learned archetypes */
+app.get('/api/iot/catalog/stats', authenticateToken, (_req, res) => {
+    try {
+        res.json(iotCatalog.getStats());
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to load IoT catalog stats', detail: e.message });
+    }
+});
+
+/** POST /api/iot/catalog/generate — Generate a Vertical Preset or Natural-Language Scenario Fleet */
+app.post('/api/iot/catalog/generate', authenticateToken, async (req, res) => {
+    try {
+        const { vertical, prompt, count, bad_behavior_pct, merge } = req.body || {};
+        const existing = loadIoTConfig();
+        const existingDevices: any[] = Array.isArray(existing.devices) ? existing.devices : [];
+        const existingMacs = new Set<string>(
+            existingDevices.map((d: any) => String(d.mac || '').toLowerCase()).filter(Boolean)
+        );
+
+        const result = iotCatalog.generateFleet({
+            vertical: vertical ? String(vertical) : undefined,
+            prompt: prompt ? String(prompt) : undefined,
+            count: Number(count) || 30,
+            badBehaviorPct: bad_behavior_pct != null ? Number(bad_behavior_pct) : 25,
+            existingMacs
+        });
+
+        if (merge) {
+            const merged = [...existingDevices, ...result.devices];
+            saveIoTConfig({ ...existing, devices: merged });
+            log('IOT', `Catalog Fleet Generator merged +${result.devices.length} devices (${result.scenario_title})`);
+        } else {
+            // Release existing DHCP leases cleanly (paced at 25ms in stigix-go) and stop active devices
+            const gateway = existing.network?.gateway || '';
+            for (const d of existingDevices) {
+                if (d.mac) {
+                    const liveSt = iotManager.getDeviceStatus(d.id);
+                    await iotManager.releaseDhcpLease(d.mac, liveSt?.ip_address, gateway);
+                }
+            }
+            await iotManager.stopAll();
+            backupConfig(IOT_DEVICES_FILE);
+            saveIoTConfig({
+                network: existing.network || { interface: 'eth0' },
+                devices: result.devices
+            });
+            log('IOT', `Catalog Fleet Generator replaced fleet with ${result.devices.length} devices (${result.scenario_title})`);
+        }
+
+        const badBehaviorCount = result.devices.filter((d: any) => d.security?.bad_behavior).length;
+        res.json({
+            success: true,
+            generated: result.devices.length,
+            bad_behavior: badBehaviorCount,
+            scenario_title: result.scenario_title,
+            engine_mode: result.engine_mode,
+            blueprint_summary: result.blueprint_summary,
+            catalog_stats: iotCatalog.getStats().totals
+        });
+    } catch (e: any) {
+        log('IOT', `Catalog Fleet Generator failed: ${e.message}`, 'error');
+        res.status(500).json({ error: 'Fleet generation failed', detail: e.message });
     }
 });
 
@@ -21245,6 +21314,8 @@ app.post('/api/iot/import-prisma-csv', authenticateToken, async (req, res) => {
             return clean;
         });
 
+        const catalogHarvest = iotCatalog.harvestDevices(newDevices, 'prisma-assets-csv');
+
         if (merge) {
             const existing = loadIoTConfig();
             const existingIds = new Set((existing.devices || []).map((d: any) => d.id));
@@ -21272,6 +21343,7 @@ app.post('/api/iot/import-prisma-csv', authenticateToken, async (req, res) => {
             imported: newDevices.length,
             bad_behavior: badBehaviorCount,
             script_output: scriptOutput.trim(),
+            catalog_harvest: catalogHarvest,
         });
     } catch (e: any) {
         cleanup();
@@ -21332,6 +21404,8 @@ app.post('/api/iot/import-vuln-csv', authenticateToken, async (req, res) => {
             return clean;
         });
 
+        const catalogHarvest = iotCatalog.harvestDevices(newDevices, 'prisma-assets-csv');
+
         if (merge) {
             const existing = loadIoTConfig();
             const existingIds = new Set((existing.devices || []).map((d: any) => d.id));
@@ -21361,6 +21435,7 @@ app.post('/api/iot/import-vuln-csv', authenticateToken, async (req, res) => {
             bad_behavior: badBehaviorCount,
             ics_cert_devices: icsCount,
             script_output: scriptOutput.trim(),
+            catalog_harvest: catalogHarvest,
         });
     } catch (e: any) {
         cleanup();
