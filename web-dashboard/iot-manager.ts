@@ -56,6 +56,13 @@ export class IoTManager extends EventEmitter {
     private statsCache: Map<string, any> = new Map();
     private logsCache: Map<string, any[]> = new Map();
     private fleetLogsCache: any[] = [];
+    // Rolling 2-second pulse history (36 points = 72s) persisted across UI reloads
+    private pulseHistory: { ts: number; net: number; threat: number }[] = Array.from({ length: 36 }, (_, i) => ({
+        ts: Date.now() - (36 - i) * 2000,
+        net: 0,
+        threat: 0,
+    }));
+    private pulseEventsBucket: { net: number; threat: number } = { net: 0, threat: 0 };
     // Traffic rate tracking — snapshot of last received stats per device
     private lastStatsSnapshot: Map<string, { packets: number; bytes: number; ts: number }> = new Map();
     // Per-device pps/bps (refreshed on each stats message, ~every 5s)
@@ -92,7 +99,45 @@ export class IoTManager extends EventEmitter {
         }
         this.pythonScriptPath = scriptPath;
         this.loadSettings();
+        setInterval(() => this.tickPulseHistory(), 2000);
         log('IOT', `Manager initialized — interface: ${this.daemonInterface}, maxConcurrent: ${this.maxConcurrentDevices}`);
+    }
+
+    private isThreatMessage(msg: string, level?: string): boolean {
+        if (!msg) return false;
+        const m = msg.toLowerCase();
+        return (
+            msg.includes('💀') ||
+            m.includes('[beacon]') ||
+            m.includes('[port_scan]') ||
+            m.includes('[pan_test]') ||
+            m.includes('[data_exfil]') ||
+            m.includes('bad behavior') ||
+            level === 'warning' ||
+            level === 'warn'
+        );
+    }
+
+    private tickPulseHistory(): void {
+        const activeCnt = this.getActiveCount();
+        const tr = this.getTrafficRate();
+        const livePps = tr.pps || 0;
+        const bucket = this.pulseEventsBucket;
+        this.pulseEventsBucket = { net: 0, threat: 0 };
+
+        const netEventsPerSec = Math.round(bucket.net / 2);
+        const threatEventsPerSec = (activeCnt > 0 && this.badBehaviorEnabled) ? Math.round(bucket.threat / 2) : 0;
+
+        const threatVal = (activeCnt > 0 && this.badBehaviorEnabled)
+            ? Math.max(threatEventsPerSec, Math.round((livePps || Math.max(1, Math.round(activeCnt * 0.25))) * 0.35))
+            : 0;
+
+        const netVal = activeCnt > 0
+            ? Math.max(livePps, netEventsPerSec + threatVal, Math.max(1, Math.round(activeCnt * 0.45)))
+            : 0;
+
+        this.pulseHistory.push({ ts: Date.now(), net: netVal, threat: threatVal });
+        if (this.pulseHistory.length > 36) this.pulseHistory.shift();
     }
 
     // ── Settings persistence ─────────────────────────────────────────────────
@@ -652,6 +697,12 @@ export class IoTManager extends EventEmitter {
                 if (logs.length > 100) logs.shift();
                 this.logsCache.set(device_id, logs);
 
+                if (this.isThreatMessage(msg.message || '', msg.level)) {
+                    this.pulseEventsBucket.threat += 1;
+                } else {
+                    this.pulseEventsBucket.net += 1;
+                }
+
                 const cfg = this.managedDevices.get(device_id);
                 const enriched = {
                     ...msg,
@@ -730,6 +781,10 @@ export class IoTManager extends EventEmitter {
 
     getFleetLogs(limit: number = 100): any[] {
         return this.fleetLogsCache.slice(-limit);
+    }
+
+    getPulseHistory(): { ts: number; net: number; threat: number }[] {
+        return this.pulseHistory.slice();
     }
 
     getProtocolBreakdown(): Record<string, number> {

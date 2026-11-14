@@ -2505,6 +2505,7 @@ io.on('connection', (socket) => {
     socket.on('join-iot-fleet-stream', () => {
         socket.join('iot:fleet-stream');
         socket.emit('iot:fleet-initial-logs', iotManager.getFleetLogs(80));
+        socket.emit('iot:pulse-history', iotManager.getPulseHistory());
     });
 
     socket.on('leave-iot-fleet-stream', () => {
@@ -16760,12 +16761,13 @@ app.get('/api/iot/queue-status', authenticateToken, (req, res) => {
     });
 });
 
-// GET /api/iot/fleet-logs — recent multiplexed fleet logs + protocol breakdown (supports Peer Context)
+// GET /api/iot/fleet-logs — recent multiplexed fleet logs + protocol breakdown + pulseHistory (supports Peer Context)
 app.get('/api/iot/fleet-logs', authenticateToken, (req, res) => {
     res.json({
         logs:              iotManager.getFleetLogs(80),
         protocolBreakdown: iotManager.getProtocolBreakdown(),
         trafficRate:       iotManager.getTrafficRate(),
+        pulseHistory:      iotManager.getPulseHistory(),
     });
 });
 
@@ -16861,6 +16863,7 @@ function refreshIotHealth(): void {
         // Traffic rate (packets/s, bits/s) aggregated from active IoT device stats
         iotHealthCache.trafficRate = iotManager.getTrafficRate();
         iotHealthCache.protocolBreakdown = iotManager.getProtocolBreakdown();
+        iotHealthCache.pulseHistory = iotManager.getPulseHistory();
     } catch (e) {
         log('SYSTEM', `IoT health refresh error: ${e}`, 'error');
     }

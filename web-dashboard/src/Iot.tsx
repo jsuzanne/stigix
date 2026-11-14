@@ -90,7 +90,11 @@ export default function Iot({ token }: IotProps) {
     const sliderDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
     // State filter & sorting
     const [stateFilter, setStateFilter] = useState<'ALL' | 'ACTIVE' | 'QUEUED' | 'IDLE' | 'STOPPED'>('ALL');
-    const [sortBy, setSortBy] = useState<'index' | 'danger' | 'packets' | 'name'>('index');
+    const [sortBy, setSortBy] = useState<'recent' | 'index' | 'danger' | 'packets' | 'name'>(() => {
+        const saved = localStorage.getItem('iot-sort-by');
+        if (saved && ['recent', 'index', 'danger', 'packets', 'name'].includes(saved)) return saved as any;
+        return 'recent';
+    });
     const [onlyRiskOrAttack, setOnlyRiskOrAttack] = useState(false);
 
     // ── Live Pulse & Fleet Stream state ───────────────────────────────────────
@@ -168,6 +172,17 @@ export default function Iot({ token }: IotProps) {
             }
             if (health.protocolBreakdown) {
                 setProtocolBreakdown(health.protocolBreakdown);
+            }
+            if (Array.isArray(health.pulseHistory) && health.pulseHistory.length > 0) {
+                setPulseHistory(prev => {
+                    const hasNonZero = prev.some(p => p.net > 0 || p.threat > 0);
+                    return hasNonZero ? prev : health.pulseHistory.slice(-36);
+                });
+            }
+        });
+        socket.on('iot:pulse-history', (history: any[]) => {
+            if (Array.isArray(history) && history.length > 0) {
+                setPulseHistory(history.slice(-36));
             }
         });
         socket.on('iot:fleet-initial-logs', (initial: any[]) => {
@@ -302,6 +317,12 @@ export default function Iot({ token }: IotProps) {
                 setTrafficRate(data.trafficRate);
                 trafficRateRef.current = data.trafficRate;
             }
+            if (Array.isArray(data?.pulseHistory) && data.pulseHistory.length > 0) {
+                setPulseHistory(prev => {
+                    const hasNonZero = prev.some(p => p.net > 0 || p.threat > 0);
+                    return hasNonZero ? prev : data.pulseHistory.slice(-36);
+                });
+            }
         } catch {}
     };
 
@@ -331,6 +352,10 @@ export default function Iot({ token }: IotProps) {
     useEffect(() => {
         localStorage.setItem('iot-live-pulse', String(showLivePulse));
     }, [showLivePulse]);
+
+    useEffect(() => {
+        localStorage.setItem('iot-sort-by', sortBy);
+    }, [sortBy]);
 
     // ── Live Pulse Oscilloscope Ticker (2s resolution) ───────────────────────
     useEffect(() => {
@@ -734,7 +759,30 @@ export default function Iot({ token }: IotProps) {
         const riskMatch = !onlyRiskOrAttack || isDeviceRiskyOrAttacking(d);
         return textMatch && stateMatch && riskMatch;
     }).sort((a, b) => {
-        if (sortBy === 'danger') {
+        if (sortBy === 'recent') {
+            const stateRank = (s?: string) => s === 'ACTIVE' ? 0 : s === 'QUEUED' ? 1 : s === 'IDLE' ? 2 : 3;
+            const sA = (a as any).deviceState || 'STOPPED';
+            const sB = (b as any).deviceState || 'STOPPED';
+            const rDiff = stateRank(sA) - stateRank(sB);
+            if (rDiff !== 0) return rDiff;
+
+            if (sA === 'ACTIVE') {
+                // Most recently activated device at the top (#1)
+                const actA = (a as any).timing?.activatedAt || 0;
+                const actB = (b as any).timing?.activatedAt || 0;
+                if (actB !== actA) return actB - actA;
+            } else if (sA === 'QUEUED') {
+                // Next to be promoted (#1 in queue) first
+                const qA = (a as any).timing?.queuePosition ?? 9999;
+                const qB = (b as any).timing?.queuePosition ?? 9999;
+                if (qA !== qB) return qA - qB;
+            } else if (sA === 'IDLE') {
+                // Closest to waking up first
+                const remA = ((a as any).timing?.cycleSeconds || 60) * 1000 - (now - ((a as any).timing?.idledAt || 0));
+                const remB = ((b as any).timing?.cycleSeconds || 60) * 1000 - (now - ((b as any).timing?.idledAt || 0));
+                if (remA !== remB) return remA - remB;
+            }
+        } else if (sortBy === 'danger') {
             const diff = ((b as any)._vuln_meta?.danger_score || 0) - ((a as any)._vuln_meta?.danger_score || 0);
             if (diff !== 0) return diff;
         } else if (sortBy === 'packets') {
@@ -1130,8 +1178,10 @@ export default function Iot({ token }: IotProps) {
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value as any)}
                             className="bg-transparent text-[11px] font-bold text-text-primary outline-none cursor-pointer"
+                            title="Sort IoT devices — switch to #ID for static editing order"
                         >
-                            <option value="index" className="bg-card text-text-primary">#ID</option>
+                            <option value="recent" className="bg-card text-text-primary">⚡ Live Activity</option>
+                            <option value="index" className="bg-card text-text-primary">#ID (Static)</option>
                             <option value="danger" className="bg-card text-text-primary">Danger Score</option>
                             <option value="packets" className="bg-card text-text-primary">Packets</option>
                             <option value="name" className="bg-card text-text-primary">Name</option>
