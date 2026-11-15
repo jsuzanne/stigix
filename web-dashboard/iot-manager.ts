@@ -879,12 +879,9 @@ export class IoTManager extends EventEmitter {
             log('IOT', `Failed to purge DHCP lease for ${cleanMac}: ${e.message}`, 'warn');
         }
 
-        const existingStats = this.statsCache.get(deviceId);
-        if (existingStats) {
-            const updated = { ...existingStats };
-            delete updated.current_ip;
-            this.statsCache.set(deviceId, updated);
-        }
+        this.statsCache.delete(deviceId);
+        this.cumulativeStats.delete(deviceId);
+        this.cumulativeTime.delete(deviceId);
         this.deviceRates.delete(deviceId);
         this.lastStatsSnapshot.delete(deviceId);
 
@@ -896,6 +893,61 @@ export class IoTManager extends EventEmitter {
                 gateway: resolvedGw,
             });
         }
+    }
+
+    /**
+     * Resets cumulative packet/byte/protocol/uptime statistics for all devices
+     * (or a subset of device IDs) and notifies the running daemon.
+     */
+    resetStats(deviceIds?: string[]): void {
+        if (Array.isArray(deviceIds) && deviceIds.length > 0) {
+            for (const id of deviceIds) {
+                const curIp = this.statsCache.get(id)?.current_ip;
+                this.cumulativeStats.delete(id);
+                this.cumulativeTime.delete(id);
+                this.deviceRates.delete(id);
+                this.lastStatsSnapshot.delete(id);
+                if (curIp) {
+                    this.statsCache.set(id, {
+                        packets_sent: 0,
+                        bytes_sent: 0,
+                        uptime_seconds: 0,
+                        protocols: {},
+                        current_ip: curIp,
+                    });
+                } else {
+                    this.statsCache.delete(id);
+                }
+                if (this.daemonProcess && this.daemonReady) {
+                    this.sendCommand({ cmd: 'reset_stats', device_id: id });
+                }
+            }
+            log('IOT', `Reset cumulative IoT stats for ${deviceIds.length} device(s)`);
+            return;
+        }
+
+        const preservedIps = new Map<string, string>();
+        for (const [id, st] of this.statsCache.entries()) {
+            if (st?.current_ip) preservedIps.set(id, st.current_ip);
+        }
+        this.statsCache.clear();
+        this.cumulativeStats.clear();
+        this.cumulativeTime.clear();
+        this.deviceRates.clear();
+        this.lastStatsSnapshot.clear();
+        for (const [id, ip] of preservedIps.entries()) {
+            this.statsCache.set(id, {
+                packets_sent: 0,
+                bytes_sent: 0,
+                uptime_seconds: 0,
+                protocols: {},
+                current_ip: ip,
+            });
+        }
+        if (this.daemonProcess && this.daemonReady) {
+            this.sendCommand({ cmd: 'reset_stats' });
+        }
+        log('IOT', 'Reset cumulative IoT stats for all devices');
     }
 
     setBadBehavior(enabled: boolean): void {

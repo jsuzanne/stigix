@@ -1723,26 +1723,65 @@ func (d *iotDeviceRunner) sleepBadBehavior(bCtx context.Context, dur time.Durati
 	}
 }
 
+func normalizeBehaviorType(raw string) string {
+	b := strings.ToLower(strings.TrimSpace(raw))
+	switch b {
+	case "dns_flood", "dns_suspicious":
+		return "dns_flood"
+	case "port_scan", "lateral movement", "credential_spray":
+		return "port_scan"
+	case "beacon", "beaconing / c2", "c2":
+		return "beacon"
+	case "data_exfil", "data exfiltration":
+		return "data_exfil"
+	case "pan_test_domains", "pan_dns_test", "pan_url_test":
+		return "pan_test_domains"
+	case "random":
+		return "random"
+	default:
+		return b
+	}
+}
+
 func (d *iotDeviceRunner) runBadBehaviorDispatcher(bCtx context.Context, bTypes []string) {
-	d.log("warning", fmt.Sprintf("💀 BAD BEHAVIOR dispatcher started (types: %s)", strings.Join(bTypes, ", ")))
+	var validTypes []string
+	seen := make(map[string]bool)
 	for _, bt := range bTypes {
-		bType := strings.TrimSpace(bt)
-		switch bType {
-		case "dns_flood":
-			go d.badDNSFlood(bCtx)
-		case "port_scan":
-			go d.badPortScan(bCtx)
-		case "beacon":
-			go d.badBeacon(bCtx)
-		case "data_exfil":
-			go d.badDataExfil(bCtx)
-		case "pan_test_domains":
-			go d.badPANTestDomains(bCtx)
-		case "random":
-			go d.badRandomMix(bCtx)
-		default:
-			d.log("error", fmt.Sprintf("❌ Unknown behavior type: %s", bType))
+		norm := normalizeBehaviorType(bt)
+		if norm != "" && !seen[norm] {
+			seen[norm] = true
+			validTypes = append(validTypes, norm)
 		}
+	}
+	if len(validTypes) == 0 {
+		validTypes = []string{"random"}
+	}
+
+	// Pick ONE behavior at random per active cycle (instead of firing all configured
+	// attacks in parallel) and stagger start by 10-25s so normal baseline IoT traffic
+	// (DNS, HTTP, ARP, LLDP, DHCP) remains the majority of packets on the wire.
+	chosen := validTypes[rand.Intn(len(validTypes))]
+	stagger := time.Duration(10+rand.Intn(16)) * time.Second
+	if !d.sleepBadBehavior(bCtx, stagger) {
+		return
+	}
+
+	d.log("warning", fmt.Sprintf("💀 BAD BEHAVIOR cycle selected: %s (pool: %s)", chosen, strings.Join(validTypes, ", ")))
+	switch chosen {
+	case "dns_flood":
+		go d.badDNSFlood(bCtx)
+	case "port_scan":
+		go d.badPortScan(bCtx)
+	case "beacon":
+		go d.badBeacon(bCtx)
+	case "data_exfil":
+		go d.badDataExfil(bCtx)
+	case "pan_test_domains":
+		go d.badPANTestDomains(bCtx)
+	case "random":
+		go d.badRandomMix(bCtx)
+	default:
+		d.log("error", fmt.Sprintf("❌ Unknown behavior type: %s", chosen))
 	}
 }
 
@@ -1754,7 +1793,7 @@ func (d *iotDeviceRunner) badDNSFlood(bCtx context.Context) {
 		if gw != "" {
 			servers = append(servers, gw)
 		}
-		for i := 0; i < 3; i++ {
+		for i := 0; i < 2; i++ {
 			if !d.isBadBehaviorActive(bCtx) {
 				return
 			}
@@ -1764,11 +1803,11 @@ func (d *iotDeviceRunner) badDNSFlood(bCtx context.Context) {
 			if d.sendSpoofedUDP(srv, sport, 53, buildDNSQueryPayload(domain), "bad_dns") {
 				d.log("warning", fmt.Sprintf("💀 [dns_flood] Query: %s → %s", domain, srv))
 			}
-			if !d.sleepBadBehavior(bCtx, 1*time.Second) {
+			if !d.sleepBadBehavior(bCtx, 2*time.Second) {
 				return
 			}
 		}
-		if !d.sleepBadBehavior(bCtx, 60*time.Second) {
+		if !d.sleepBadBehavior(bCtx, 120*time.Second) {
 			return
 		}
 	}
@@ -1790,23 +1829,26 @@ func (d *iotDeviceRunner) badPortScan(bCtx context.Context) {
 		parts := strings.Split(gw, ".")
 		if len(parts) == 4 {
 			prefix := strings.Join(parts[:3], ".")
-			for i := 0; i < 5; i++ {
+			for i := 0; i < 4; i++ {
 				targets = append(targets, fmt.Sprintf("%s.%d", prefix, 1+rand.Intn(253)))
 			}
 		}
 		target := targets[rand.Intn(len(targets))]
-		for _, port := range commonPorts {
+		// Pick 3 random ports per salvo instead of all 10 to keep scan volume realistic
+		perm := rand.Perm(len(commonPorts))
+		for i := 0; i < 3 && i < len(perm); i++ {
 			if !d.isBadBehaviorActive(bCtx) {
 				return
 			}
+			port := commonPorts[perm[i]]
 			if d.sendSpoofedTCP(target, port, tcpFlagSYN, nil, "bad_scan") {
 				d.log("warning", fmt.Sprintf("💀 [port_scan] Scan: %s:%d", target, port))
 			}
-			if !d.sleepBadBehavior(bCtx, 500*time.Millisecond) {
+			if !d.sleepBadBehavior(bCtx, 800*time.Millisecond) {
 				return
 			}
 		}
-		if !d.sleepBadBehavior(bCtx, 120*time.Second) {
+		if !d.sleepBadBehavior(bCtx, 150*time.Second) {
 			return
 		}
 	}
@@ -1831,7 +1873,7 @@ func (d *iotDeviceRunner) badBeacon(bCtx context.Context) {
 		if d.sendSpoofedTCPFlow(beaconIP, 8443, l7Beacon, "bad_beacon") {
 			d.log("warning", fmt.Sprintf("💀 [beacon] HTTP: %s:8443", beaconIP))
 		}
-		if !d.sleepBadBehavior(bCtx, 45*time.Second) {
+		if !d.sleepBadBehavior(bCtx, 90*time.Second) {
 			return
 		}
 	}
@@ -1850,18 +1892,10 @@ func (d *iotDeviceRunner) badDataExfil(bCtx context.Context) {
 
 	for d.isBadBehaviorActive(bCtx) {
 		t := targets[rand.Intn(len(targets))]
-		for i := 0; i < 2; i++ {
-			if !d.isBadBehaviorActive(bCtx) {
-				return
-			}
-			if d.sendSpoofedTCP(t.ip, t.port, tcpFlagPA, payload, "bad_exfil") {
-				d.log("warning", fmt.Sprintf("💀 [data_exfil] Upload: %s:%d (%d bytes)", t.ip, t.port, len(payload)))
-			}
-			if !d.sleepBadBehavior(bCtx, 1*time.Second) {
-				return
-			}
+		if d.sendSpoofedTCP(t.ip, t.port, tcpFlagPA, payload, "bad_exfil") {
+			d.log("warning", fmt.Sprintf("💀 [data_exfil] Upload: %s:%d (%d bytes)", t.ip, t.port, len(payload)))
 		}
-		if !d.sleepBadBehavior(bCtx, 90*time.Second) {
+		if !d.sleepBadBehavior(bCtx, 120*time.Second) {
 			return
 		}
 	}
@@ -1878,47 +1912,24 @@ func (d *iotDeviceRunner) badPANTestDomains(bCtx context.Context) {
 		if gw != "" {
 			servers = append(servers, gw)
 		}
-		for i := 0; i < 2; i++ {
-			if !d.isBadBehaviorActive(bCtx) {
-				return
-			}
-			domain := iotPANDNSTestDomains[rand.Intn(len(iotPANDNSTestDomains))]
-			srv := servers[rand.Intn(len(servers))]
-			sport := uint16(49152 + rand.Intn(16383))
-			if d.sendSpoofedUDP(srv, sport, 53, buildDNSQueryPayload(domain), "bad_pan_dns") {
-				d.log("warning", fmt.Sprintf("💀 [pan_test] DNS Security: %s → %s", domain, srv))
-			}
-			if !d.sleepBadBehavior(bCtx, 2*time.Second) {
-				return
-			}
-		}
-		if !d.sleepBadBehavior(bCtx, 10*time.Second) {
-			return
-		}
-
-		// 1. Send DNS query for urlfiltering.paloaltonetworks.com from the IoT device IP first
-		dnsSrv := servers[rand.Intn(len(servers))]
+		domain := iotPANDNSTestDomains[rand.Intn(len(iotPANDNSTestDomains))]
+		srv := servers[rand.Intn(len(servers))]
 		sport := uint16(49152 + rand.Intn(16383))
-		d.sendSpoofedUDP(dnsSrv, sport, 53, buildDNSQueryPayload(panHost), "bad_pan_dns")
-		if !d.sleepBadBehavior(bCtx, 250*time.Millisecond) {
+		if d.sendSpoofedUDP(srv, sport, 53, buildDNSQueryPayload(domain), "bad_pan_dns") {
+			d.log("warning", fmt.Sprintf("💀 [pan_test] DNS Security: %s → %s", domain, srv))
+		}
+		if !d.sleepBadBehavior(bCtx, 4*time.Second) {
 			return
 		}
 
-		// 2. Resolve live IP of urlfiltering.paloaltonetworks.com (fallback 34.111.236.155)
+		// Resolve live IP of urlfiltering.paloaltonetworks.com (fallback 34.111.236.155)
 		panURLIP := resolveDomainIPv4(panHost, panFallbackIP)
 		path := iotPANURLTestPaths[rand.Intn(len(iotPANURLTestPaths))]
-		tlsHello := buildTLSClientHelloPayload(panHost)
 		httpReq := buildHTTPGetPayload(panHost, path, d.httpUserAgent())
-		if d.sendSpoofedTCPFlow(panURLIP, 443, tlsHello, "bad_pan_url") {
-			d.log("warning", fmt.Sprintf("💀 [pan_test] URL Filter HTTPS: %s%s → %s:443", panHost, path, panURLIP))
-		}
-		if !d.sleepBadBehavior(bCtx, 3*time.Second) {
-			return
-		}
 		if d.sendSpoofedTCPFlow(panURLIP, 80, httpReq, "bad_pan_url") {
 			d.log("warning", fmt.Sprintf("💀 [pan_test] URL Filter HTTP: %s%s → %s:80", panHost, path, panURLIP))
 		}
-		if !d.sleepBadBehavior(bCtx, 90*time.Second) {
+		if !d.sleepBadBehavior(bCtx, 150*time.Second) {
 			return
 		}
 	}
@@ -2189,6 +2200,28 @@ func runIoTDaemonLoop(ctx context.Context, rawEng *iotRawEngine, dhcpMode string
 				}
 				devMu.Unlock()
 				emitIoTJSON("bad_behavior_disabled", map[string]any{})
+
+			case "reset_stats":
+				targetID := strings.TrimSpace(cmd.DeviceID)
+				devMu.Lock()
+				for id, r := range devices {
+					if targetID == "" || id == targetID {
+						r.mu.Lock()
+						r.packetsSent = 0
+						r.bytesSent = 0
+						r.previousUptime = 0
+						r.startTime = time.Now()
+						r.protoCounts = make(map[string]int64)
+						r.mu.Unlock()
+						r.emitStats()
+					}
+				}
+				if targetID == "" {
+					totalIoTPackets.Store(0)
+					totalIoTBytes.Store(0)
+				}
+				devMu.Unlock()
+				emitIoTJSON("stats_reset", map[string]any{"device_id": targetID})
 
 			case "release_dhcp":
 				oldMAC := strings.TrimSpace(cmd.MAC)

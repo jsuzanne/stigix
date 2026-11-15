@@ -17076,8 +17076,9 @@ app.post('/api/iot/devices/rotate-macs', authenticateToken, async (req, res) => 
             iotManager.releaseDhcpLease(d.id, oldMac, oldIp, d.gateway || gateway);
 
             const { newMac, suffixHex } = generateNewMacKeepOUI(oldMac);
-            const nextDevice = {
-                ...d,
+            const { previous_stats, ...cleanDevice } = d;
+            const nextDevice: any = {
+                ...cleanDevice,
                 mac: newMac,
             };
 
@@ -17107,6 +17108,11 @@ app.post('/api/iot/devices/rotate-macs', authenticateToken, async (req, res) => 
         }
 
         saveIoTConfig({ ...config, devices: updatedDevices });
+
+        // Wait 120ms for any in-flight 'stats' messages emitted during device stop to settle,
+        // then clear cumulative stats so rotated MAC identities start fresh at 0 pkts / up 0m.
+        await new Promise(r => setTimeout(r, 120));
+        iotManager.resetStats(targetIdSet ? Array.from(targetIdSet) : undefined);
 
         for (const dev of devicesToRestart) {
             iotManager.startDevice({ ...dev, gateway }).catch(err =>
@@ -21194,6 +21200,18 @@ app.post('/api/iot/config/import', authenticateToken, (req, res) => {
 
 const iotCatalog = new IoTCatalogManager(APP_CONFIG.configDir, PROJECT_ROOT);
 
+/** POST /api/iot/stats/reset — Reset cumulative packet/protocol/uptime counters */
+app.post('/api/iot/stats/reset', authenticateToken, (req, res) => {
+    try {
+        const { ids } = req.body || {};
+        const targetIds = Array.isArray(ids) && ids.length > 0 ? ids.map(String) : undefined;
+        iotManager.resetStats(targetIds);
+        res.json({ success: true, protocolBreakdown: iotManager.getProtocolBreakdown() });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to reset IoT stats', detail: e.message });
+    }
+});
+
 /** GET /api/iot/catalog/stats — Returns Persistent IoT Catalog stats & learned archetypes */
 app.get('/api/iot/catalog/stats', authenticateToken, (_req, res) => {
     try {
@@ -21231,10 +21249,11 @@ app.post('/api/iot/catalog/generate', authenticateToken, async (req, res) => {
             for (const d of existingDevices) {
                 if (d.mac) {
                     const liveSt = iotManager.getDeviceStatus(d.id);
-                    await iotManager.releaseDhcpLease(d.mac, liveSt?.ip_address, gateway);
+                    iotManager.releaseDhcpLease(d.id, d.mac, liveSt?.stats?.current_ip, gateway);
                 }
             }
             await iotManager.stopAll();
+            iotManager.resetStats();
             backupConfig(IOT_DEVICES_FILE);
             saveIoTConfig({
                 network: existing.network || { interface: 'eth0' },

@@ -588,10 +588,13 @@ export default function Iot({ token }: IotProps) {
             if (!res.ok || !data.success) {
                 throw new Error(data.error || `HTTP ${res.status}`);
             }
+            if (!isSubset) {
+                setProtocolBreakdown({});
+            }
             setShowRenewMacModal(false);
             await fetchDevices();
             setRotationNotice(
-                `Rotated ${data.rotated} MAC suffix${data.rotated === 1 ? '' : 'es'} (Vendor OUI preserved + 25ms-paced DHCP RELEASE sent)`
+                `Rotated ${data.rotated} MAC suffix${data.rotated === 1 ? '' : 'es'} (Vendor OUI preserved + 25ms-paced DHCP RELEASE + Stats reset)`
             );
             setTimeout(() => setRotationNotice(null), 6500);
         } catch (e: any) {
@@ -599,6 +602,22 @@ export default function Iot({ token }: IotProps) {
             alert('MAC rotation failed: ' + (e.message || 'Unknown error'));
         } finally {
             setRotatingMacs(false);
+        }
+    };
+
+    const handleResetStats = async () => {
+        try {
+            const res = await gFetch('/api/iot/stats/reset', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({}),
+            });
+            if (res.ok) {
+                setProtocolBreakdown({});
+                await fetchDevices();
+            }
+        } catch (e) {
+            console.error('Failed to reset IoT stats', e);
         }
     };
 
@@ -1488,18 +1507,28 @@ export default function Iot({ token }: IotProps) {
 
                         {/* Col 2: Dynamic Protocol & Threat Equalizer (3 cols) */}
                         <div className="lg:col-span-3 bg-card border border-border rounded-2xl p-3.5 flex flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-xs mb-2">
-                                <span className="font-bold text-text-primary">
+                            <div className="flex items-center justify-between text-xs mb-2 gap-1.5">
+                                <span className="font-bold text-text-primary truncate">
                                     {badBehaviorEnabled ? 'Protocol & Threat Mix' : 'Clean Protocol Mix'}
                                 </span>
-                                <span className={cn(
-                                    "px-1.5 py-0.5 rounded text-[9px] font-black uppercase border",
-                                    badBehaviorEnabled
-                                        ? "bg-red-500/10 text-red-400 border-red-500/30"
-                                        : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                )}>
-                                    {badBehaviorEnabled ? '💀 Threats ON' : '🛡️ Clean'}
-                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={handleResetStats}
+                                        className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-all"
+                                        title="Reset cumulative packet, protocol & uptime counters to 0"
+                                    >
+                                        Reset
+                                    </button>
+                                    <span className={cn(
+                                        "px-1.5 py-0.5 rounded text-[9px] font-black uppercase border",
+                                        badBehaviorEnabled
+                                            ? "bg-red-500/10 text-red-400 border-red-500/30"
+                                            : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                    )}>
+                                        {badBehaviorEnabled ? '💀 Threats ON' : '🛡️ Clean'}
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="space-y-2.5 my-auto">
