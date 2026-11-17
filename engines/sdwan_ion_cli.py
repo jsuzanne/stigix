@@ -23,8 +23,13 @@ import json
 import os
 import re
 import secrets
+import ssl
 import sys
 import time
+
+if "REQUESTS_CA_BUNDLE" not in os.environ and os.path.exists("/etc/ssl/certs/ca-certificates.crt"):
+    os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
+    os.environ["SSL_CERT_FILE"] = "/etc/ssl/certs/ca-certificates.crt"
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -568,8 +573,20 @@ def toolkit_connect(sdk: Any, element_id: str, *, connect_fn: Optional[Callable[
     elif ua:
         headers["User-Agent"] = str(ua)
     ca_ctx = getattr(sdk, "_ca_ssl_context", None)
-    if url.startswith("wss://") and ca_ctx:
-        kwargs["ssl"] = ca_ctx
+    if url.startswith("wss://"):
+        if ca_ctx:
+            kwargs["ssl"] = ca_ctx
+        else:
+            ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
+            if not ca_bundle and os.path.exists("/etc/ssl/certs/ca-certificates.crt"):
+                ca_bundle = "/etc/ssl/certs/ca-certificates.crt"
+            if ca_bundle and os.path.exists(ca_bundle):
+                try:
+                    ssl_ctx = ssl.create_default_context(cafile=ca_bundle)
+                    kwargs["ssl"] = ssl_ctx
+                    sdk._ca_ssl_context = ssl_ctx
+                except Exception:
+                    pass
     return connect_fn(url, **kwargs)
 
 
@@ -1511,6 +1528,128 @@ def parse_servicelink_summary(output: str) -> List[Dict[str, Any]]:
     return links
 
 
+_SE_MAP_CACHE: Dict[str, str] = {}
+_SL_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+def _get_service_endpoints_map(sdk: Any) -> Dict[str, str]:
+    """Retrieve and cache Prisma SASE service endpoints (e.g. Prisma Access PoPs, Zscaler)."""
+    global _SE_MAP_CACHE
+    if _SE_MAP_CACHE:
+        return _SE_MAP_CACHE
+    if sdk is None:
+        return {}
+    try:
+        se_resp = _resp_body(sdk.get.serviceendpoints()) or {}
+        items = se_resp.get("items") or []
+        for item in items:
+            se_id = str(item.get("id"))
+            name = item.get("name") or "Prisma Access"
+            _SE_MAP_CACHE[se_id] = name
+    except Exception:
+        pass
+    return _SE_MAP_CACHE
+
+
+def _get_site_servicelinks_lookup(sdk: Any, site_id: str, site_name: str) -> Dict[str, Dict[str, Any]]:
+    """Build a lookup of ServiceLink interface ID -> {pop_name, role, wan_label, formatted_path}
+    for the given site, resolving the physical port, WAN circuit, and exact Prisma Access / Zscaler PoP."""
+    global _SL_CACHE
+    now_epoch = datetime.now(timezone.utc).timestamp()
+    cached = _SL_CACHE.get(site_id)
+    if cached and (now_epoch - float(cached.get("_ts") or 0)) < 600:
+        return cached.get("links") or {}
+
+    if sdk is None or not site_id:
+        return {}
+
+    try:
+        se_map = _get_service_endpoints_map(sdk)
+        wi_resp = _resp_body(sdk.get.waninterfaces(site_id)) or {}
+        wi_map = {str(w.get("id")): str(w.get("name")) for w in (wi_resp.get("items") or [])}
+
+        sites, elements = _load_tenant_inventory(sdk)
+        target_el = next((e for e in elements if str(e.get("site_id")) == str(site_id)), None)
+        if not target_el:
+            return {}
+        element_id = str(target_el.get("id"))
+
+        intf_resp = _resp_body(sdk.get.interfaces(site_id, element_id)) or {}
+        intfs = intf_resp.get("items") or []
+
+        # Map wan_interface_id -> physical port name (e.g. "1", "2")
+        port_by_wi: Dict[str, str] = {}
+        for i in intfs:
+            if i.get("type") == "port":
+                port_name = str(i.get("name") or "")
+                for wi_id in (i.get("site_wan_interface_ids") or []):
+                    port_by_wi[str(wi_id)] = port_name
+
+        sl_lookup: Dict[str, Dict[str, Any]] = {}
+        for i in intfs:
+            if i.get("type") != "service_link":
+                continue
+            sl_id = str(i.get("id"))
+            sl_name = str(i.get("name") or "")
+            sl_cfg = i.get("service_link_config") or {}
+            se_id = str(sl_cfg.get("service_endpoint_id") or i.get("service_endpoint_id") or "")
+            pop_raw = se_map.get(se_id) or "Prisma Access"
+
+            pop_clean = re.sub(r"^BACKUP\s+", "", pop_raw).strip()
+            pop_display = re.sub(r"\s*\([^)]*\)$", "", pop_clean).strip()
+
+            role = "Primary"
+            if "bkp" in sl_name.lower() or "backup" in pop_raw.lower():
+                role = "Backup"
+
+            ipsec = sl_cfg.get("ipsec_config") or i.get("ipsec_config") or {}
+            auth = ipsec.get("authentication") or {}
+            local_id = str(auth.get("local_id_custom") or "")
+
+            wan_label = "WAN"
+            matched_wi_id = None
+            for wi_id in wi_map:
+                if wi_id in local_id or wi_id in sl_name:
+                    matched_wi_id = wi_id
+                    break
+
+            if not matched_wi_id:
+                for port_intf in intfs:
+                    if port_intf.get("type") == "port" and str(port_intf.get("id")) in sl_name:
+                        attached_wis = port_intf.get("site_wan_interface_ids") or []
+                        if attached_wis:
+                            matched_wi_id = str(attached_wis[0])
+                            break
+
+            if matched_wi_id:
+                wi_name = wi_map.get(matched_wi_id, "WAN")
+                port_num = port_by_wi.get(matched_wi_id)
+                if port_num:
+                    wan_label = f"{wi_name} (Port {port_num})"
+                else:
+                    wan_label = wi_name
+            else:
+                if "ethernet" in sl_name.lower():
+                    wan_label = f"{site_name}-INET1 (Port 1)" if site_name else "Port 1"
+                elif "cable" in sl_name.lower():
+                    wan_label = f"{site_name}-INET2 (Port 2)" if site_name else "Port 2"
+
+            formatted = f"{wan_label} → {pop_display} ({role})"
+            sl_lookup[sl_id] = {
+                "sl_id": sl_id,
+                "sl_name": sl_name,
+                "pop_name": pop_display,
+                "role": role,
+                "wan_label": wan_label,
+                "formatted_path": formatted,
+            }
+
+        _SL_CACHE[site_id] = {"_ts": now_epoch, "links": sl_lookup}
+        return sl_lookup
+    except Exception:
+        return {}
+
+
 def resolve_wanpath_id(
     sdk: Any,
     site_id: str,
@@ -1523,6 +1662,23 @@ def resolve_wanpath_id(
     wid = str(wanpath_id or "").strip()
     if not wid or wid in ("--", "0", "N/A"):
         return (raw_path_type or "Direct / Local", "DirectInternet")
+
+    raw_low = str(raw_path_type or "").lower()
+
+    # 1. Direct ServiceLink resolution (Prisma Access / Zscaler PoP + WAN Port)
+    if sdk is not None and site_id:
+        try:
+            sl_map = _get_site_servicelinks_lookup(sdk, site_id, site_name)
+            if wid in sl_map:
+                return (sl_map[wid]["formatted_path"], "ServiceLink")
+            if raw_low in ("lan_to_public_service_link", "lan_to_servicelink", "service_link") and sl_map:
+                active_sl = next((v for v in sl_map.values() if v.get("role") == "Primary"), None)
+                if not active_sl:
+                    active_sl = next(iter(sl_map.values()), None)
+                if active_sl:
+                    return (active_sl["formatted_path"], "ServiceLink")
+        except Exception:
+            pass
 
     topo_cache_file = f"/tmp/stigix_site_topo_{site_id}.json"
     now_epoch = datetime.now(timezone.utc).timestamp()
@@ -1555,16 +1711,25 @@ def resolve_wanpath_id(
             pass
 
     link = topo.get(wid) if isinstance(topo, dict) else None
-    raw_low = str(raw_path_type or "").lower()
 
     if isinstance(link, dict):
         ltype = str(link.get("type") or "").lower()
         if ltype.endswith("-stub") or raw_low == "lan_to_wan":
             ckt = link.get("target_circuit_name") or link.get("source_circuit_name") or wid
             return (str(ckt), "DirectInternet")
-        if "servicelink" in ltype or raw_low == "lan_to_servicelink":
+        if "servicelink" in ltype or raw_low in ("lan_to_servicelink", "lan_to_public_service_link"):
+            if sdk is not None and site_id:
+                try:
+                    sl_map = _get_site_servicelinks_lookup(sdk, site_id, site_name)
+                    if wid in sl_map:
+                        return (sl_map[wid]["formatted_path"], "ServiceLink")
+                    active_sl = next((v for v in sl_map.values() if v.get("role") == "Primary"), None)
+                    if active_sl:
+                        return (active_sl["formatted_path"], "ServiceLink")
+                except Exception:
+                    pass
             ckt = link.get("source_circuit_name") or link.get("target_circuit_name") or wid
-            return (f"{ckt} → Standard VPN", "ServiceLink")
+            return (f"{ckt} → Prisma Access / SSE", "ServiceLink")
 
         src_ckt = str(link.get("source_circuit_name") or "Unknown")
         tgt_ckt = str(link.get("target_circuit_name") or "Unknown")
@@ -1601,7 +1766,15 @@ def resolve_wanpath_id(
         except Exception:
             pass
 
-    p_type = "VPN" if "vpn" in raw_low else ("ServiceLink" if "servicelink" in raw_low else "DirectInternet")
+    p_type = "VPN" if "vpn" in raw_low else ("ServiceLink" if ("servicelink" in raw_low or "service_link" in raw_low) else "DirectInternet")
+    if p_type == "ServiceLink" and sdk is not None and site_id:
+        try:
+            sl_map = _get_site_servicelinks_lookup(sdk, site_id, site_name)
+            active_sl = next((v for v in sl_map.values() if v.get("role") == "Primary"), None)
+            if active_sl:
+                return (active_sl["formatted_path"], "ServiceLink")
+        except Exception:
+            pass
     return (f"{p_type} ({wid})", p_type)
 
 
@@ -2182,6 +2355,21 @@ def _authenticate_sdk(credentials_path: str = "credentials.json", *, force_refre
     creds = load_credentials(_DummyArgs(), json_mode=True)
     sdk = API(update_check=False)
     sdk.rest_call_timeout = 10
+
+    ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
+    if not ca_bundle and os.path.exists("/etc/ssl/certs/ca-certificates.crt"):
+        ca_bundle = "/etc/ssl/certs/ca-certificates.crt"
+    if ca_bundle and os.path.exists(ca_bundle):
+        try:
+            sdk.ssl_verify(ca_bundle)
+        except Exception:
+            try:
+                sdk._ca_ssl_context = ssl.create_default_context(cafile=ca_bundle)
+                sess = getattr(sdk, "_session", None)
+                if sess is not None:
+                    sess.verify = ca_bundle
+            except Exception:
+                pass
 
     now_epoch = datetime.now(timezone.utc).timestamp()
     if not force_refresh and os.path.exists(_SASE_SESSION_CACHE_FILE):

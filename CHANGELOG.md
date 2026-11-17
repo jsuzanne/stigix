@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.27] - 2026-11-17
+
+### Added & Enhanced
+- **Prisma Access PoP & WAN Port Resolution in E2E Flow Trace (`engines/sdwan_ion_cli.py`, `web-dashboard/packet-capture-routes.ts`)**:
+  - Automatically correlates vION dataplane `WANPATH-ID` on ServiceLink interfaces against Prisma SASE service endpoints and site WAN interfaces / physical ports.
+  - Replaces raw interface identifiers (e.g. `1763151415484022445 → Standard VPN`) with exact circuit and PoP paths: `BR8-INET1 (Port 1) → Prisma France South (Primary)` vs `BR8-INET2 (Port 2) → Prisma Ireland (Backup)` or `ZScaler`.
+  - Updates E2E Trace Hop 3 card Title and Subtitle dynamically during progress and final trace result.
+  - Configures CA trust store auto-detection (`REQUESTS_CA_BUNDLE` and `sdk.ssl_verify(ca_bundle)`) for Prisma SASE REST and WebSocket CLI calls.
+- **Dedicated Target Badge & Probe Destination Resolution in PCAP Table (`web-dashboard/src/PacketCapture.tsx`)**:
+  - Added new `target` badge archetype styled in violet with `<Target size={10} />` for probed targets, DEM endpoints, and SaaS destinations.
+  - Automatically resolves trace destination IPs (e.g. `3.5.204.149`, `52.95.156.49`) to the configured probe name (e.g. `AWS S3 Europe (Paris)`) or destination FQDN across both source and destination columns instead of generic orange `WAN`.
+
 ## [3.2.26] - 2026-11-17
 
 ### Fixed & Enhanced

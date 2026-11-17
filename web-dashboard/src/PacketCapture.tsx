@@ -5,7 +5,7 @@ import {
     AlertCircle, ChevronRight, ChevronDown, Copy, Check, 
     FileText, ArrowRight, Zap, X, ShieldAlert, Cpu,
     BookmarkPlus, Sparkles, BookOpen, Plus, SlidersHorizontal, Terminal, Info, Globe, Server,
-    Pin, ArrowLeftRight, Activity
+    Pin, ArrowLeftRight, Activity, Target
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
@@ -347,7 +347,7 @@ interface ResolvedTarget {
     label: string;
     isKnownTarget: boolean;
     isLocal: boolean;
-    type: 'stigix' | 'local' | 'iot' | 'lan' | 'wan' | 'special';
+    type: 'stigix' | 'local' | 'iot' | 'lan' | 'wan' | 'special' | 'target';
     vendor?: string;
     deviceType?: string;
     mac?: string;
@@ -375,6 +375,9 @@ function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (l
     } else if (target.type === 'local') {
         colorClass = 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25 hover:border-cyan-500/50 hover:bg-cyan-500/20';
         icon = <Server size={10} className="shrink-0 text-cyan-500 dark:text-cyan-400" />;
+    } else if (target.type === 'target') {
+        colorClass = 'bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/25 hover:border-violet-500/50 hover:bg-violet-500/20';
+        icon = <Target size={10} className="shrink-0 text-violet-500 dark:text-violet-400" />;
     } else if (target.type === 'iot') {
         colorClass = 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25 hover:border-emerald-500/50 hover:bg-emerald-500/20';
         icon = <Cpu size={10} className="shrink-0 text-emerald-500 dark:text-emerald-400" />;
@@ -389,6 +392,8 @@ function TargetBadge({ target, onClick }: { target: ResolvedTarget; onClick?: (l
 
     const tooltip = target.type === 'iot' && (target.vendor || target.deviceType)
         ? `IoT Device: ${target.label} (${[target.vendor, target.deviceType].filter(Boolean).join(' · ')}) — Click to filter`
+        : target.type === 'target'
+        ? `Probed Target / Cloud SaaS: ${target.label} — Click to filter`
         : `Filter by target: ${target.label}`;
 
     return (
@@ -1851,8 +1856,58 @@ export default function PacketCapture({
             }
         });
 
+        // 6. Register configured DEM / Failover Probes
+        configuredProbes.forEach(probe => {
+            const cleanDst = cleanHost(probe.destination);
+            if (cleanDst && !map.has(cleanDst)) {
+                map.set(cleanDst, {
+                    label: probe.name,
+                    isKnownTarget: true,
+                    isLocal: false,
+                    type: 'target'
+                });
+            }
+        });
+
+        // 7. Register active Flow Trace destination & discovered flow IPs
+        const targetLabel =
+            activeProbeLabel ||
+            configuredProbes.find(p => p.destination.toLowerCase() === String(traceResult?.query?.destination_input || traceDestination).toLowerCase())?.name ||
+            (traceResult?.hops?.[3]?.title && traceResult.hops[3].title !== 'Destination' ? traceResult.hops[3].title : '') ||
+            traceResult?.query?.destination_input ||
+            traceDestination ||
+            'Target';
+
+        const addTraceTargetIp = (raw?: string) => {
+            if (!raw) return;
+            const c = cleanHost(raw);
+            if (c && !map.has(c)) {
+                map.set(c, {
+                    label: targetLabel,
+                    isKnownTarget: true,
+                    isLocal: false,
+                    type: 'target'
+                });
+            }
+        };
+
+        if (traceResult) {
+            addTraceTargetIp(traceResult.query?.destination_ip);
+            addTraceTargetIp(traceResult.query?.destination_input);
+            addTraceTargetIp(traceResult.primary_flow?.destination_ip);
+
+            if (Array.isArray(traceResult.ingress_flows)) {
+                traceResult.ingress_flows.forEach((fl: any) => addTraceTargetIp(fl.destination_ip));
+            }
+            if (Array.isArray(traceResult.transit_flows)) {
+                traceResult.transit_flows.forEach((fl: any) => addTraceTargetIp(fl.destination_ip));
+            }
+        } else if (traceDestination) {
+            addTraceTargetIp(traceDestination);
+        }
+
         return map;
-    }, [targets, interfaces, peers, activePeer, iotDevices]);
+    }, [targets, interfaces, peers, activePeer, iotDevices, configuredProbes, traceResult, activeProbeLabel, traceDestination]);
 
     // Resolve an IP address to a Stigix Target, IoT Device, LAN, WAN, or special category
     const resolveTarget = useCallback((rawIp: string): ResolvedTarget => {
@@ -1868,6 +1923,16 @@ export default function PacketCapture({
         }
         if (ipToTargetMap.has(ip.toLowerCase())) {
             return ipToTargetMap.get(ip.toLowerCase())!;
+        }
+
+        // Active trace target fallback matching
+        if (traceResult?.query?.destination_ip && ip === cleanHost(traceResult.query.destination_ip)) {
+            const lbl = activeProbeLabel || traceResult.hops?.[3]?.title || traceResult.query?.destination_input || 'Target';
+            return { label: lbl, isKnownTarget: true, isLocal: false, type: 'target' };
+        }
+        if (traceResult?.primary_flow?.destination_ip && ip === cleanHost(traceResult.primary_flow.destination_ip)) {
+            const lbl = activeProbeLabel || traceResult.hops?.[3]?.title || traceResult.query?.destination_input || 'Target';
+            return { label: lbl, isKnownTarget: true, isLocal: false, type: 'target' };
         }
 
         // Loopback

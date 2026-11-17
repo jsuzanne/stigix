@@ -302,6 +302,8 @@ export function createCaptureApiRouter(
                 env: {
                     ...process.env,
                     PYTHONUNBUFFERED: '1',
+                    REQUESTS_CA_BUNDLE: process.env.REQUESTS_CA_BUNDLE || (fs.existsSync('/etc/ssl/certs/ca-certificates.crt') ? '/etc/ssl/certs/ca-certificates.crt' : undefined),
+                    SSL_CERT_FILE: process.env.SSL_CERT_FILE || (fs.existsSync('/etc/ssl/certs/ca-certificates.crt') ? '/etc/ssl/certs/ca-certificates.crt' : undefined),
                     PRISMA_SDWAN_TSG_ID: process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID
                 }
             });
@@ -1796,7 +1798,7 @@ export function createCaptureApiRouter(
                             id: 'hop_transit',
                             role: fMode === 'SERVICELINK_SSE' ? 'TRANSIT_SERVICELINK' : 'TRANSIT_ION',
                             role_label: fMode === 'DC_BACKHAUL_INTERNET' ? 'Backhaul Hub ION' : fMode === 'SERVICELINK_SSE' ? 'Cloud Security SSE' : 'Transit Hub ION',
-                            title: fMode === 'SERVICELINK_SSE' ? 'ServiceLink SSE' : `Hub ${peerName}`,
+                            title: fMode === 'SERVICELINK_SSE' ? (pFlow?.egress_path && pFlow.egress_path.includes('→') ? pFlow.egress_path.split('→')[1].trim() : 'ServiceLink SSE') : `Hub ${peerName}`,
                             subtitle: pFlow?.egress_path || 'Inspecting tunnel arrival...',
                             status: 'RUNNING',
                             badge: `Inspecting ${peerName}...`,
@@ -2181,11 +2183,18 @@ export function createCaptureApiRouter(
                     }
                 } else if (forwardingMode === 'SERVICELINK_SSE') {
                     const upLinks = servicelinks.filter((s) => String(s.status).toLowerCase() === 'up');
+                    let slTitle = 'Prisma Access / SSE (ServiceLink)';
+                    if (primaryFlow?.egress_path && primaryFlow.egress_path.includes('→')) {
+                        const parts = primaryFlow.egress_path.split('→').map((s: string) => s.trim());
+                        if (parts[1]) {
+                            slTitle = parts[1];
+                        }
+                    }
                     hops.push({
                         id: 'hop_transit',
                         role: 'TRANSIT_SERVICELINK',
                         role_label: 'Cloud Security Tunnel',
-                        title: 'Prisma Access / SSE (ServiceLink)',
+                        title: slTitle,
                         subtitle: primaryFlow.egress_path || 'Standard IPSec ServiceLink',
                         status: upLinks.length > 0 || servicelinks.length === 0 ? 'OBSERVED' : 'BLOCKED',
                         badge: servicelinks.length > 0 ? `${upLinks.length}/${servicelinks.length} Tunnels UP` : 'ServiceLink Tunnel',
