@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import https from 'https';
 import tls from 'tls';
+import { execSync } from 'child_process';
 import { log } from './utils/logger.js';
 
 export interface StoredCertificate {
@@ -120,7 +121,31 @@ export class CertificateManager {
                 ca: combinedCerts
             };
 
-            log('CERT-MGR', `✓ Custom CA bundle applied to Node & Python runtimes (${this.metadata.certificates.length} certs)`);
+            // 3. Register bundle into Linux system trust store (/usr/local/share/ca-certificates/ + update-ca-certificates)
+            if (process.platform === 'linux') {
+                try {
+                    const caCertDir = '/usr/local/share/ca-certificates';
+                    if (!fs.existsSync(caCertDir)) {
+                        fs.mkdirSync(caCertDir, { recursive: true });
+                    }
+                    const osCertTarget = path.join(caCertDir, 'stigix-ca.crt');
+                    fs.writeFileSync(osCertTarget, bundleContent, 'utf8');
+                    execSync('update-ca-certificates', { stdio: 'ignore', timeout: 5000 });
+                    log('CERT-MGR', '✓ Custom CA bundle registered in Linux system trust store (/etc/ssl/certs/)');
+                } catch (osErr: any) {
+                    log('CERT-MGR', `Notice: could not update system CA store: ${osErr.message}`, 'debug');
+                }
+
+                // 4. Reload resident Go daemon to pick up updated Root CAs
+                try {
+                    execSync('supervisorctl restart stigix-go', { stdio: 'ignore', timeout: 5000 });
+                    log('CERT-MGR', '✓ Reloaded stigix-go daemon to pick up updated CA certificates');
+                } catch {
+                    // supervisorctl might not be present in local dev or non-supervisor containers
+                }
+            }
+
+            log('CERT-MGR', `✓ Custom CA bundle applied to Node, Go & Python runtimes (${this.metadata.certificates.length} certs)`);
         } catch (e: any) {
             log('CERT-MGR', `Failed to apply certificates to runtime: ${e.message}`, 'error');
         }

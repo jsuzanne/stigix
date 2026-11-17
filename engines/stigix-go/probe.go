@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -233,6 +235,64 @@ func classifyGoNetError(err error, phase string) (int, string) {
 	return 1, errStr
 }
 
+var (
+	rootCAMu       sync.RWMutex
+	cachedRootPool *x509.CertPool
+	lastBundleMod  time.Time
+)
+
+func getProbeRootCAs() *x509.CertPool {
+	bundlePaths := []string{
+		filepath.Join(getConfigDir(), "certs", "ca-bundle.pem"),
+		"/app/config/certs/ca-bundle.pem",
+		os.Getenv("SSL_CERT_FILE"),
+		os.Getenv("CURL_CA_BUNDLE"),
+	}
+
+	var latestMod time.Time
+	var validPath string
+	for _, p := range bundlePaths {
+		if p == "" {
+			continue
+		}
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			if st.ModTime().After(latestMod) {
+				latestMod = st.ModTime()
+				validPath = p
+			}
+		}
+	}
+
+	rootCAMu.RLock()
+	if cachedRootPool != nil && (validPath == "" || !latestMod.After(lastBundleMod)) {
+		pool := cachedRootPool
+		rootCAMu.RUnlock()
+		return pool
+	}
+	rootCAMu.RUnlock()
+
+	rootCAMu.Lock()
+	defer rootCAMu.Unlock()
+
+	if cachedRootPool != nil && (validPath == "" || !latestMod.After(lastBundleMod)) {
+		return cachedRootPool
+	}
+
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+
+	if validPath != "" {
+		if pemBytes, err := os.ReadFile(validPath); err == nil && len(pemBytes) > 0 {
+			pool.AppendCertsFromPEM(pemBytes)
+		}
+		lastBundleMod = latestMod
+	}
+	cachedRootPool = pool
+	return cachedRootPool
+}
+
 func executeHTTPProbe(
 	targetURL string,
 	iface string,
@@ -363,6 +423,7 @@ func singleHTTPAttempt(
 		},
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: insecureTLS,
+			RootCAs:            getProbeRootCAs(),
 		},
 		TLSHandshakeTimeout: time.Duration(connectTimeoutMS) * time.Millisecond,
 	}

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.26] - 2026-11-17
+
+### Fixed & Enhanced
+- **Prisma Access SSL Forward Trust CA Auto-Registration in System Trust Store (`web-dashboard/certificate-manager.ts`)**:
+  - Automatically installs the aggregated enterprise CA bundle (`ca-bundle.pem`) into `/usr/local/share/ca-certificates/stigix-ca.crt` upon synchronization with Prisma SASE / Strata Cloud Manager or manual upload.
+  - Automatically triggers `update-ca-certificates` inside the container and gracefully reloads the Go engine (`supervisorctl restart stigix-go`) so all system tools (`curl`, OpenSSL, etc.) and native background daemons immediately trust Prisma Access SSL Forward Trust decryption without manual host intervention.
+- **Native Root CA Pool & Dynamic Loading in Go Probe Engine (`engines/stigix-go/probe.go`)**:
+  - Introduced `getProbeRootCAs()` in `stigix-go` to dynamically load and cache CA bundles from `/app/config/certs/ca-bundle.pem` (or local `config/certs/ca-bundle.pem`), `SSL_CERT_FILE`, and `CURL_CA_BUNDLE`, seamlessly merged with `x509.SystemCertPool()`.
+  - Configured `crypto/tls.Config.RootCAs` in `singleHTTPAttempt` with this dynamic pool, preventing `x509: certificate signed by unknown authority` (curl exit 51/60) when synthetic HTTP/HTTPS probes traverse SSL decryption policies to cloud endpoints (AWS S3, Microsoft, Salesforce, Google).
+
 ## [3.2.25] - 2026-11-14
 
 ### Added & Enhanced
