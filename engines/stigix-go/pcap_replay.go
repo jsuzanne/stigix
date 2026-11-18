@@ -27,6 +27,7 @@ func runPcapReplayCLI(args []string) {
 		loopFlag    bool
 		intervalMS  = 2000
 		timeoutMS   = 3000
+		ifaceFlag   string
 	)
 
 	for i := 0; i < len(args); i++ {
@@ -50,6 +51,11 @@ func runPcapReplayCLI(args []string) {
 		case "--port":
 			if i+1 < len(args) {
 				portOvr, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		case "--interface", "-i":
+			if i+1 < len(args) {
+				ifaceFlag = args[i+1]
 				i++
 			}
 		case "--loop":
@@ -128,12 +134,36 @@ func runPcapReplayCLI(args []string) {
 			return
 		default:
 		}
+		iterIface, isWildcard, ok := pickNextInterfaceForPattern(getConfigDir(), ifaceFlag)
+		if !ok && isWildcard {
+			if !loopFlag {
+				iteration++
+				emitReplayLog(map[string]any{
+					"event":     "session_result",
+					"iteration": iteration,
+					"role":      "client",
+					"proto":     proto,
+					"target":    fmt.Sprintf("%s:%d", target, port),
+					"profile":   name,
+					"interface": ifaceFlag,
+					"verdict":   "Error",
+					"reason":    "No active tunnel interface matching pattern is currently UP",
+				})
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
+			continue
+		}
 		iteration++
 		var res map[string]any
 		if proto == "UDP" {
-			res = runUDPReplayClientOnce(profile, name, target, port, timeoutMS)
+			res = runUDPReplayClientOnce(profile, name, target, port, timeoutMS, iterIface)
 		} else {
-			res = runTCPReplayClientOnce(profile, name, target, port, timeoutMS)
+			res = runTCPReplayClientOnce(profile, name, target, port, timeoutMS, iterIface)
 		}
 		res["event"] = "session_result"
 		res["iteration"] = iteration
@@ -444,7 +474,24 @@ func runUDPReplayServer(ctx context.Context, profile ReplayProfile, name string,
 	}
 }
 
-func runTCPReplayClientOnce(profile ReplayProfile, name string, target string, port int, timeoutMS int) map[string]any {
+func newReplayDialer(timeoutMS int, iface string) *net.Dialer {
+	d := &net.Dialer{
+		Timeout: time.Duration(timeoutMS) * time.Millisecond,
+	}
+	if iface != "" && iface != "eth0" && iface != "auto" && iface != "default" {
+		boundIface := iface
+		d.Control = func(network, address string, c syscall.RawConn) error {
+			_ = c.Control(func(fd uintptr) {
+				bindToDevice(int(fd), boundIface)
+			})
+			return nil
+		}
+		d.Resolver = newBoundResolver(boundIface)
+	}
+	return d
+}
+
+func runTCPReplayClientOnce(profile ReplayProfile, name string, target string, port int, timeoutMS int, iface string) map[string]any {
 	start := time.Now()
 	turnsCompleted := 0
 	bytesSent := 0
@@ -453,7 +500,8 @@ func runTCPReplayClientOnce(profile ReplayProfile, name string, target string, p
 	reason := "All application turns completed"
 	totalTurns := len(profile.Turns)
 
-	conn, err := net.DialTimeout("tcp4", fmt.Sprintf("%s:%d", target, port), time.Duration(timeoutMS)*time.Millisecond)
+	dialer := newReplayDialer(timeoutMS, iface)
+	conn, err := dialer.Dial("tcp4", fmt.Sprintf("%s:%d", target, port))
 	if err != nil {
 		if ne, ok := err.(net.Error); ok && ne.Timeout() {
 			verdict = "Enforced (Drop)"
@@ -465,7 +513,7 @@ func runTCPReplayClientOnce(profile ReplayProfile, name string, target string, p
 			verdict = "Error"
 			reason = err.Error()
 		}
-		return buildClientResult("TCP", target, port, name, verdict, reason, turnsCompleted, totalTurns, bytesSent, bytesReceived, start)
+		return buildClientResult("TCP", target, port, name, iface, verdict, reason, turnsCompleted, totalTurns, bytesSent, bytesReceived, start)
 	}
 	defer conn.Close()
 
@@ -567,10 +615,10 @@ func runTCPReplayClientOnce(profile ReplayProfile, name string, target string, p
 		}
 	}
 
-	return buildClientResult("TCP", target, port, name, verdict, reason, turnsCompleted, totalTurns, bytesSent, bytesReceived, start)
+	return buildClientResult("TCP", target, port, name, iface, verdict, reason, turnsCompleted, totalTurns, bytesSent, bytesReceived, start)
 }
 
-func runUDPReplayClientOnce(profile ReplayProfile, name string, target string, port int, timeoutMS int) map[string]any {
+func runUDPReplayClientOnce(profile ReplayProfile, name string, target string, port int, timeoutMS int, iface string) map[string]any {
 	start := time.Now()
 	turnsCompleted := 0
 	bytesSent := 0
@@ -579,9 +627,10 @@ func runUDPReplayClientOnce(profile ReplayProfile, name string, target string, p
 	reason := "All UDP turns completed"
 	totalTurns := len(profile.Turns)
 
-	conn, err := net.DialTimeout("udp4", fmt.Sprintf("%s:%d", target, port), time.Duration(timeoutMS)*time.Millisecond)
+	dialer := newReplayDialer(timeoutMS, iface)
+	conn, err := dialer.Dial("udp4", fmt.Sprintf("%s:%d", target, port))
 	if err != nil {
-		return buildClientResult("UDP", target, port, name, "Error", err.Error(), 0, totalTurns, 0, 0, start)
+		return buildClientResult("UDP", target, port, name, iface, "Error", err.Error(), 0, totalTurns, 0, 0, start)
 	}
 	defer conn.Close()
 
@@ -629,12 +678,12 @@ func runUDPReplayClientOnce(profile ReplayProfile, name string, target string, p
 		reason = "Unidirectional UDP stream transmitted (no server response turns in PCAP)"
 	}
 
-	return buildClientResult("UDP", target, port, name, verdict, reason, turnsCompleted, totalTurns, bytesSent, bytesReceived, start)
+	return buildClientResult("UDP", target, port, name, iface, verdict, reason, turnsCompleted, totalTurns, bytesSent, bytesReceived, start)
 }
 
-func buildClientResult(proto string, target string, port int, name string, verdict string, reason string, turnsCompleted int, totalTurns int, bytesSent int, bytesReceived int, start time.Time) map[string]any {
+func buildClientResult(proto string, target string, port int, name string, iface string, verdict string, reason string, turnsCompleted int, totalTurns int, bytesSent int, bytesReceived int, start time.Time) map[string]any {
 	durMS := round2(float64(time.Since(start).Microseconds()) / 1000.0)
-	return map[string]any{
+	res := map[string]any{
 		"role":            "client",
 		"proto":           proto,
 		"target":          fmt.Sprintf("%s:%d", target, port),
@@ -647,6 +696,10 @@ func buildClientResult(proto string, target string, port int, name string, verdi
 		"bytes_received":  bytesReceived,
 		"duration_ms":     durMS,
 	}
+	if iface != "" {
+		res["interface"] = iface
+	}
+	return res
 }
 
 func minInt(a, b int) int {

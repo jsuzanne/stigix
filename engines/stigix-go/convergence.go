@@ -53,6 +53,7 @@ func runConvergenceCLI(args []string) {
 	rawID := fmt.Sprintf("CONV-%d", time.Now().Unix())
 	statsFile := "/tmp/convergence_stats.json"
 	duration := 0
+	iface := ""
 	forceFlag := false
 
 	// Manual flag parser to support both single-dash (-dport, -D, -C) and double-dash (--target, --port, etc.)
@@ -84,6 +85,8 @@ func runConvergenceCLI(args []string) {
 			if v, err := strconv.Atoi(nextVal()); err == nil {
 				duration = v
 			}
+		case "--interface", "-i", "-interface":
+			iface = nextVal()
 		case "--force":
 			forceFlag = true
 		}
@@ -124,6 +127,12 @@ func runConvergenceCLI(args []string) {
 		sourcePort = 40000 + rand.Intn(20000)
 	}
 
+	if iface == "" || iface == "auto" || iface == "default" || strings.Contains(iface, "*") || strings.Contains(iface, ",") {
+		if resolvedIface, _, ok := pickNextInterfaceForPattern(getConfigDir(), iface); ok {
+			iface = resolvedIface
+		}
+	}
+
 	raddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", target, port))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[STIGIX-GO CONVERGENCE] Resolve error for %s:%d: %v\n", target, port, err)
@@ -145,7 +154,7 @@ func runConvergenceCLI(args []string) {
 	if localUDP, ok := conn.LocalAddr().(*net.UDPAddr); ok {
 		sourcePort = localUDP.Port
 	}
-	applySocketOptions(conn, "", 0, 4*1024*1024, 4*1024*1024)
+	applySocketOptions(conn, iface, 0, 4*1024*1024, 4*1024*1024)
 
 	var (
 		mu              sync.Mutex
@@ -454,6 +463,7 @@ func runConvergenceCLI(args []string) {
 			"start_time":          int64(startFloat),
 			"target":              target,
 			"port":                port,
+			"interface":           iface,
 			"label":               label,
 			"source_port":         sourcePort,
 			"warmup_s":            warmupSec,

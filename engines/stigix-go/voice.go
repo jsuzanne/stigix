@@ -211,13 +211,34 @@ func executeRTPCall(
 		}
 	}
 
-	raddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", host, port))
-	if err != nil {
+	var raddr *net.UDPAddr
+	if ip := net.ParseIP(host); ip != nil && ip.To4() != nil {
+		raddr = &net.UDPAddr{IP: ip.To4(), Port: port}
+	} else if iface != "" && iface != "auto" && iface != "default" && iface != "eth0" {
+		resCtx, resCancel := context.WithTimeout(ctx, 5*time.Second)
+		ipAddrs, lErr := newBoundResolver(iface).LookupIPAddr(resCtx, host)
+		resCancel()
+		if lErr == nil {
+			for _, ia := range ipAddrs {
+				if v4 := ia.IP.To4(); v4 != nil {
+					raddr = &net.UDPAddr{IP: v4, Port: port}
+					break
+				}
+			}
+		}
+		if raddr == nil {
+			err = lErr
+		}
+	} else {
+		raddr, err = net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", host, port))
+	}
+	if err != nil || raddr == nil {
 		appendVoiceEvent(statsMu, statsFile, map[string]any{
 			"timestamp": time.Now().Unix(),
 			"call_id":   callID,
 			"event":     "skipped",
 			"reason":    "resolve_error",
+			"interface": iface,
 			"target":    fmt.Sprintf("%s:%d", host, port),
 		})
 		return
@@ -254,6 +275,7 @@ func executeRTPCall(
 		"call_id":     callID,
 		"event":       "start",
 		"target":      fmt.Sprintf("%s:%d", host, port),
+		"interface":   iface,
 		"codec":       codec,
 		"stream_type": streamType,
 		"duration":    durationSec,
@@ -395,6 +417,7 @@ finish:
 		"call_id":     callID,
 		"event":       "end",
 		"target":      fmt.Sprintf("%s:%d", host, port),
+		"interface":   iface,
 		"codec":       codec,
 		"stream_type": streamType,
 		"duration":    durationSec,
@@ -552,6 +575,19 @@ func runVoiceEngine(ctx context.Context, configDir, logDir string) {
 			}
 
 			if chosen.Target != "" {
+				callIface := strings.TrimSpace(cfg.Control.Interface)
+				if callIface == "" || callIface == "auto" || callIface == "default" || strings.Contains(callIface, "*") || strings.Contains(callIface, ",") {
+					resolvedIface, isWildcard, ok := pickNextInterfaceForPattern(configDir, callIface)
+					if !ok {
+						if isWildcard {
+							time.Sleep(2 * time.Second)
+							continue
+						}
+						callIface = "eth0"
+					} else {
+						callIface = resolvedIface
+					}
+				}
 				callID := nextCallID()
 				dur := chosen.Duration
 				if dur <= 0 {
@@ -573,7 +609,7 @@ func runVoiceEngine(ctx context.Context, configDir, logDir string) {
 					codec,
 					stType,
 					callID,
-					cfg.Control.Interface,
+					callIface,
 					cfg.Control.SourcePortMode,
 					siteName,
 					statsFile,

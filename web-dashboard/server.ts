@@ -240,32 +240,88 @@ function deriveCloudTargetBaseUrl(): string | undefined {
 
 let _cachedInterfaceName: string | null = null;
 let _cachedInterfaceTs = 0;
+let _rrEgressCounter = 0;
+
+const expandInterfaceWildcard = (pattern: string): string[] => {
+    try {
+        const nets = os.networkInterfaces();
+        const regexStr = '^' + pattern.split('*').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$';
+        const re = new RegExp(regexStr);
+        const matched: string[] = [];
+        for (const [ifName, addrs] of Object.entries(nets)) {
+            if (!re.test(ifName)) continue;
+            const hasIPv4 = addrs?.some(a => (a.family === 'IPv4' || (a as any).family === 4) && !a.internal && a.address);
+            if (hasIPv4) matched.push(ifName);
+        }
+        return matched.sort();
+    } catch {
+        return [];
+    }
+};
+
+const resolveConfiguredInterfaces = (): { interfaces: string[]; isWildcard: boolean; hasConfig: boolean } => {
+    const interfacesFile = path.join(APP_CONFIG.configDir, 'interfaces.txt');
+    const rawSource = process.env.STIGIX_INTERFACES || (fs.existsSync(interfacesFile) ? fs.readFileSync(interfacesFile, 'utf8') : '');
+    if (!rawSource.trim()) {
+        return { interfaces: [], isWildcard: false, hasConfig: false };
+    }
+    const cleanLines = rawSource.split(/[\n,]/)
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'));
+
+    if (cleanLines.length === 0) {
+        return { interfaces: [], isWildcard: false, hasConfig: false };
+    }
+
+    let isWildcard = false;
+    const resolved: string[] = [];
+    const seen = new Set<string>();
+
+    for (const pat of cleanLines) {
+        if (pat.includes('*')) {
+            isWildcard = true;
+            for (const m of expandInterfaceWildcard(pat)) {
+                if (!seen.has(m)) {
+                    seen.add(m);
+                    resolved.push(m);
+                }
+            }
+        } else if (!seen.has(pat)) {
+            seen.add(pat);
+            resolved.push(pat);
+        }
+    }
+
+    return { interfaces: resolved, isWildcard, hasConfig: true };
+};
 
 const getInterface = (): string => {
     const now = Date.now();
-    if (_cachedInterfaceName && (now - _cachedInterfaceTs) < 15000) {
-        return _cachedInterfaceName;
-    }
-
     const interfacesFile = path.join(APP_CONFIG.configDir, 'interfaces.txt');
 
-    // 1. Primary Source: interfaces.txt
-    if (fs.existsSync(interfacesFile)) {
+    // 1. Primary Source: interfaces.txt (supports exact names and wildcards like uesimtun* without overwriting interfaces.txt)
+    if (fs.existsSync(interfacesFile) || process.env.STIGIX_INTERFACES) {
         try {
-            const content = fs.readFileSync(interfacesFile, 'utf8');
-            const cleanLines = content.split('\n')
-                .map(line => line.trim())
-                .filter(line => line && !line.startsWith('#'));
-
-            if (cleanLines.length > 0) {
-                if (DEBUG) log('SYSTEM', `Using interface: ${cleanLines[0]} (Source: interfaces.txt)`, 'debug');
-                _cachedInterfaceName = cleanLines[0];
+            const { interfaces, isWildcard, hasConfig } = resolveConfiguredInterfaces();
+            if (interfaces.length > 0) {
+                if (DEBUG) log('SYSTEM', `Using interface: ${interfaces[0]} (Source: interfaces.txt${isWildcard ? ' wildcard' : ''})`, 'debug');
+                _cachedInterfaceName = interfaces[0];
                 _cachedInterfaceTs = now;
-                return cleanLines[0];
+                return interfaces[0];
+            }
+            if (hasConfig && isWildcard) {
+                // Wildcard configured (e.g. uesimtun*) but 0 active tunnels currently UP: return raw pattern without caching eth0
+                const rawContent = fs.existsSync(interfacesFile) ? fs.readFileSync(interfacesFile, 'utf8') : (process.env.STIGIX_INTERFACES || '');
+                const firstPattern = rawContent.split('\n').map(l => l.trim()).find(l => l && !l.startsWith('#')) || 'uesimtun*';
+                return firstPattern;
             }
         } catch (e) {
             log('SYSTEM', `Failed to read interfaces.txt: ${e}`, 'warn');
         }
+    }
+
+    if (_cachedInterfaceName && (now - _cachedInterfaceTs) < 15000) {
+        return _cachedInterfaceName;
     }
 
     // 2. Fast non-blocking Linux /proc/net/route lookup (Default gateway = Destination 00000000)
@@ -1668,8 +1724,15 @@ try {
 /**
  * Resolves the primary traffic generator egress interface, IPv4 address, and binding flags.
  */
-const getEgressConfig = (): { iface: string; ip: string; ifaceFlag: string } => {
-    let iface = getInterface();
+const getEgressConfig = (): { iface: string; interface: string; ip: string; ifaceFlag: string } => {
+    const { interfaces: configuredIfaces, isWildcard } = resolveConfiguredInterfaces();
+    let iface = '';
+    if (configuredIfaces.length > 0) {
+        const idx = (_rrEgressCounter++) % configuredIfaces.length;
+        iface = configuredIfaces[idx];
+    } else if (!isWildcard) {
+        iface = getInterface();
+    }
     let ip = '192.168.219.1';
 
     try {
@@ -1677,7 +1740,7 @@ const getEgressConfig = (): { iface: string; ip: string; ifaceFlag: string } => 
         let foundInConfigured = false;
         if (iface && nets[iface]) {
             for (const net of nets[iface] || []) {
-                if (net.family === 'IPv4' && !net.internal) {
+                if ((net.family === 'IPv4' || (net as any).family === 4) && !net.internal) {
                     ip = net.address;
                     foundInConfigured = true;
                     break;
@@ -1685,10 +1748,10 @@ const getEgressConfig = (): { iface: string; ip: string; ifaceFlag: string } => 
             }
         }
         
-        if (!foundInConfigured || !ip.startsWith('192.168.219.')) {
+        if (!foundInConfigured && !isWildcard) {
             for (const name of Object.keys(nets)) {
                 for (const net of nets[name] || []) {
-                    if (net.family === 'IPv4' && !net.internal && net.address.startsWith('192.168.219.')) {
+                    if ((net.family === 'IPv4' || (net as any).family === 4) && !net.internal && net.address.startsWith('192.168.219.')) {
                         iface = name;
                         ip = net.address;
                         break;
@@ -1703,9 +1766,9 @@ const getEgressConfig = (): { iface: string; ip: string; ifaceFlag: string } => 
         ip = process.env.STIGIX_IP;
     }
 
-    const ifaceFlag = (iface && !iface.startsWith('lo')) ? `--interface ${iface}` : (ip && ip !== '127.0.0.1' ? `--interface ${ip}` : '');
+    const ifaceFlag = (iface && !iface.startsWith('lo') && !iface.includes('*')) ? `--interface ${iface}` : (ip && ip !== '127.0.0.1' ? `--interface ${ip}` : '');
 
-    return { iface, ip, ifaceFlag };
+    return { iface, interface: iface, ip, ifaceFlag };
 };
 
 /**
@@ -5395,6 +5458,8 @@ const aggregateStats = () => {
         total_requests: 0,
         requests_by_app: {} as Record<string, number>,
         errors_by_app: {} as Record<string, number>,
+        requests_by_iface: {} as Record<string, number>,
+        errors_by_iface: {} as Record<string, number>,
         telemetry_by_app: {} as Record<string, {
             rtt_ms: number;
             ttfb_ms: number;
@@ -5402,6 +5467,13 @@ const aggregateStats = () => {
             tcp_ms?: number;
             tls_ms?: number;
             last_code?: string | number;
+            last_iface?: string;
+            by_iface?: Record<string, {
+                requests: number;
+                errors: number;
+                last_code?: string | number;
+                source_ip?: string;
+            }>;
         }>,
         clients: [] as string[]
     };
@@ -5429,27 +5501,72 @@ const aggregateStats = () => {
                 });
             }
 
+            // Sum up requests and errors by interface (Multi-Tunnel / 5G uesimtun* traceability)
+            if (data.requests_by_iface) {
+                Object.entries(data.requests_by_iface).forEach(([iface, count]) => {
+                    aggregate.requests_by_iface[iface] = (aggregate.requests_by_iface[iface] || 0) + (count as number);
+                });
+            }
+            if (data.errors_by_iface) {
+                Object.entries(data.errors_by_iface).forEach(([iface, count]) => {
+                    aggregate.errors_by_iface[iface] = (aggregate.errors_by_iface[iface] || 0) + (count as number);
+                });
+            }
+
             // Aggregate telemetry by app
             if (data.telemetry_by_app) {
                 Object.entries(data.telemetry_by_app).forEach(([app, tel]: [string, any]) => {
                     if (!aggregate.telemetry_by_app[app]) {
+                        const byIfaceAgg: Record<string, { requests: number; errors: number; last_code?: string | number; source_ip?: string }> = {};
+                        if (tel.by_iface && typeof tel.by_iface === 'object') {
+                            Object.entries(tel.by_iface).forEach(([ifName, ifStat]: [string, any]) => {
+                                byIfaceAgg[ifName] = {
+                                    requests: ifStat.requests || 0,
+                                    errors: ifStat.errors || 0,
+                                    last_code: ifStat.last_code || '200',
+                                    source_ip: ifStat.source_ip || undefined
+                                };
+                            });
+                        }
                         aggregate.telemetry_by_app[app] = {
                             rtt_ms: tel.rtt_ms || 0,
                             ttfb_ms: tel.ttfb_ms || 0,
                             dns_ms: tel.dns_ms || 0,
                             tcp_ms: tel.tcp_ms || 0,
                             tls_ms: tel.tls_ms || 0,
-                            last_code: tel.last_code || 200
+                            last_code: tel.last_code || 200,
+                            last_iface: tel.last_iface || undefined,
+                            ...(Object.keys(byIfaceAgg).length > 0 ? { by_iface: byIfaceAgg } : {})
                         };
                     } else {
                         // Average across multiple worker clients
                         const existing = aggregate.telemetry_by_app[app];
                         existing.rtt_ms = Math.round(((existing.rtt_ms + (tel.rtt_ms || 0)) / 2) * 10) / 10;
                         existing.ttfb_ms = Math.round(((existing.ttfb_ms + (tel.ttfb_ms || 0)) / 2) * 10) / 10;
-                        existing.dns_ms = Math.round(((existing.dns_ms + (tel.dns_ms || 0)) / 2) * 10) / 10;
-                        existing.tcp_ms = Math.round(((existing.tcp_ms + (tel.tcp_ms || 0)) / 2) * 10) / 10;
-                        existing.tls_ms = Math.round(((existing.tls_ms + (tel.tls_ms || 0)) / 2) * 10) / 10;
+                        existing.dns_ms = Math.round((((existing.dns_ms || 0) + (tel.dns_ms || 0)) / 2) * 10) / 10;
+                        existing.tcp_ms = Math.round((((existing.tcp_ms || 0) + (tel.tcp_ms || 0)) / 2) * 10) / 10;
+                        existing.tls_ms = Math.round((((existing.tls_ms || 0) + (tel.tls_ms || 0)) / 2) * 10) / 10;
                         existing.last_code = tel.last_code || existing.last_code;
+                        if (tel.last_iface) existing.last_iface = tel.last_iface;
+                        if (tel.by_iface && typeof tel.by_iface === 'object') {
+                            if (!existing.by_iface) existing.by_iface = {};
+                            Object.entries(tel.by_iface).forEach(([ifName, ifStat]: [string, any]) => {
+                                const prevIf = existing.by_iface![ifName];
+                                if (!prevIf) {
+                                    existing.by_iface![ifName] = {
+                                        requests: ifStat.requests || 0,
+                                        errors: ifStat.errors || 0,
+                                        last_code: ifStat.last_code || '200',
+                                        source_ip: ifStat.source_ip || undefined
+                                    };
+                                } else {
+                                    prevIf.requests += ifStat.requests || 0;
+                                    prevIf.errors += ifStat.errors || 0;
+                                    prevIf.last_code = ifStat.last_code || prevIf.last_code;
+                                    if (ifStat.source_ip) prevIf.source_ip = ifStat.source_ip;
+                                }
+                            });
+                        }
                     }
                 });
             }

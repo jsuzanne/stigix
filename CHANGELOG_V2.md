@@ -2,6 +2,15 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.2.9] - 2026-11-18 — Multi-Interface & 5G Tunnel (`uesimtun*`) Round-Robin Load-Balancing & Per-Interface Traceability
+
+- **feat(go-engine-multi-iface)**: Implemented dynamic interface resolution (`resolveTrafficInterfaces`) and atomic Round-Robin selector (`pickNextInterface`, `pickNextInterfaceForPattern`) in `engines/stigix-go/traffic.go`, supporting exact interface lists, `STIGIX_INTERFACES` overrides, and wildcard patterns (`uesimtun*`, `tun*`) filtered by `net.FlagUp` and valid IPv4 address.
+- **feat(go-engine-anti-leak)**: Enforced strict anti-leak guard when wildcard mode (`uesimtun*`) is configured and zero matching tunnels are currently UP, pausing workers for 2s instead of falling back to the VM default gateway (`eth0`). Preserved `eth0` default fallback when `interfaces.txt` is absent or empty without wildcards.
+- **feat(go-engine-bindtodevice)**: Wired per-interface `http.Client` / `http.Transport` cache in `runTrafficWorker` (`traffic.go`) with real `SO_BINDTODEVICE` socket binding via `net.Dialer.Control` and tunnel-bound DNS resolution (`net.Resolver{PreferGo: true}`) so both HTTP/S and DNS queries (and `DnsMs` telemetry) traverse the selected `uesimtunX` tunnel.
+- **feat(go-engine-voice-conv-pcap)**: Added Round-Robin multi-interface and wildcard (`uesimtun*`) support across `voice.go` (`runVoiceEngine` / `executeRTPCall`), `convergence.go` (`--interface` / `-i` CLI flag + `applySocketOptions`), `pcap_replay.go` (`--interface` / `-i` CLI flag + bound TCP/UDP `net.Dialer`), and `probe.go`.
+- **feat(interface-traceability)**: Added per-interface telemetry (`requests_by_iface`, `errors_by_iface`, `by_iface` per application with source IP and last HTTP code) in `traffic.go`, `server.ts`, and `Statistics.tsx`, plus `via <iface> (<ip>)` logging in `traffic.log`, enabling immediate visibility into which 5G UE tunnel / security group allowed or blocked traffic.
+- **fix(server-interfaces)**: Updated `getInterface()` and `getEgressConfig()` in `web-dashboard/server.ts` to dynamically expand wildcards (`uesimtun*`) via `os.networkInterfaces()` without overwriting `config/interfaces.txt`.
+
 ## [v2.2.8] - 2026-10-10 — Parallel Remote Fleet Upgrades, Leader Isolation, Circuit Spotlighting & Experimental Go Data-Plane Engine
 
 - **feat(config-backups)**: Isolated rolling configuration backups (`*.backup.1` to `*.backup.7`) into `config/backups/`, added automatic boot-time migration (`migrateLegacyConfigBackups`) to clean up legacy backup files in `config/`, and added content deduplication so unchanged writes no longer rotate backup slots.

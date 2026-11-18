@@ -3,6 +3,13 @@ import { usePeerContext } from './PeerContext';
 import { BarChart3, Search, Activity, Zap, Check, Plus, Clock, Server, Shield, Globe, Info } from 'lucide-react';
 import { Favicon } from './components/Favicon';
 
+interface IfaceTelemetry {
+    requests: number;
+    errors: number;
+    last_code?: string | number;
+    source_ip?: string;
+}
+
 interface TelemetryData {
     rtt_ms: number;
     ttfb_ms: number;
@@ -10,6 +17,8 @@ interface TelemetryData {
     tcp_ms?: number;
     tls_ms?: number;
     last_code?: string | number;
+    last_iface?: string;
+    by_iface?: Record<string, IfaceTelemetry>;
 }
 
 interface Stats {
@@ -17,6 +26,8 @@ interface Stats {
     total_requests: number;
     requests_by_app: Record<string, number>;
     errors_by_app: Record<string, number>;
+    requests_by_iface?: Record<string, number>;
+    errors_by_iface?: Record<string, number>;
     telemetry_by_app?: Record<string, TelemetryData>;
 }
 
@@ -29,6 +40,7 @@ interface StatsProps {
 
 export default function Statistics({ stats, appConfig, onReset, token }: StatsProps) {
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedIfaceFilter, setSelectedIfaceFilter] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState<'requests' | 'errors' | 'name' | 'group' | 'successRate' | 'latency' | 'ttfb'>('requests');
     const [promotingApp, setPromotingApp] = useState<string | null>(null);
     const [promotedApps, setPromotedApps] = useState<Record<string, boolean>>({});
@@ -97,6 +109,9 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
         });
     }
 
+    const ifaceKeys = Object.keys(stats.requests_by_iface || {}).sort();
+    const hasMultiOrTunnelIface = ifaceKeys.length > 1 || ifaceKeys.some(k => k !== 'eth0');
+
     // Combine requests, errors, and live telemetry data
     const appStats = Object.keys(stats.requests_by_app).map(app => {
         const cleanApp = normalizeAppName(app);
@@ -115,16 +130,23 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
             dns_ms: tel?.dns_ms ?? 0,
             tcp_ms: tel?.tcp_ms ?? 0,
             tls_ms: tel?.tls_ms ?? 0,
-            last_code: tel?.last_code ?? 200
+            last_code: tel?.last_code ?? 200,
+            last_iface: tel?.last_iface,
+            by_iface: tel?.by_iface
         };
     });
 
     // Filter and sort
     const filteredStats = appStats
-        .filter(app =>
-            app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            app.group.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+        .filter(app => {
+            const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                app.group.toLowerCase().includes(searchTerm.toLowerCase());
+            if (!matchesSearch) return false;
+            if (selectedIfaceFilter) {
+                return Boolean(app.by_iface && app.by_iface[selectedIfaceFilter]);
+            }
+            return true;
+        })
         .sort((a, b) => {
             if (sortBy === 'requests') return b.requests - a.requests;
             if (sortBy === 'errors') return b.errors - a.errors;
@@ -196,6 +218,55 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                     >
                         ✕
                     </button>
+                </div>
+            )}
+
+            {/* Multi-Interface / 5G Tunnel Load-Balancing Summary Bar */}
+            {hasMultiOrTunnelIface && (
+                <div className="bg-card border border-border rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <Globe size={15} className="text-cyan-400" />
+                        <span className="text-[11px] font-black uppercase tracking-wider text-text-primary">
+                            Egress Interfaces / 5G Tunnels (Round-Robin)
+                        </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {ifaceKeys.map(ifName => {
+                            const reqs = stats.requests_by_iface?.[ifName] || 0;
+                            const errs = stats.errors_by_iface?.[ifName] || 0;
+                            const isSelected = selectedIfaceFilter === ifName;
+                            return (
+                                <button
+                                    key={ifName}
+                                    onClick={() => setSelectedIfaceFilter(isSelected ? null : ifName)}
+                                    className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-lg border text-[11px] font-mono transition-all ${
+                                        isSelected
+                                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-sm'
+                                            : errs > 0
+                                            ? 'bg-red-500/10 border-red-500/30 text-text-primary hover:border-red-400/50'
+                                            : 'bg-card-secondary border-border text-text-primary hover:border-cyan-500/40'
+                                    }`}
+                                    title="Click to filter applications traversing this interface"
+                                >
+                                    <span className="font-bold text-cyan-400">{ifName}</span>
+                                    <span className="text-text-muted">{reqs} req</span>
+                                    {errs > 0 ? (
+                                        <span className="text-red-400 font-bold">({errs} blocked/err)</span>
+                                    ) : (
+                                        <span className="text-emerald-400 font-bold">OK</span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                        {selectedIfaceFilter && (
+                            <button
+                                onClick={() => setSelectedIfaceFilter(null)}
+                                className="text-[10px] font-bold text-text-muted hover:text-text-primary px-2 py-1"
+                            >
+                                Clear filter ✕
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -318,16 +389,37 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                                             {(() => {
                                                 const errorRate = app.requests > 0 ? (app.errors / app.requests) * 100 : 0;
                                                 const isSlaViolated = app.errors > 0 && errorRate >= thresholds.error_rate_warning_pct;
+                                                const appIfaceEntries = app.by_iface ? Object.entries(app.by_iface).sort(([a], [b]) => a.localeCompare(b)) : [];
+                                                const showIfaceBreakdown = hasMultiOrTunnelIface && appIfaceEntries.length > 0 && (app.errors > 0 || appIfaceEntries.length > 1);
                                                 return (
-                                                    <span className={`font-mono text-xs font-bold ${
-                                                        app.errors > 0
-                                                            ? isSlaViolated
-                                                                ? 'text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded'
-                                                                : 'text-red-400'
-                                                            : 'text-text-muted opacity-40'
-                                                    }`} title={isSlaViolated ? `SLA Violation: ${errorRate.toFixed(1)}% error rate (threshold: ${thresholds.error_rate_warning_pct}%)` : undefined}>
-                                                        {app.errors.toLocaleString()}
-                                                    </span>
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <span className={`font-mono text-xs font-bold ${
+                                                            app.errors > 0
+                                                                ? isSlaViolated
+                                                                    ? 'text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded'
+                                                                    : 'text-red-400'
+                                                                : 'text-text-muted opacity-40'
+                                                        }`} title={isSlaViolated ? `SLA Violation: ${errorRate.toFixed(1)}% error rate (threshold: ${thresholds.error_rate_warning_pct}%)` : undefined}>
+                                                            {app.errors.toLocaleString()}
+                                                        </span>
+                                                        {showIfaceBreakdown && (
+                                                            <div className="flex flex-wrap justify-end gap-1">
+                                                                {appIfaceEntries.map(([ifName, ifStat]) => (
+                                                                    <span
+                                                                        key={ifName}
+                                                                        className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
+                                                                            ifStat.errors > 0
+                                                                                ? 'bg-red-500/15 text-red-400 border-red-500/30 font-bold'
+                                                                                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                                        }`}
+                                                                        title={`${ifName}${ifStat.source_ip ? ` (${ifStat.source_ip})` : ''}: ${ifStat.requests} req, ${ifStat.errors} err (Last HTTP ${ifStat.last_code || '200'})`}
+                                                                    >
+                                                                        {ifName}: {ifStat.errors > 0 ? `${ifStat.errors}/${ifStat.requests} err` : `${ifStat.requests} ok`}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 );
                                             })()}
                                         </td>
@@ -337,6 +429,7 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                                             {app.rtt_ms !== null ? (() => {
                                                 const isGood = app.rtt_ms < thresholds.good_latency_ms;
                                                 const isDegraded = app.rtt_ms >= thresholds.good_latency_ms && app.rtt_ms < thresholds.critical_latency_ms;
+                                                const appIfaceEntries = app.by_iface ? Object.entries(app.by_iface).sort(([a], [b]) => a.localeCompare(b)) : [];
                                                 return (
                                                     <div
                                                         className="inline-flex items-center gap-1.5 cursor-help"
@@ -359,7 +452,7 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
 
                                                         {/* Floating Telemetry Breakdown Card */}
                                                         {isHovered && (
-                                                            <div className="absolute right-0 top-full mt-1 z-30 w-64 p-3 bg-card-secondary/95 backdrop-blur-md border border-blue-500/30 rounded-xl shadow-2xl text-left text-[10px] space-y-1.5 pointer-events-none animate-in fade-in duration-150">
+                                                            <div className="absolute right-0 top-full mt-1 z-30 w-72 p-3 bg-card-secondary/95 backdrop-blur-md border border-blue-500/30 rounded-xl shadow-2xl text-left text-[10px] space-y-1.5 pointer-events-none animate-in fade-in duration-150">
                                                                 <div className="flex items-center justify-between border-b border-border/60 pb-1 font-black text-text-primary uppercase tracking-wider">
                                                                     <span className="flex items-center gap-1">
                                                                         <Zap size={11} className="text-blue-400" />
@@ -373,6 +466,23 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                                                                     <div>🔒 TLS: <span className="text-text-primary font-bold">{app.tls_ms.toFixed(1)} ms</span></div>
                                                                     <div>⚡ TTFB: <span className="text-purple-400 font-bold">{app.ttfb_ms?.toFixed(1) || '0'} ms</span></div>
                                                                 </div>
+                                                                {appIfaceEntries.length > 0 && (
+                                                                    <div className="border-t border-border/40 pt-1.5 space-y-1 font-mono">
+                                                                        <div className="text-[9px] font-black uppercase tracking-wider text-cyan-400">
+                                                                            Egress Interface Trace
+                                                                        </div>
+                                                                        {appIfaceEntries.map(([ifName, ifStat]) => (
+                                                                            <div key={ifName} className="flex items-center justify-between text-[9.5px]">
+                                                                                <span className="text-text-primary font-bold">
+                                                                                    {ifName}{ifStat.source_ip ? ` (${ifStat.source_ip})` : ''}
+                                                                                </span>
+                                                                                <span className={ifStat.errors > 0 ? 'text-red-400 font-bold' : 'text-emerald-400'}>
+                                                                                    {ifStat.requests - ifStat.errors}/{ifStat.requests} OK · HTTP {ifStat.last_code || '200'}
+                                                                                </span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
                                                                 <div className="border-t border-border/40 pt-1 flex justify-between font-black text-text-primary">
                                                                     <span>Total RTT:</span>
                                                                     <span className="text-blue-400 font-mono">{app.rtt_ms.toFixed(1)} ms</span>

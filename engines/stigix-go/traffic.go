@@ -13,8 +13,11 @@ import (
 	"net/http/httptrace"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -35,22 +38,96 @@ type AppEntry struct {
 	Enabled  *bool  `json:"enabled,omitempty"`
 }
 
+type IfaceAppTelemetry struct {
+	Requests int64  `json:"requests"`
+	Errors   int64  `json:"errors"`
+	LastCode string `json:"last_code"`
+	SourceIP string `json:"source_ip,omitempty"`
+}
+
 type AppTelemetry struct {
-	RttMs    float64 `json:"rtt_ms"`
-	TtfbMs   float64 `json:"ttfb_ms"`
-	DnsMs    float64 `json:"dns_ms"`
-	TcpMs    float64 `json:"tcp_ms"`
-	TlsMs    float64 `json:"tls_ms"`
-	LastCode string  `json:"last_code"`
+	RttMs     float64                      `json:"rtt_ms"`
+	TtfbMs    float64                      `json:"ttfb_ms"`
+	DnsMs     float64                      `json:"dns_ms"`
+	TcpMs     float64                      `json:"tcp_ms"`
+	TlsMs     float64                      `json:"tls_ms"`
+	LastCode  string                       `json:"last_code"`
+	LastIface string                       `json:"last_iface,omitempty"`
+	ByIface   map[string]IfaceAppTelemetry `json:"by_iface,omitempty"`
 }
 
 type WorkerStatsFile struct {
-	Timestamp      int64                   `json:"timestamp"`
-	ClientID       string                  `json:"client_id"`
-	TotalRequests  int64                   `json:"total_requests"`
-	RequestsByApp  map[string]int64        `json:"requests_by_app"`
-	ErrorsByApp    map[string]int64        `json:"errors_by_app"`
-	TelemetryByApp map[string]AppTelemetry `json:"telemetry_by_app"`
+	Timestamp       int64                   `json:"timestamp"`
+	ClientID        string                  `json:"client_id"`
+	TotalRequests   int64                   `json:"total_requests"`
+	RequestsByApp   map[string]int64        `json:"requests_by_app"`
+	ErrorsByApp     map[string]int64        `json:"errors_by_app"`
+	RequestsByIface map[string]int64        `json:"requests_by_iface,omitempty"`
+	ErrorsByIface   map[string]int64        `json:"errors_by_iface,omitempty"`
+	TelemetryByApp  map[string]AppTelemetry `json:"telemetry_by_app"`
+}
+
+type netInterfaceInfo struct {
+	Name    string
+	Flags   net.Flags
+	HasIPv4 bool
+	IPv4    string
+}
+
+var (
+	rrInterfaceCounter atomic.Uint64
+	listNetInterfaces  = defaultListNetInterfaces
+)
+
+func defaultListNetInterfaces() ([]netInterfaceInfo, error) {
+	sysIfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]netInterfaceInfo, 0, len(sysIfaces))
+	for _, sif := range sysIfaces {
+		info := netInterfaceInfo{
+			Name:  sif.Name,
+			Flags: sif.Flags,
+		}
+		if addrs, err := sif.Addrs(); err == nil {
+			for _, a := range addrs {
+				var ip net.IP
+				switch v := a.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip != nil {
+					if v4 := ip.To4(); v4 != nil && !v4.IsLoopback() {
+						info.HasIPv4 = true
+						if info.IPv4 == "" {
+							info.IPv4 = v4.String()
+						}
+					}
+				}
+			}
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+func getInterfaceIPv4(ifaceName string) string {
+	if ifaceName == "" {
+		return ""
+	}
+	ifaces, err := listNetInterfaces()
+	if err != nil {
+		return ""
+	}
+	for _, info := range ifaces {
+		if info.Name == ifaceName && info.IPv4 != "" {
+			return info.IPv4
+		}
+	}
+	return ""
 }
 
 var defaultUserAgents = []string{
@@ -78,22 +155,154 @@ func loadUserAgents(configDir string) []string {
 	return out
 }
 
-func loadInterfaces(configDir string) []string {
-	path := filepath.Join(configDir, "interfaces.txt")
-	data, err := os.ReadFile(path)
-	if err == nil {
-		var out []string
-		for _, line := range strings.Split(string(data), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "#") {
-				out = append(out, line)
+func parseInterfacePatterns(raw string) []string {
+	var patterns []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		for _, token := range strings.Split(line, ",") {
+			token = strings.TrimSpace(token)
+			if token != "" && !strings.HasPrefix(token, "#") {
+				patterns = append(patterns, token)
 			}
 		}
-		if len(out) > 0 {
-			return out
+	}
+	return patterns
+}
+
+func resolvePatternsToInterfaces(patterns []string) (ifaces []string, isWildcard bool) {
+	if len(patterns) == 0 {
+		return []string{"eth0"}, false
+	}
+
+	var sysIfaces []netInterfaceInfo
+	var sysLoaded bool
+	seen := make(map[string]bool)
+
+	for _, pat := range patterns {
+		if strings.Contains(pat, "*") {
+			isWildcard = true
+			if !sysLoaded {
+				sysIfaces, _ = listNetInterfaces()
+				sysLoaded = true
+			}
+			var matchedNames []string
+			prefix := strings.TrimSuffix(pat, "*")
+			for _, sif := range sysIfaces {
+				if sif.Flags&net.FlagUp == 0 || !sif.HasIPv4 {
+					continue
+				}
+				matched, err := filepath.Match(pat, sif.Name)
+				if (err == nil && matched) || (prefix != "" && strings.HasPrefix(sif.Name, prefix)) {
+					matchedNames = append(matchedNames, sif.Name)
+				}
+			}
+			sort.Strings(matchedNames)
+			for _, name := range matchedNames {
+				if !seen[name] {
+					seen[name] = true
+					ifaces = append(ifaces, name)
+				}
+			}
+		} else {
+			if !seen[pat] {
+				seen[pat] = true
+				ifaces = append(ifaces, pat)
+			}
 		}
 	}
-	return []string{"eth0"}
+
+	if isWildcard {
+		// Anti-leak rule: when wildcard mode is configured (e.g. uesimtun*), never fallback to eth0 if 0 tunnels are UP
+		if ifaces == nil {
+			ifaces = []string{}
+		}
+		return ifaces, true
+	}
+
+	if len(ifaces) == 0 {
+		return []string{"eth0"}, false
+	}
+	return ifaces, false
+}
+
+// resolveTrafficInterfaces reads STIGIX_INTERFACES or config/interfaces.txt, supporting exact names and wildcards (e.g. uesimtun*).
+func resolveTrafficInterfaces(configDir string) (ifaces []string, isWildcard bool) {
+	if envVal := strings.TrimSpace(os.Getenv("STIGIX_INTERFACES")); envVal != "" {
+		patterns := parseInterfacePatterns(envVal)
+		if len(patterns) > 0 {
+			return resolvePatternsToInterfaces(patterns)
+		}
+	}
+
+	path := filepath.Join(configDir, "interfaces.txt")
+	if data, err := os.ReadFile(path); err == nil {
+		patterns := parseInterfacePatterns(string(data))
+		if len(patterns) > 0 {
+			return resolvePatternsToInterfaces(patterns)
+		}
+	}
+
+	return []string{"eth0"}, false
+}
+
+// pickNextInterface selects the next active interface in atomic Round-Robin order.
+func pickNextInterface(configDir string) (iface string, ok bool) {
+	ifaces, _ := resolveTrafficInterfaces(configDir)
+	if len(ifaces) == 0 {
+		return "", false
+	}
+	idx := (rrInterfaceCounter.Add(1) - 1) % uint64(len(ifaces))
+	return ifaces[idx], true
+}
+
+// pickNextInterfaceForPattern resolves either a specific wildcard/interface override or falls back to configDir interfaces.txt in Round-Robin.
+func pickNextInterfaceForPattern(configDir string, ifaceOrPattern string) (iface string, isWildcard bool, ok bool) {
+	trimmed := strings.TrimSpace(ifaceOrPattern)
+	if trimmed == "" || trimmed == "auto" || trimmed == "default" {
+		ifaces, wildcard := resolveTrafficInterfaces(configDir)
+		if len(ifaces) == 0 {
+			return "", wildcard, false
+		}
+		idx := (rrInterfaceCounter.Add(1) - 1) % uint64(len(ifaces))
+		return ifaces[idx], wildcard, true
+	}
+	if strings.Contains(trimmed, "*") || strings.Contains(trimmed, ",") {
+		patterns := parseInterfacePatterns(trimmed)
+		ifaces, wildcard := resolvePatternsToInterfaces(patterns)
+		if len(ifaces) == 0 {
+			return "", wildcard, false
+		}
+		idx := (rrInterfaceCounter.Add(1) - 1) % uint64(len(ifaces))
+		return ifaces[idx], wildcard, true
+	}
+	return trimmed, false, true
+}
+
+func loadInterfaces(configDir string) []string {
+	ifaces, _ := resolveTrafficInterfaces(configDir)
+	return ifaces
+}
+
+func newBoundResolver(iface string) *net.Resolver {
+	boundIface := iface
+	return &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{
+				Timeout: 5 * time.Second,
+				Control: func(network, address string, c syscall.RawConn) error {
+					_ = c.Control(func(fd uintptr) {
+						bindToDevice(int(fd), boundIface)
+					})
+					return nil
+				},
+			}
+			return d.DialContext(ctx, network, address)
+		},
+	}
 }
 
 func loadApplicationsConfig(configDir string) AppConfigFile {
@@ -184,11 +393,11 @@ func doTracedRequest(ctx context.Context, client *http.Client, urlStr string, ua
 	req.Header.Set("Accept", "*/*")
 
 	var (
-		start              = time.Now()
-		dnsStart, dnsEnd   time.Time
-		tcpStart, tcpEnd   time.Time
-		tlsStart, tlsEnd   time.Time
-		firstByteTime      time.Time
+		start            = time.Now()
+		dnsStart, dnsEnd time.Time
+		tcpStart, tcpEnd time.Time
+		tlsStart, tlsEnd time.Time
+		firstByteTime    time.Time
 	)
 
 	trace := &httptrace.ClientTrace{
@@ -217,8 +426,13 @@ func doTracedRequest(ctx context.Context, client *http.Client, urlStr string, ua
 	resp, err := client.Do(req)
 	totalDur := time.Since(start)
 	if err != nil {
+		var dnsMs float64
+		if !dnsStart.IsZero() && !dnsEnd.IsZero() {
+			dnsMs = float64(dnsEnd.Sub(dnsStart).Microseconds()) / 1000.0
+		}
 		return 0, AppTelemetry{
 			RttMs:    round1(float64(totalDur.Microseconds()) / 1000.0),
+			DnsMs:    round1(dnsMs),
 			LastCode: "000",
 		}, err
 	}
@@ -265,12 +479,14 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 	trafficLog := filepath.Join(logDir, "traffic.log")
 
 	stats := WorkerStatsFile{
-		Timestamp:      time.Now().Unix(),
-		ClientID:       clientID,
-		TotalRequests:  0,
-		RequestsByApp:  make(map[string]int64),
-		ErrorsByApp:    make(map[string]int64),
-		TelemetryByApp: make(map[string]AppTelemetry),
+		Timestamp:       time.Now().Unix(),
+		ClientID:        clientID,
+		TotalRequests:   0,
+		RequestsByApp:   make(map[string]int64),
+		ErrorsByApp:     make(map[string]int64),
+		RequestsByIface: make(map[string]int64),
+		ErrorsByIface:   make(map[string]int64),
+		TelemetryByApp:  make(map[string]AppTelemetry),
 	}
 
 	// Pre-load existing stats file if present so hot-switching preserves counters
@@ -282,28 +498,60 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 		if stats.ErrorsByApp == nil {
 			stats.ErrorsByApp = make(map[string]int64)
 		}
+		if stats.RequestsByIface == nil {
+			stats.RequestsByIface = make(map[string]int64)
+		}
+		if stats.ErrorsByIface == nil {
+			stats.ErrorsByIface = make(map[string]int64)
+		}
 		if stats.TelemetryByApp == nil {
 			stats.TelemetryByApp = make(map[string]AppTelemetry)
 		}
 		stats.ClientID = clientID
 	}
 
-	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
+	clientsByIface := make(map[string]*http.Client)
+	getClientForInterface := func(iface string, isWildcard bool, totalIfaces int) *http.Client {
+		shouldBind := isWildcard || totalIfaces > 1 || (iface != "" && iface != "eth0" && iface != "auto" && iface != "default")
+		useBoundDNS := strings.HasPrefix(iface, "uesimtun") || isWildcard || shouldBind
+		cacheKey := fmt.Sprintf("%s|bind=%v|dns=%v", iface, shouldBind, useBoundDNS)
+		if c, exists := clientsByIface[cacheKey]; exists {
+			return c
+		}
+
+		dialer := &net.Dialer{
 			Timeout:   8 * time.Second,
 			KeepAlive: 15 * time.Second,
-		}).DialContext,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-		MaxIdleConns:          32,
-		IdleConnTimeout:       30 * time.Second,
-		TLSHandshakeTimeout:   8 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		DisableKeepAlives:     true, // Match curl per-request TCP/TLS measurement
-	}
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   12 * time.Second,
+		}
+		if shouldBind {
+			boundIface := iface
+			dialer.Control = func(network, address string, c syscall.RawConn) error {
+				_ = c.Control(func(fd uintptr) {
+					bindToDevice(int(fd), boundIface)
+				})
+				return nil
+			}
+		}
+		if useBoundDNS {
+			dialer.Resolver = newBoundResolver(iface)
+		}
+
+		transport := &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           dialer.DialContext,
+			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+			MaxIdleConns:          32,
+			IdleConnTimeout:       30 * time.Second,
+			TLSHandshakeTimeout:   8 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			DisableKeepAlives:     true, // Match curl per-request TCP/TLS measurement
+		}
+		c := &http.Client{
+			Transport: transport,
+			Timeout:   12 * time.Second,
+		}
+		clientsByIface[cacheKey] = c
+		return c
 	}
 
 	for {
@@ -319,6 +567,8 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 			stats.TotalRequests = 0
 			stats.RequestsByApp = make(map[string]int64)
 			stats.ErrorsByApp = make(map[string]int64)
+			stats.RequestsByIface = make(map[string]int64)
+			stats.ErrorsByIface = make(map[string]int64)
 			stats.TelemetryByApp = make(map[string]AppTelemetry)
 			_ = os.Remove(resetFile)
 			appendTrafficLog(logMu, trafficLog, "INFO", fmt.Sprintf("[%s/go] Resetting traffic statistics", clientID))
@@ -336,10 +586,21 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 			continue
 		}
 
+		ifaces, isWildcard := resolveTrafficInterfaces(configDir)
+		if len(ifaces) == 0 {
+			// Anti-leak wait when wildcard mode (e.g. uesimtun*) has 0 active tunnels UP
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		iface, ok := pickNextInterface(configDir)
+		if !ok || iface == "" {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
 		uas := loadUserAgents(configDir)
-		ifaces := loadInterfaces(configDir)
 		ua := uas[rand.Intn(len(uas))]
-		iface := ifaces[rand.Intn(len(ifaces))]
+		client := getClientForInterface(iface, isWildcard, len(ifaces))
 
 		domain := strings.TrimPrefix(strings.TrimPrefix(app.Domain, "https://"), "http://")
 		endpoint := app.Endpoint
@@ -357,26 +618,53 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 		stats.TotalRequests++
 		totalHTTPReqs.Add(1)
 		stats.RequestsByApp[domain]++
+		stats.RequestsByIface[iface]++
+
+		isErr := err != nil || code == 0
+		srcIP := getInterfaceIPv4(iface)
 
 		prev := stats.TelemetryByApp[domain]
+		byIface := prev.ByIface
+		if byIface == nil {
+			byIface = make(map[string]IfaceAppTelemetry)
+		}
+		ifStat := byIface[iface]
+		ifStat.Requests++
+		if isErr {
+			ifStat.Errors++
+		}
+		ifStat.LastCode = tData.LastCode
+		if srcIP != "" {
+			ifStat.SourceIP = srcIP
+		}
+		byIface[iface] = ifStat
+
 		smoothed := AppTelemetry{
-			RttMs:    ema(prev.RttMs, tData.RttMs),
-			TtfbMs:   ema(prev.TtfbMs, tData.TtfbMs),
-			DnsMs:    ema(prev.DnsMs, tData.DnsMs),
-			TcpMs:    ema(prev.TcpMs, tData.TcpMs),
-			TlsMs:    ema(prev.TlsMs, tData.TlsMs),
-			LastCode: tData.LastCode,
+			RttMs:     ema(prev.RttMs, tData.RttMs),
+			TtfbMs:    ema(prev.TtfbMs, tData.TtfbMs),
+			DnsMs:     ema(prev.DnsMs, tData.DnsMs),
+			TcpMs:     ema(prev.TcpMs, tData.TcpMs),
+			TlsMs:     ema(prev.TlsMs, tData.TlsMs),
+			LastCode:  tData.LastCode,
+			LastIface: iface,
+			ByIface:   byIface,
 		}
 		stats.TelemetryByApp[domain] = smoothed
 
-		if err != nil || code == 0 {
+		viaLabel := iface
+		if srcIP != "" && (isWildcard || len(ifaces) > 1 || strings.HasPrefix(iface, "uesimtun")) {
+			viaLabel = fmt.Sprintf("%s (%s)", iface, srcIP)
+		}
+
+		if isErr {
 			stats.ErrorsByApp[domain]++
+			stats.ErrorsByIface[iface]++
 			appendTrafficLog(logMu, trafficLog, "WARN",
-				fmt.Sprintf("[%s] [%s] FAIL %s via %s (HTTP %s, TTFB %.1fms)", clientID, domain, targetURL, iface, tData.LastCode, tData.TtfbMs))
+				fmt.Sprintf("[%s] [%s] FAIL %s via %s (HTTP %s, TTFB %.1fms)", clientID, domain, targetURL, viaLabel, tData.LastCode, tData.TtfbMs))
 		} else {
 			appendTrafficLog(logMu, trafficLog, "INFO",
 				fmt.Sprintf("[%s] [%s] OK %s via %s (HTTP %d, RTT %.1fms, TTFB %.1fms, DNS %.1fms)",
-					clientID, domain, targetURL, iface, code, tData.RttMs, tData.TtfbMs, tData.DnsMs))
+					clientID, domain, targetURL, viaLabel, code, tData.RttMs, tData.TtfbMs, tData.DnsMs))
 		}
 
 		stats.Timestamp = time.Now().Unix()

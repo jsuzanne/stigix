@@ -45,6 +45,8 @@ type ProbeOutput struct {
 	RemotePort         int          `json:"remote_port,omitempty"`
 	LocalPort          int          `json:"local_port,omitempty"`
 	SourcePort         int          `json:"source_port,omitempty"`
+	Interface          string       `json:"interface,omitempty"`
+	SourceIP           string       `json:"source_ip,omitempty"`
 	SizeBytes          int64        `json:"size_bytes,omitempty"`
 	LatencyMS          float64      `json:"latency_ms,omitempty"`
 	Retries            int          `json:"retries"`
@@ -106,21 +108,40 @@ func executeProbeArgs(args []string) ProbeOutput {
 	}
 
 	pType := strings.ToLower(strings.TrimSpace(*probeType))
+	effIface := strings.TrimSpace(*iface)
+	if strings.Contains(effIface, "*") || strings.Contains(effIface, ",") || effIface == "auto" {
+		if resolved, isWildcard, ok := pickNextInterfaceForPattern(getConfigDir(), effIface); ok {
+			effIface = resolved
+		} else if isWildcard {
+			return ProbeOutput{
+				Reachable:    false,
+				Interface:    effIface,
+				CurlExitCode: 7,
+				Error:        "CURLE_COULDNT_CONNECT: No active tunnel interface matching " + effIface + " is currently UP",
+			}
+		}
+	}
 	var out ProbeOutput
 
 	switch pType {
 	case "http", "https":
-		out = executeHTTPProbe(*target, *iface, *localPort, *timeoutMS, *connectTimeoutMS, *retries, *retryDelayMS, *method, headers, *data, *formFile, *followRedirects, *insecureTLS, *includeBody, effMaxBody, *cmValue, *cmMode, *cmCase)
+		out = executeHTTPProbe(*target, effIface, *localPort, *timeoutMS, *connectTimeoutMS, *retries, *retryDelayMS, *method, headers, *data, *formFile, *followRedirects, *insecureTLS, *includeBody, effMaxBody, *cmValue, *cmMode, *cmCase)
 	case "ping", "icmp":
-		out = executePingProbe(*target, *iface, *timeoutMS, *retries, *retryDelayMS)
+		out = executePingProbe(*target, effIface, *timeoutMS, *retries, *retryDelayMS)
 	case "tcp":
-		out = executeTCPProbe(*target, *iface, *localPort, *timeoutMS, *retries, *retryDelayMS)
+		out = executeTCPProbe(*target, effIface, *localPort, *timeoutMS, *retries, *retryDelayMS)
 	case "dns":
-		out = executeDNSProbe(*target, *domain, *iface, *localPort, *timeoutMS, *retries, *retryDelayMS)
+		out = executeDNSProbe(*target, *domain, effIface, *localPort, *timeoutMS, *retries, *retryDelayMS)
 	default:
 		out = ProbeOutput{Reachable: false, CurlExitCode: 1, Error: "Unsupported probe type: " + pType}
 	}
 
+	if effIface != "" {
+		out.Interface = effIface
+		if sip := getInterfaceIPv4(effIface); sip != "" {
+			out.SourceIP = sip
+		}
+	}
 	out.HTTPStatus = out.HTTPCode
 	out.SourcePort = out.LocalPort
 	out.SizeBytes = out.Metrics.SizeBytes
@@ -404,6 +425,9 @@ func singleHTTPAttempt(
 	}
 	if localPort > 0 {
 		dialer.LocalAddr = &net.TCPAddr{Port: localPort}
+	}
+	if iface != "" && iface != "eth0" && iface != "auto" && iface != "default" {
+		dialer.Resolver = newBoundResolver(iface)
 	}
 
 	transport := &http.Transport{
