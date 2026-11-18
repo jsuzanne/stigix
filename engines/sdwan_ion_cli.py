@@ -26,10 +26,19 @@ import secrets
 import ssl
 import sys
 import time
+from contextlib import contextmanager, redirect_stdout
 
-if "REQUESTS_CA_BUNDLE" not in os.environ and os.path.exists("/etc/ssl/certs/ca-certificates.crt"):
-    os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
-    os.environ["SSL_CERT_FILE"] = "/etc/ssl/certs/ca-certificates.crt"
+for _cand_bundle in (
+    "/app/config/certs/combined-ca-bundle.pem",
+    "/data/stigix/config/certs/combined-ca-bundle.pem",
+    "/etc/ssl/certs/ca-certificates.crt",
+):
+    if os.path.isfile(_cand_bundle):
+        if not os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("REQUESTS_CA_BUNDLE", "").endswith("/ca-bundle.pem"):
+            os.environ["REQUESTS_CA_BUNDLE"] = _cand_bundle
+        if not os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_FILE", "").endswith("/ca-bundle.pem"):
+            os.environ["SSL_CERT_FILE"] = _cand_bundle
+        break
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -541,6 +550,28 @@ async def run_command(
             pass
 
 
+def _build_merged_ssl_context(base_ctx: Optional[ssl.SSLContext] = None) -> ssl.SSLContext:
+    """Return an SSLContext that trusts system Root CAs AND any custom Prisma/Enterprise CA bundles."""
+    ssl_ctx = base_ctx if isinstance(base_ctx, ssl.SSLContext) else ssl.create_default_context()
+    seen = set()
+    for cand in (
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/app/config/certs/combined-ca-bundle.pem",
+        "/data/stigix/config/certs/combined-ca-bundle.pem",
+        "/app/config/certs/ca-bundle.pem",
+        "/data/stigix/config/certs/ca-bundle.pem",
+        os.environ.get("REQUESTS_CA_BUNDLE"),
+        os.environ.get("SSL_CERT_FILE"),
+    ):
+        if cand and cand not in seen and os.path.isfile(cand):
+            seen.add(cand)
+            try:
+                ssl_ctx.load_verify_locations(cafile=cand)
+            except Exception:
+                pass
+    return ssl_ctx
+
+
 def toolkit_connect(sdk: Any, element_id: str, *, connect_fn: Optional[Callable[..., Any]] = None) -> Any:
     """Open the Device Toolkit WebSocket for `element_id` using the authenticated `prisma_sase` SDK session."""
     if not _ELEMENT_ID_RE.fullmatch(str(element_id)):
@@ -577,16 +608,12 @@ def toolkit_connect(sdk: Any, element_id: str, *, connect_fn: Optional[Callable[
         if ca_ctx:
             kwargs["ssl"] = ca_ctx
         else:
-            ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
-            if not ca_bundle and os.path.exists("/etc/ssl/certs/ca-certificates.crt"):
-                ca_bundle = "/etc/ssl/certs/ca-certificates.crt"
-            if ca_bundle and os.path.exists(ca_bundle):
-                try:
-                    ssl_ctx = ssl.create_default_context(cafile=ca_bundle)
-                    kwargs["ssl"] = ssl_ctx
-                    sdk._ca_ssl_context = ssl_ctx
-                except Exception:
-                    pass
+            try:
+                ssl_ctx = _build_merged_ssl_context()
+                kwargs["ssl"] = ssl_ctx
+                sdk._ca_ssl_context = ssl_ctx
+            except Exception:
+                pass
     return connect_fn(url, **kwargs)
 
 
@@ -2356,20 +2383,12 @@ def _authenticate_sdk(credentials_path: str = "credentials.json", *, force_refre
     sdk = API(update_check=False)
     sdk.rest_call_timeout = 10
 
-    ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
-    if not ca_bundle and os.path.exists("/etc/ssl/certs/ca-certificates.crt"):
-        ca_bundle = "/etc/ssl/certs/ca-certificates.crt"
-    if ca_bundle and os.path.exists(ca_bundle):
-        try:
-            sdk.ssl_verify(ca_bundle)
-        except Exception:
-            try:
-                sdk._ca_ssl_context = ssl.create_default_context(cafile=ca_bundle)
-                sess = getattr(sdk, "_session", None)
-                if sess is not None:
-                    sess.verify = ca_bundle
-            except Exception:
-                pass
+    try:
+        sdk._ca_ssl_context = _build_merged_ssl_context(getattr(sdk, "_ca_ssl_context", None))
+        if hasattr(sdk, "update_session_adapter"):
+            sdk.update_session_adapter()
+    except Exception:
+        pass
 
     now_epoch = datetime.now(timezone.utc).timestamp()
     if not force_refresh and os.path.exists(_SASE_SESSION_CACHE_FILE):
@@ -2395,11 +2414,12 @@ def _authenticate_sdk(credentials_path: str = "credentials.json", *, force_refre
         except Exception:
             pass
 
-    ok = sdk.interactive.login_secret(
-        client_id=creds["client_id"],
-        client_secret=creds["client_secret"],
-        tsg_id=creds["tsg_id"],
-    )
+    with redirect_stdout(sys.stderr):
+        ok = sdk.interactive.login_secret(
+            client_id=creds["client_id"],
+            client_secret=creds["client_secret"],
+            tsg_id=creds["tsg_id"],
+        )
     if not ok:
         raise IonCliError("auth_failed", "Prisma SD-WAN login_secret returned False.", status=502)
 

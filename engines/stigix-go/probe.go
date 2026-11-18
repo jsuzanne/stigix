@@ -243,28 +243,33 @@ var (
 
 func getProbeRootCAs() *x509.CertPool {
 	bundlePaths := []string{
+		"/etc/ssl/certs/ca-certificates.crt",
+		filepath.Join(getConfigDir(), "certs", "combined-ca-bundle.pem"),
 		filepath.Join(getConfigDir(), "certs", "ca-bundle.pem"),
+		"/app/config/certs/combined-ca-bundle.pem",
 		"/app/config/certs/ca-bundle.pem",
 		os.Getenv("SSL_CERT_FILE"),
 		os.Getenv("CURL_CA_BUNDLE"),
 	}
 
 	var latestMod time.Time
-	var validPath string
+	var validPaths []string
+	seen := make(map[string]bool)
 	for _, p := range bundlePaths {
-		if p == "" {
+		if p == "" || seen[p] {
 			continue
 		}
+		seen[p] = true
 		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			validPaths = append(validPaths, p)
 			if st.ModTime().After(latestMod) {
 				latestMod = st.ModTime()
-				validPath = p
 			}
 		}
 	}
 
 	rootCAMu.RLock()
-	if cachedRootPool != nil && (validPath == "" || !latestMod.After(lastBundleMod)) {
+	if cachedRootPool != nil && (len(validPaths) == 0 || !latestMod.After(lastBundleMod)) {
 		pool := cachedRootPool
 		rootCAMu.RUnlock()
 		return pool
@@ -274,7 +279,7 @@ func getProbeRootCAs() *x509.CertPool {
 	rootCAMu.Lock()
 	defer rootCAMu.Unlock()
 
-	if cachedRootPool != nil && (validPath == "" || !latestMod.After(lastBundleMod)) {
+	if cachedRootPool != nil && (len(validPaths) == 0 || !latestMod.After(lastBundleMod)) {
 		return cachedRootPool
 	}
 
@@ -283,10 +288,12 @@ func getProbeRootCAs() *x509.CertPool {
 		pool = x509.NewCertPool()
 	}
 
-	if validPath != "" {
-		if pemBytes, err := os.ReadFile(validPath); err == nil && len(pemBytes) > 0 {
+	for _, vp := range validPaths {
+		if pemBytes, err := os.ReadFile(vp); err == nil && len(pemBytes) > 0 {
 			pool.AppendCertsFromPEM(pemBytes)
 		}
+	}
+	if len(validPaths) > 0 {
 		lastBundleMod = latestMod
 	}
 	cachedRootPool = pool

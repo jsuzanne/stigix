@@ -1021,6 +1021,11 @@ def main():
 
     # 2. Instantiate and Authenticate via Prisma SASE SDK
     sdk = API(update_check=False)
+    try:
+        from getflow import configure_sdk_ssl
+        configure_sdk_ssl(sdk)
+    except Exception:
+        pass
     log_output(f"🔐 Authenticating with Prisma SASE SDK (TSG: {creds['tsg_id']})...", json_mode)
 
     try:

@@ -30,7 +30,10 @@ export interface CertificateMetadata {
 export class CertificateManager {
     private certDir: string;
     private bundlePath: string;
+    private combinedBundlePath: string;
     private metadataPath: string;
+    private customPemBlocks: string[] = [];
+    private static origCreateSecureContext: typeof tls.createSecureContext | null = null;
     private metadata: CertificateMetadata = {
         last_updated: null,
         installed: false,
@@ -40,6 +43,7 @@ export class CertificateManager {
     constructor(projectRoot: string) {
         this.certDir = path.join(projectRoot, 'config', 'certs');
         this.bundlePath = path.join(this.certDir, 'ca-bundle.pem');
+        this.combinedBundlePath = path.join(this.certDir, 'combined-ca-bundle.pem');
         this.metadataPath = path.join(this.certDir, 'certs-metadata.json');
         this.init();
     }
@@ -101,42 +105,92 @@ export class CertificateManager {
         if (!fs.existsSync(this.bundlePath)) return;
 
         try {
-            // 1. Set environment variables for Node child processes, curl, and Python engines
-            process.env.NODE_EXTRA_CA_CERTS = this.bundlePath;
-            process.env.REQUESTS_CA_BUNDLE = this.bundlePath;
-            process.env.SSL_CERT_FILE = this.bundlePath;
-            process.env.CURL_CA_BUNDLE = this.bundlePath;
-
             const bundleContent = fs.readFileSync(this.bundlePath, 'utf8');
-
-            // 2. Extend default TLS root certificates in current Node runtime
-            const existingRootCerts = tls.rootCertificates || [];
-            // Parse certificates from bundle
             const pemBlocks = bundleContent.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) || [];
-            
-            // Reconfigure https.globalAgent
-            const combinedCerts = [...existingRootCerts, ...pemBlocks];
-            (https.globalAgent as any).options = {
-                ...(https.globalAgent as any).options,
-                ca: combinedCerts
-            };
+            this.customPemBlocks = pemBlocks;
 
-            // 3. Register bundle into Linux system trust store (/usr/local/share/ca-certificates/ + update-ca-certificates)
+            // 1. Register bundle into Linux system trust store (/usr/local/share/ca-certificates/ + update-ca-certificates)
             if (process.platform === 'linux') {
                 try {
                     const caCertDir = '/usr/local/share/ca-certificates';
                     if (!fs.existsSync(caCertDir)) {
                         fs.mkdirSync(caCertDir, { recursive: true });
                     }
+                    // Clean up previous individual stigix-ca-*.crt files before writing current set
+                    try {
+                        for (const f of fs.readdirSync(caCertDir)) {
+                            if (f.startsWith('stigix-ca') && f.endsWith('.crt')) {
+                                fs.unlinkSync(path.join(caCertDir, f));
+                            }
+                        }
+                    } catch {}
                     const osCertTarget = path.join(caCertDir, 'stigix-ca.crt');
                     fs.writeFileSync(osCertTarget, bundleContent, 'utf8');
+                    // Also write one .crt per PEM block so c_rehash creates /etc/ssl/certs/<hash>.0 symlinks for every CA
+                    pemBlocks.forEach((block, idx) => {
+                        fs.writeFileSync(path.join(caCertDir, `stigix-ca-${idx + 1}.crt`), block.trim() + '\n', 'utf8');
+                    });
                     execSync('update-ca-certificates', { stdio: 'ignore', timeout: 5000 });
                     log('CERT-MGR', '✓ Custom CA bundle registered in Linux system trust store (/etc/ssl/certs/)');
                 } catch (osErr: any) {
                     log('CERT-MGR', `Notice: could not update system CA store: ${osErr.message}`, 'debug');
                 }
+            }
 
-                // 4. Reload resident Go daemon to pick up updated Root CAs
+            // 2. Build a full combined CA bundle (System Root CAs + Custom Enterprise/Prisma Access CAs)
+            // IMPORTANT: REQUESTS_CA_BUNDLE, SSL_CERT_FILE, and CURL_CA_BUNDLE replace the default system trust store
+            // in Python, OpenSSL, and curl. They MUST point to a bundle containing both public Root CAs and custom CAs.
+            const existingRootCerts = tls.rootCertificates || [];
+            const combinedCerts = [...existingRootCerts, ...pemBlocks];
+            let systemCaPem = '';
+            if (fs.existsSync('/etc/ssl/certs/ca-certificates.crt')) {
+                try {
+                    systemCaPem = fs.readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8');
+                } catch {}
+            }
+            const mergedBundleParts: string[] = [];
+            if (systemCaPem.trim()) {
+                mergedBundleParts.push(systemCaPem.trim());
+            } else if (existingRootCerts.length > 0) {
+                mergedBundleParts.push(existingRootCerts.map(c => c.trim()).join('\n\n'));
+            }
+            for (const block of pemBlocks) {
+                const trimmed = block.trim();
+                if (!systemCaPem.includes(trimmed)) {
+                    mergedBundleParts.push(trimmed);
+                }
+            }
+            fs.writeFileSync(this.combinedBundlePath, mergedBundleParts.join('\n\n') + '\n', 'utf8');
+
+            // 3. Set environment variables for Node child processes, curl (Security/DEX), and Python engines
+            process.env.NODE_EXTRA_CA_CERTS = this.bundlePath;
+            process.env.REQUESTS_CA_BUNDLE = this.combinedBundlePath;
+            process.env.SSL_CERT_FILE = this.combinedBundlePath;
+            process.env.CURL_CA_BUNDLE = this.combinedBundlePath;
+
+            // 4. Extend default TLS root certificates in current Node runtime (https.globalAgent + undici/fetch via tls.createSecureContext)
+            (https.globalAgent as any).options = {
+                ...(https.globalAgent as any).options,
+                ca: combinedCerts
+            };
+            if (!CertificateManager.origCreateSecureContext) {
+                CertificateManager.origCreateSecureContext = tls.createSecureContext.bind(tls);
+                const self = this;
+                (tls as any).createSecureContext = function (options?: tls.SecureContextOptions) {
+                    const ctx = CertificateManager.origCreateSecureContext!(options);
+                    if (!options?.ca && self.customPemBlocks.length > 0 && ctx?.context && typeof (ctx.context as any).addCACert === 'function') {
+                        for (const pem of self.customPemBlocks) {
+                            try {
+                                (ctx.context as any).addCACert(pem);
+                            } catch {}
+                        }
+                    }
+                    return ctx;
+                };
+            }
+
+            // 5. Reload resident Go daemon to pick up updated Root CAs
+            if (process.platform === 'linux') {
                 try {
                     execSync('supervisorctl restart stigix-go', { stdio: 'ignore', timeout: 5000 });
                     log('CERT-MGR', '✓ Reloaded stigix-go daemon to pick up updated CA certificates');
@@ -145,7 +199,7 @@ export class CertificateManager {
                 }
             }
 
-            log('CERT-MGR', `✓ Custom CA bundle applied to Node, Go & Python runtimes (${this.metadata.certificates.length} certs)`);
+            log('CERT-MGR', `✓ Custom CA bundle applied to Node, Go, curl & Python runtimes (${this.metadata.certificates.length} custom certs + system Root CAs)`);
         } catch (e: any) {
             log('CERT-MGR', `Failed to apply certificates to runtime: ${e.message}`, 'error');
         }
@@ -373,7 +427,9 @@ export class CertificateManager {
 
         try {
             if (this.metadata.certificates.length === 0) {
+                this.customPemBlocks = [];
                 if (fs.existsSync(this.bundlePath)) fs.unlinkSync(this.bundlePath);
+                if (fs.existsSync(this.combinedBundlePath)) fs.unlinkSync(this.combinedBundlePath);
                 if (fs.existsSync(this.metadataPath)) fs.unlinkSync(this.metadataPath);
                 delete process.env.NODE_EXTRA_CA_CERTS;
                 delete process.env.REQUESTS_CA_BUNDLE;

@@ -1463,13 +1463,14 @@ def _authenticate_sdk(credentials_path: str = "credentials.json") -> Any:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     if script_dir not in sys.path:
         sys.path.insert(0, script_dir)
-    from getflow import load_credentials
+    from getflow import load_credentials, configure_sdk_ssl
 
     class _DummyArgs:
         credentials = credentials_path
 
     creds = load_credentials(_DummyArgs(), json_mode=True)
     sdk = API(update_check=False)
+    configure_sdk_ssl(sdk)
     sdk.rest_call_timeout = SDK_TIMEOUT_S
     ok = sdk.interactive.login_secret(
         client_id=creds["client_id"],

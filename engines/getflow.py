@@ -17,9 +17,52 @@ import socket
 import ipaddress
 import os
 import re
+import ssl
 import time
 from typing import Optional, Dict, Any
 import concurrent.futures
+
+for _cand_bundle in (
+    "/app/config/certs/combined-ca-bundle.pem",
+    "/data/stigix/config/certs/combined-ca-bundle.pem",
+    "/etc/ssl/certs/ca-certificates.crt",
+):
+    if os.path.isfile(_cand_bundle):
+        if not os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("REQUESTS_CA_BUNDLE", "").endswith("/ca-bundle.pem"):
+            os.environ["REQUESTS_CA_BUNDLE"] = _cand_bundle
+        if not os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_FILE", "").endswith("/ca-bundle.pem"):
+            os.environ["SSL_CERT_FILE"] = _cand_bundle
+        break
+
+
+def configure_sdk_ssl(sdk: Any) -> None:
+    """Ensure prisma_sase SDK trusts both system Root CAs and custom Enterprise/Prisma Access CAs."""
+    if sdk is None:
+        return
+    try:
+        base_ctx = getattr(sdk, "_ca_ssl_context", None)
+        ssl_ctx = base_ctx if isinstance(base_ctx, ssl.SSLContext) else ssl.create_default_context()
+        seen = set()
+        for cand in (
+            "/etc/ssl/certs/ca-certificates.crt",
+            "/app/config/certs/combined-ca-bundle.pem",
+            "/data/stigix/config/certs/combined-ca-bundle.pem",
+            "/app/config/certs/ca-bundle.pem",
+            "/data/stigix/config/certs/ca-bundle.pem",
+            os.environ.get("REQUESTS_CA_BUNDLE"),
+            os.environ.get("SSL_CERT_FILE"),
+        ):
+            if cand and cand not in seen and os.path.isfile(cand):
+                seen.add(cand)
+                try:
+                    ssl_ctx.load_verify_locations(cafile=cand)
+                except Exception:
+                    pass
+        sdk._ca_ssl_context = ssl_ctx
+        if hasattr(sdk, "update_session_adapter"):
+            sdk.update_session_adapter()
+    except Exception:
+        pass
 
 try:
     from prisma_sase import API, jd
@@ -2437,6 +2480,7 @@ def main():
     creds = load_credentials(args, json_mode=json_mode)
 
     sdk = API(update_check=False)
+    configure_sdk_ssl(sdk)
 
     if getattr(args, 'build_topology', False):
         print("[TOPO-STAGE] 1|auth|Authenticating with Prisma SASE OAuth2 API...", file=sys.stderr, flush=True)

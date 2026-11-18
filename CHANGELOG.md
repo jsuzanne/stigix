@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.28] - 2026-11-18
+
+### Fixed & Enhanced
+- **Combined CA Bundle (`System Root CAs + Prisma Access / Enterprise CAs`) Across All Runtimes (`web-dashboard/certificate-manager.ts`, `engines/stigix-go/probe.go`, `engines/sdwan_ion_cli.py`, `engines/getflow.py`)**:
+  - Fixed an issue where setting `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, and `CURL_CA_BUNDLE` to `config/certs/ca-bundle.pem` (custom CAs only) replaced the system Root CA store and caused `SSLCertVerificationError: self-signed certificate in certificate chain` when connecting to non-decrypted public HTTPS endpoints (such as `auth.apps.paloaltonetworks.com` signed by GoDaddy Root CA G2).
+  - Generates `config/certs/combined-ca-bundle.pem` merging `/etc/ssl/certs/ca-certificates.crt` (and `tls.rootCertificates`) with all custom Prisma Access / Enterprise CAs, and writes individual `/usr/local/share/ca-certificates/stigix-ca-<N>.crt` files before `update-ca-certificates` so OpenSSL creates hash symlinks for every certificate.
+  - Configures `CURL_CA_BUNDLE`, `SSL_CERT_FILE`, and `REQUESTS_CA_BUNDLE` to use `combined-ca-bundle.pem` while keeping `NODE_EXTRA_CA_CERTS` on `ca-bundle.pem` and hooking `tls.createSecureContext` for Node.js `fetch` (`undici`).
+  - Updates `stigix-go` (`getProbeRootCAs()`) and Python `prisma_sase` engines (`sdwan_ion_cli.py`, `getflow.py`, `prisma_custom_apps.py`, `sdwan_controller_views.py`) to additively load both system Root CAs and custom CA bundles, and redirects `prisma_sase` `login_secret()` stdout chatter to `stderr`.
+
 ## [3.2.27] - 2026-11-17
 
 ### Added & Enhanced
