@@ -291,6 +291,26 @@ func newBoundResolver(iface string) *net.Resolver {
 	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			targetAddr := address
+			if host, port, err := net.SplitHostPort(address); err == nil {
+				if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+					// On systemd-resolved hosts (/etc/resolv.conf -> 127.0.0.53) with network_mode: host,
+					// a socket bound to a non-loopback device (e.g. uesimtun0 via SO_BINDTODEVICE) cannot
+					// reach 127.0.0.53 on lo, and tunnel DNS queries must traverse the bound tunnel.
+					dnsHost := strings.TrimSpace(os.Getenv("STIGIX_TUNNEL_DNS"))
+					if dnsHost == "" {
+						dnsHost = "8.8.8.8"
+					}
+					if strings.Contains(dnsHost, ":") {
+						targetAddr = dnsHost
+					} else {
+						if port == "" {
+							port = "53"
+						}
+						targetAddr = net.JoinHostPort(dnsHost, port)
+					}
+				}
+			}
 			d := net.Dialer{
 				Timeout: 5 * time.Second,
 				Control: func(network, address string, c syscall.RawConn) error {
@@ -300,7 +320,7 @@ func newBoundResolver(iface string) *net.Resolver {
 					return nil
 				},
 			}
-			return d.DialContext(ctx, network, address)
+			return d.DialContext(ctx, network, targetAddr)
 		},
 	}
 }
