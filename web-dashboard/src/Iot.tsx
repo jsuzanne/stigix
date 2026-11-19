@@ -877,10 +877,12 @@ export default function Iot({ token }: IotProps) {
         const query = (searchQuery || '').toLowerCase();
         const name = (d.name || '').toLowerCase();
         const vendor = (d.vendor || '').toLowerCase();
+        const devType = (d.type || '').toLowerCase();
         const id = (d.id || '').toLowerCase();
         const mac = (d.mac || '').toLowerCase();
         const ip = (d.status?.stats?.current_ip || d.ip_start || '').toLowerCase();
-        const textMatch = name.includes(query) || vendor.includes(query) || id.includes(query) || mac.includes(query) || ip.includes(query);
+        const iface = (d.status?.stats?.egress_interface || (d as any).interface || '').toLowerCase();
+        const textMatch = name.includes(query) || vendor.includes(query) || devType.includes(query) || id.includes(query) || mac.includes(query) || ip.includes(query) || iface.includes(query);
         const ds = (d as any).deviceState || 'STOPPED';
         const stateMatch = stateFilter === 'ALL' || ds === stateFilter;
         const riskMatch = !onlyRiskOrAttack || isDeviceRiskyOrAttacking(d);
@@ -1717,7 +1719,15 @@ export default function Iot({ token }: IotProps) {
                                     <div className={cn("text-xs font-mono font-black flex items-center gap-1.5 flex-wrap", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
                                         <span>{device.status?.stats?.current_ip || '---.---.---.---'}</span>
                                         {localStorage.getItem('stigix_show_egress_telemetry') !== 'false' && device.status?.stats?.egress_interface && (
-                                            <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[8px] font-bold text-cyan-400 leading-none" title={`Bound Egress Tunnel: ${device.status.stats.egress_interface}`}>
+                                            <span
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const ifName = String(device.status?.stats?.egress_interface || '');
+                                                    setSearchQuery(prev => prev.toLowerCase() === ifName.toLowerCase() ? '' : ifName);
+                                                }}
+                                                className="px-1.5 py-0.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-[8px] font-bold text-cyan-400 leading-none cursor-pointer transition-colors"
+                                                title={`Bound Egress Tunnel: ${device.status.stats.egress_interface} (Click to filter)`}
+                                            >
                                                 {device.status.stats.egress_interface}
                                             </span>
                                         )}
@@ -1900,7 +1910,15 @@ export default function Iot({ token }: IotProps) {
                                         <div className={cn("text-xs font-mono font-black mt-0.5 flex items-center gap-1.5 flex-wrap", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
                                             <span>{device.status?.stats?.current_ip || '---.---.---.---'}</span>
                                             {localStorage.getItem('stigix_show_egress_telemetry') !== 'false' && device.status?.stats?.egress_interface && (
-                                                <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[8px] font-bold text-cyan-400 leading-none" title={`Bound Egress Tunnel: ${device.status.stats.egress_interface}`}>
+                                                <span
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const ifName = String(device.status?.stats?.egress_interface || '');
+                                                        setSearchQuery(prev => prev.toLowerCase() === ifName.toLowerCase() ? '' : ifName);
+                                                    }}
+                                                    className="px-1.5 py-0.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-[8px] font-bold text-cyan-400 leading-none cursor-pointer transition-colors"
+                                                    title={`Bound Egress Tunnel: ${device.status.stats.egress_interface} (Click to filter)`}
+                                                >
                                                     {device.status.stats.egress_interface}
                                                 </span>
                                             )}

@@ -145,8 +145,11 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
     // Filter and sort
     const filteredStats = appStats
         .filter(app => {
-            const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                app.group.toLowerCase().includes(searchTerm.toLowerCase());
+            const q = searchTerm.toLowerCase();
+            const matchesIface = app.by_iface ? Object.keys(app.by_iface).some(ifName => ifName.toLowerCase().includes(q)) : false;
+            const matchesSearch = app.name.toLowerCase().includes(q) ||
+                app.group.toLowerCase().includes(q) ||
+                matchesIface;
             if (!matchesSearch) return false;
             if (selectedIfaceFilter) {
                 return Boolean(app.by_iface && app.by_iface[selectedIfaceFilter]);

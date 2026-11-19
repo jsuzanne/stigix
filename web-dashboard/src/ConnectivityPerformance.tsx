@@ -1080,7 +1080,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
             const site = (e.site_name || '').toLowerCase();
             const element = (e.element_name || '').toLowerCase();
             const port = (e.port_name || e.selected_interface_label || e.selected_interface_name || '').toLowerCase();
-            if (!title.includes(q) && !target.includes(q) && !site.includes(q) && !element.includes(q) && !port.includes(q)) {
+            const egressIface = (e.egressInterface || '').toLowerCase();
+            if (!title.includes(q) && !target.includes(q) && !site.includes(q) && !element.includes(q) && !port.includes(q) && !egressIface.includes(q)) {
                 return false;
             }
         }
