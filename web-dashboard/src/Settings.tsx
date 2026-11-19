@@ -5715,8 +5715,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
 
                                 <div className="flex flex-wrap gap-2.5">
+                                    {interfaces.filter(p => p.includes('*')).map(wildcardPat => (
+                                        <button
+                                            key={wildcardPat}
+                                            onClick={() => toggleInterface(wildcardPat)}
+                                            className="px-4 py-2 rounded-xl text-[10px] font-black border transition-all flex items-center gap-3 tracking-widest shadow-sm bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
+                                            title="Active wildcard pattern in interfaces.txt (click to remove)"
+                                        >
+                                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
+                                            <span className="font-mono">{wildcardPat}</span>
+                                            <span className="opacity-70 text-[9px] uppercase">Wildcard</span>
+                                            <CheckCircle2 size={12} />
+                                        </button>
+                                    ))}
                                     {availableInterfaces.map(iface => {
-                                        const isSelected = interfaces.includes(iface);
+                                        const isWildcardMatched = interfaces.some(p => p.includes('*') && new RegExp('^' + p.split('*').map((s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$').test(iface));
+                                        const isSelected = interfaces.includes(iface) || isWildcardMatched;
                                         return (
                                             <button
                                                 key={iface}
@@ -5748,6 +5762,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     </div>
                                     <button
                                         type="button"
+                                        role="switch"
+                                        aria-checked={showEgressTelemetry}
                                         onClick={() => {
                                             const next = !showEgressTelemetry;
                                             setShowEgressTelemetry(next);
@@ -5757,13 +5773,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             toast.success(`Egress interface telemetry badges ${next ? 'enabled' : 'hidden'}`);
                                         }}
                                         className={cn(
-                                            "relative w-10 h-5 rounded-full transition-colors duration-200 flex-shrink-0 border cursor-pointer",
-                                            showEgressTelemetry ? "bg-cyan-500 border-transparent" : "bg-border/40 border-border"
+                                            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                            showEgressTelemetry ? "bg-cyan-500" : "bg-zinc-600/60 dark:bg-zinc-700"
                                         )}
                                     >
                                         <span className={cn(
-                                            "absolute top-[2px] w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-200",
-                                            showEgressTelemetry ? "translate-x-[20px]" : "translate-x-[2px]"
+                                            "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
+                                            showEgressTelemetry ? "translate-x-5" : "translate-x-0"
                                         )} />
                                     </button>
                                 </div>
