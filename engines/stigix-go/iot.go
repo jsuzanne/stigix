@@ -1846,7 +1846,7 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 			if gwStr != "" {
 				l7 := buildHTTPGetPayload(gwStr, "/api/v1/status", ua)
 				if d.sendSpoofedTCPFlow(gwStr, 80, l7, "http") {
-					d.log("debug", fmt.Sprintf("📤 HTTP GET /api/v1/status sent to %s:80", gwStr))
+					d.log("info", fmt.Sprintf("📤 HTTP GET /api/v1/status sent to %s:80", gwStr))
 				}
 			}
 			if !d.sleepOrDone(interval) {
@@ -1867,7 +1867,7 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 				mqttBroker = gwStr
 			}
 			if d.sendSpoofedTCPFlow(mqttBroker, 1883, l7, "mqtt") {
-				d.log("debug", fmt.Sprintf("📤 MQTT CONNECT (%s) sent to %s:1883", hostname, mqttBroker))
+				d.log("info", fmt.Sprintf("📤 MQTT CONNECT (%s) sent to %s:1883", hostname, mqttBroker))
 			}
 			if !d.sleepOrDone(interval) {
 				return
@@ -1882,7 +1882,7 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 			if gwStr != "" {
 				l7 := buildRTSPOptionsPayload(gwStr, ua)
 				if d.sendSpoofedTCPFlow(gwStr, 554, l7, "rtsp") {
-					d.log("debug", fmt.Sprintf("📤 RTSP OPTIONS sent to %s:554", gwStr))
+					d.log("info", fmt.Sprintf("📤 RTSP OPTIONS sent to %s:554", gwStr))
 				}
 			}
 			if !d.sleepOrDone(interval) {

@@ -175,6 +175,9 @@ export default function Iot({ token }: IotProps) {
     useEffect(() => {
         const socket = io();
         socket.emit('join-iot-fleet-stream');
+        socket.on('connect', () => {
+            socket.emit('join-iot-fleet-stream');
+        });
 
         socket.on('iot:daemon_failed', (info: any) => {
             setDaemonFailed(info.message || 'IoT daemon crashed — restart required');
@@ -293,7 +296,7 @@ export default function Iot({ token }: IotProps) {
                 }
             });
             if (Object.keys(nextLastLogs).length > 0) {
-                setDeviceLastLog(prev => ({ ...nextLastLogs, ...prev }));
+                setDeviceLastLog(prev => ({ ...prev, ...nextLastLogs }));
             }
             if (Object.keys(aggProtos).length > 0) {
                 setProtocolBreakdown(prev => Object.keys(prev).length === 0 ? aggProtos : prev);
@@ -324,7 +327,7 @@ export default function Iot({ token }: IotProps) {
                         };
                     }
                 });
-                setDeviceLastLog(prev => ({ ...lastMap, ...prev }));
+                setDeviceLastLog(prev => ({ ...prev, ...lastMap }));
             }
             if (data?.protocolBreakdown && typeof data.protocolBreakdown === 'object') {
                 setProtocolBreakdown(data.protocolBreakdown);

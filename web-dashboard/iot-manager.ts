@@ -208,13 +208,16 @@ export class IoTManager extends EventEmitter {
         this.ensureDaemon();
         await this.waitForDaemonReady(8000);
         this.runningDevices.set(config.id, config);
-        // Reset stale lastLog from previous cycle so card shows clean boot state during DHCP stagger
+        // Reset stale lastLog from previous cycle so card shows clean boot state during startup stagger
         const logs = this.logsCache.get(config.id) || [];
+        const isTunnel = this.daemonInterface.startsWith('uesimtun') || this.daemonInterface.startsWith('tun') || this.daemonInterface.includes('*');
         const bootLog = {
             type: 'log',
             device_id: config.id,
             level: 'info',
-            message: '🔄 Cycle starting — negotiating DHCP lease...',
+            message: isTunnel
+                ? '📡 Cycle starting — binding 5G tunnel interface...'
+                : '🔄 Cycle starting — negotiating DHCP lease...',
             timestamp: new Date().toISOString(),
         };
         logs.push(bootLog);
