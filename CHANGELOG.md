@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.31] - 2026-11-19
+
+### Fixed
+- **IoT Catalog Fleet Generator & CSV Merge Config Loader (`web-dashboard/server.ts`)**:
+  - Replaced undefined `loadIoTConfig()` calls with `getIoTConfig()` in `POST /api/iot/catalog/generate`, `POST /api/iot/import-prisma-csv` (merge mode), and `POST /api/iot/import-vuln-csv` (merge mode).
+
 ## [3.2.30] - 2026-11-19
 
 ### Added & Enhanced
