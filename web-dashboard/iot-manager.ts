@@ -676,12 +676,17 @@ export class IoTManager extends EventEmitter {
             }
             case 'stats': {
                 const incoming = msg.stats;
+                const prevCached = this.statsCache.get(device_id);
+                if (!incoming.egress_interface && prevCached?.egress_interface) {
+                    incoming.egress_interface = prevCached.egress_interface;
+                }
                 this.statsCache.set(device_id, incoming);
                 this.cumulativeStats.set(device_id, {
                     packets_sent: incoming.packets_sent,
                     bytes_sent: incoming.bytes_sent,
                     protocols: incoming.protocols || {},
-                    uptime_seconds: incoming.uptime_seconds || 0
+                    uptime_seconds: incoming.uptime_seconds || 0,
+                    ...(incoming.egress_interface ? { egress_interface: incoming.egress_interface } : {})
                 });
                 // ── Rate calculation (minimum 1.0s window to prevent sub-millisecond 1000+ pps spikes) ──
                 const now_ms = Date.now();
@@ -744,7 +749,11 @@ export class IoTManager extends EventEmitter {
                         protocols: {},
                         bad_behavior_active: false,
                     };
-                    const updated = { ...existing, current_ip: msg.assigned_ip };
+                    const updated = {
+                        ...existing,
+                        current_ip: msg.assigned_ip,
+                        ...(msg.tunnel_iface ? { egress_interface: msg.tunnel_iface } : {}),
+                    };
                     this.statsCache.set(device_id, updated);
                     this.emit('device:stats', { device_id, stats: updated });
                 }

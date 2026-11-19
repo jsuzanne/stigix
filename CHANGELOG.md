@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.30] - 2026-11-19
+
+### Added & Enhanced
+- **5G Tunnel (`uesimtun*`) L3 IoT Emulation Mode (`engines/stigix-go/iot.go`, `iot_raw_linux.go`, `web-dashboard/iot-manager.ts`, `src/Iot.tsx`)**:
+  - Added automatic L3 Tunnel Mode (`isIoTTunnelMode`) when `uesimtun*` or `tun*` interfaces are configured: skips L2 `AF_PACKET` / DHCP / ARP / LLDP, dynamically adopts the bound tunnel IPv4 (`10.45.0.x`), and routes all IoT protocol flows (`http`, `dns`, `cloud`, `mqtt`, `rtsp`, `ntp`) and Bad Behavior attack flows (`pan_test_domains`, `beacon`, `port_scan`, `data_exfil`, `dns_flood`, `random`) through real kernel TCP/UDP sockets bound via `SO_BINDTODEVICE`.
+  - Added balanced & sticky 1-to-1 tunnel assignment (`assignTunnelForIoTDevice`) so each active IoT device stays pinned to its assigned 5G SIM (`uesimtun0..N`) across rotation cycles while that tunnel remains UP.
+  - Added discreet `uesimtunX` egress badges next to each IoT device's IP address in both List View and Grid View (`src/Iot.tsx`), controlled by the existing `Show Egress Tunnel / Interface Telemetry Badges` toggle in Settings.
+
 ## [3.2.29] - 2026-11-19
 
 ### Added & Enhanced

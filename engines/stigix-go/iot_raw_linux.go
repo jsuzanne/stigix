@@ -52,6 +52,19 @@ type iotRawEngine struct {
 }
 
 func newIoTRawEngine(ctx context.Context, ifaceName string) (*iotRawEngine, error) {
+	if isIoTTunnelMode(ifaceName) {
+		return &iotRawEngine{
+			ifaceName:       ifaceName,
+			ifIndex:         0,
+			fd:              -1,
+			dhcpWaiters:     make(map[uint32]chan *parsedDHCPReply),
+			arpTable:        make(map[string][6]byte),
+			deviceIPs:       make(map[string][6]byte),
+			deviceOpenPorts: make(map[string]map[uint16][]byte),
+			pendingTCP:      make(map[tcpFlowKey]pendingTCPFlow),
+		}, nil
+	}
+
 	ief, err := net.InterfaceByName(ifaceName)
 	if err != nil {
 		// Fallback to first non-loopback interface if specified interface does not exist
@@ -281,6 +294,9 @@ func (e *iotRawEngine) readLoop(ctx context.Context) {
 }
 
 func (e *iotRawEngine) SendFrame(frame []byte) error {
+	if e.fd < 0 {
+		return nil
+	}
 	if len(frame) < 14 {
 		return fmt.Errorf("frame too short (%d bytes)", len(frame))
 	}
@@ -409,6 +425,9 @@ func (e *iotRawEngine) ResolveDstMAC(dstIP, gatewayIP string) [6]byte {
 }
 
 func (e *iotRawEngine) WaitDHCP(ctx context.Context, xid uint32, wantTypes []uint8, timeout time.Duration) *parsedDHCPReply {
+	if e.fd < 0 {
+		return nil
+	}
 	ch := make(chan *parsedDHCPReply, 8)
 	e.mu.Lock()
 	e.dhcpWaiters[xid] = ch

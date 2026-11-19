@@ -150,3 +150,41 @@ func TestResolveTrafficInterfaces_WildcardMultipleActiveTunnels(t *testing.T) {
 		t.Fatalf("expected %v, got %v", wantRR, picked)
 	}
 }
+
+func TestAssignTunnelForIoTDevice_StickyAndBalanced(t *testing.T) {
+	t.Setenv("STIGIX_INTERFACES", "uesimtun*")
+	origList := listNetInterfaces
+	defer func() { listNetInterfaces = origList }()
+
+	listNetInterfaces = func() ([]netInterfaceInfo, error) {
+		return []netInterfaceInfo{
+			{Name: "uesimtun0", Flags: net.FlagUp, HasIPv4: true, IPv4: "10.45.0.4"},
+			{Name: "uesimtun1", Flags: net.FlagUp, HasIPv4: true, IPv4: "10.45.0.5"},
+			{Name: "uesimtun2", Flags: net.FlagUp, HasIPv4: true, IPv4: "10.45.0.6"},
+		}, nil
+	}
+
+	iotTunnelAssignMu.Lock()
+	iotDeviceTunnelMap = make(map[string]string)
+	iotTunnelAssignMu.Unlock()
+	iotTunnelAssignCounter.Store(0)
+
+	t1, ip1, ok1 := assignTunnelForIoTDevice("cam-01", "")
+	t2, ip2, ok2 := assignTunnelForIoTDevice("plc-02", "")
+	t3, ip3, ok3 := assignTunnelForIoTDevice("mri-03", "")
+	if !ok1 || !ok2 || !ok3 {
+		t.Fatalf("expected all 3 IoT devices to receive a tunnel")
+	}
+	if t1 == t2 || t2 == t3 || t1 == t3 {
+		t.Fatalf("expected 3 distinct tunnels for 3 devices, got %s, %s, %s", t1, t2, t3)
+	}
+	if ip1 == "" || ip2 == "" || ip3 == "" {
+		t.Fatalf("expected non-empty tunnel IPs")
+	}
+
+	// Sticky check: re-requesting cam-01 must return the exact same tunnel
+	t1Again, ip1Again, okAgain := assignTunnelForIoTDevice("cam-01", "")
+	if !okAgain || t1Again != t1 || ip1Again != ip1 {
+		t.Fatalf("expected sticky tunnel %s (%s), got %s (%s)", t1, ip1, t1Again, ip1Again)
+	}
+}

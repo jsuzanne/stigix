@@ -31,7 +31,104 @@ var (
 
 	iotDNSCacheMu sync.RWMutex
 	iotDNSCache   = make(map[string]iotDNSCacheEntry)
+
+	iotTunnelAssignMu      sync.Mutex
+	iotDeviceTunnelMap     = make(map[string]string) // deviceID -> sticky tunnel iface (e.g. uesimtun2)
+	iotTunnelAssignCounter atomic.Uint64
 )
+
+func isTunnelIfaceOrPattern(name string) bool {
+	trimmed := strings.TrimSpace(name)
+	return strings.Contains(trimmed, "*") ||
+		strings.HasPrefix(trimmed, "uesimtun") ||
+		strings.HasPrefix(trimmed, "tun")
+}
+
+func isIoTTunnelMode(ifaceName string) bool {
+	if isTunnelIfaceOrPattern(ifaceName) {
+		return true
+	}
+	if envVal := strings.TrimSpace(os.Getenv("STIGIX_INTERFACES")); envVal != "" {
+		for _, pat := range parseInterfacePatterns(envVal) {
+			if isTunnelIfaceOrPattern(pat) {
+				return true
+			}
+		}
+	}
+	path := filepath.Join(getConfigDir(), "interfaces.txt")
+	if data, err := os.ReadFile(path); err == nil {
+		for _, pat := range parseInterfacePatterns(string(data)) {
+			if isTunnelIfaceOrPattern(pat) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// assignTunnelForIoTDevice deterministically assigns or reuses an active uesimtunX/tunX
+// tunnel interface and returns (ifaceName, ipv4, ok).
+func assignTunnelForIoTDevice(deviceID, explicitIface string) (string, string, bool) {
+	explicit := strings.TrimSpace(explicitIface)
+	if explicit != "" && !strings.Contains(explicit, "*") && explicit != "auto" && explicit != "default" {
+		if ip := getInterfaceIPv4(explicit); ip != "" {
+			iotTunnelAssignMu.Lock()
+			iotDeviceTunnelMap[deviceID] = explicit
+			iotTunnelAssignMu.Unlock()
+			return explicit, ip, true
+		}
+	}
+
+	ifaces, _ := resolveTrafficInterfaces(getConfigDir())
+	var activeTunnels []string
+	activeIPs := make(map[string]string)
+	for _, ifName := range ifaces {
+		if ip := getInterfaceIPv4(ifName); ip != "" {
+			activeTunnels = append(activeTunnels, ifName)
+			activeIPs[ifName] = ip
+		}
+	}
+	if len(activeTunnels) == 0 {
+		return "", "", false
+	}
+
+	iotTunnelAssignMu.Lock()
+	defer iotTunnelAssignMu.Unlock()
+
+	if prev, ok := iotDeviceTunnelMap[deviceID]; ok {
+		if ip, alive := activeIPs[prev]; alive {
+			return prev, ip, true
+		}
+	}
+
+	// Count how many known devices are mapped to each active tunnel to balance 1-to-1 first
+	usageCount := make(map[string]int, len(activeTunnels))
+	for _, t := range activeTunnels {
+		usageCount[t] = 0
+	}
+	for devID, t := range iotDeviceTunnelMap {
+		if devID == deviceID {
+			continue
+		}
+		if _, alive := activeIPs[t]; alive {
+			usageCount[t]++
+		}
+	}
+
+	chosen := activeTunnels[0]
+	minUse := usageCount[chosen]
+	startIdx := int((iotTunnelAssignCounter.Add(1) - 1) % uint64(len(activeTunnels)))
+	for i := 0; i < len(activeTunnels); i++ {
+		cand := activeTunnels[(startIdx+i)%len(activeTunnels)]
+		if usageCount[cand] < minUse || (i == 0) {
+			chosen = cand
+			minUse = usageCount[cand]
+		}
+	}
+
+	iotDeviceTunnelMap[deviceID] = chosen
+	return chosen, activeIPs[chosen], true
+}
 
 type iotDNSCacheEntry struct {
 	ip        string
@@ -39,8 +136,9 @@ type iotDNSCacheEntry struct {
 }
 
 // resolveDomainIPv4 resolves a domain name to its live IPv4 address (cached for 10 minutes),
-// falling back to fallbackIP if resolution fails.
-func resolveDomainIPv4(domain, fallbackIP string) string {
+// falling back to fallbackIP if resolution fails. When boundIface is non-empty, DNS queries
+// are bound to that interface via newBoundResolver.
+func resolveDomainIPv4(domain, fallbackIP string, boundIface ...string) string {
 	clean := strings.TrimSpace(domain)
 	if clean == "" || clean == "iot.cloud.local" {
 		return fallbackIP
@@ -53,9 +151,13 @@ func resolveDomainIPv4(domain, fallbackIP string) string {
 	}
 	iotDNSCacheMu.RUnlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2000*time.Millisecond)
 	defer cancel()
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, clean)
+	resolver := net.DefaultResolver
+	if len(boundIface) > 0 && strings.TrimSpace(boundIface[0]) != "" {
+		resolver = newBoundResolver(strings.TrimSpace(boundIface[0]))
+	}
+	addrs, err := resolver.LookupIPAddr(ctx, clean)
 	if err == nil {
 		for _, a := range addrs {
 			if ip4 := a.IP.To4(); ip4 != nil && !ip4.IsLoopback() {
@@ -298,6 +400,7 @@ type IoTDeviceSpec struct {
 	Type            string            `json:"type"`
 	MAC             string            `json:"mac"`
 	IPStart         string            `json:"ip_start"`
+	Interface       string            `json:"interface,omitempty"`
 	Protocols       []string          `json:"protocols"`
 	Enabled         *bool             `json:"enabled"`
 	TrafficInterval int               `json:"traffic_interval"`
@@ -837,6 +940,7 @@ type iotDeviceRunner struct {
 	persona        iotPersona
 	rawEng         *iotRawEngine
 	dhcpMode       string
+	isTunnelMode   bool
 	macBytes       [6]byte
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -844,6 +948,7 @@ type iotDeviceRunner struct {
 	previousUptime int64
 
 	mu                sync.RWMutex
+	boundTunnelIface  string
 	currentIP         string
 	gatewayIP         string
 	running           bool
@@ -871,11 +976,14 @@ func newIoTDeviceRunner(parentCtx context.Context, spec IoTDeviceSpec, rawEng *i
 		protos[k] = v
 	}
 
+	tunnelMode := isIoTTunnelMode(rawEng.ifaceName) || isTunnelIfaceOrPattern(spec.Interface)
+
 	return &iotDeviceRunner{
 		spec:           spec,
 		persona:        synthesizePersona(spec),
 		rawEng:         rawEng,
 		dhcpMode:       dhcpMode,
+		isTunnelMode:   tunnelMode,
 		macBytes:       macBytes,
 		ctx:            ctx,
 		cancel:         cancel,
@@ -921,12 +1029,36 @@ func (d *iotDeviceRunner) emitStats() {
 		"protocols":           protosCopy,
 		"bad_behavior_active": d.badBehaviorActive,
 	}
+	if d.boundTunnelIface != "" {
+		statsObj["egress_interface"] = d.boundTunnelIface
+	}
 	d.mu.RUnlock()
 
 	emitIoTJSON("stats", map[string]any{
 		"device_id": d.spec.ID,
 		"stats":     statsObj,
 	})
+}
+
+func (d *iotDeviceRunner) recordSentPacket(nBytes int, protocol string) {
+	if nBytes < 0 {
+		nBytes = 0
+	}
+	d.mu.Lock()
+	d.packetsSent++
+	d.bytesSent += int64(nBytes)
+	if protocol != "" {
+		d.protoCounts[protocol]++
+	}
+	d.mu.Unlock()
+	totalIoTPackets.Add(1)
+	totalIoTBytes.Add(int64(nBytes))
+}
+
+func (d *iotDeviceRunner) getBoundTunnelIface() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.boundTunnelIface
 }
 
 func (d *iotDeviceRunner) sendFrame(frame []byte, protocol string) {
@@ -988,7 +1120,11 @@ func (d *iotDeviceRunner) start() {
 	d.mu.Unlock()
 	activeIoTDevices.Add(1)
 
-	d.log("info", fmt.Sprintf("📡 [IOT-GO] System Interface: %s (Native AF_PACKET)", d.rawEng.ifaceName))
+	if d.isTunnelMode {
+		d.log("info", fmt.Sprintf("📡 [IOT-GO] System Interface: %s (5G L3 Tunnel Mode — SO_BINDTODEVICE)", d.rawEng.ifaceName))
+	} else {
+		d.log("info", fmt.Sprintf("📡 [IOT-GO] System Interface: %s (Native AF_PACKET)", d.rawEng.ifaceName))
+	}
 	d.log("info", fmt.Sprintf("🚀 Starting device simulation: %s (%s) [DHCP: %s]", d.spec.Name, d.spec.ID, d.dhcpMode))
 	d.log("info", fmt.Sprintf("🆔 MAC addr: %s | Persona: %s (%s · FW %s)", d.spec.MAC, d.persona.Model, d.persona.OS, d.persona.Firmware))
 	if d.spec.IPStart != "" {
@@ -1049,6 +1185,76 @@ func (d *iotDeviceRunner) hasProtocol(proto string) bool {
 }
 
 func (d *iotDeviceRunner) bootSequence() {
+	if d.isTunnelMode {
+		var tunnelIface, tunnelIP string
+		var ok bool
+		for {
+			tunnelIface, tunnelIP, ok = assignTunnelForIoTDevice(d.spec.ID, d.spec.Interface)
+			if ok && tunnelIP != "" {
+				break
+			}
+			d.log("warning", "⏳ Waiting for an active 5G tunnel interface (uesimtun*) with IPv4...")
+			if !d.sleepOrDone(2 * time.Second) {
+				return
+			}
+		}
+
+		d.mu.Lock()
+		d.boundTunnelIface = tunnelIface
+		d.mu.Unlock()
+
+		gw := d.spec.Gateway
+		if gw == "" {
+			if cloudCfg, exists := iotCloudDestinations[d.spec.Vendor]; exists && len(cloudCfg.Servers) > 0 {
+				gw = cloudCfg.Servers[0]
+			} else {
+				gw = "34.111.236.155"
+			}
+		}
+
+		d.setIPAndGateway(tunnelIP, gw)
+		emitIoTJSON("dhcp_ack", map[string]any{
+			"device_id":    d.spec.ID,
+			"assigned_ip":  tunnelIP,
+			"server_id":    tunnelIface,
+			"tunnel_iface": tunnelIface,
+			"gateway":      gw,
+		})
+		d.emitStats()
+		d.log("info", fmt.Sprintf("✅ 5G Tunnel bound: %s (IP: %s) — starting L3 protocol workers", tunnelIface, tunnelIP))
+
+		seenProto := make(map[string]bool)
+		var l3Protos []string
+		for _, proto := range d.spec.Protocols {
+			p := strings.ToLower(strings.TrimSpace(proto))
+			if p == "dhcp" || p == "arp" || p == "lldp" || p == "snmp" || p == "mdns" || p == "" {
+				continue
+			}
+			if !seenProto[p] {
+				seenProto[p] = true
+				l3Protos = append(l3Protos, p)
+			}
+		}
+		// Ensure every 5G tunnel IoT device emits DNS + HTTP User-Agent + Cloud SNI telemetry
+		for _, coreP := range []string{"http", "dns", "cloud"} {
+			if !seenProto[coreP] {
+				seenProto[coreP] = true
+				l3Protos = append(l3Protos, coreP)
+			}
+		}
+		for _, p := range l3Protos {
+			go d.runProtocolWorker(p)
+		}
+
+		if iotBadBehaviorGlob.Load() && d.spec.Security.BadBehavior {
+			if !d.sleepOrDone(5 * time.Second) {
+				return
+			}
+			d.enableBadBehavior()
+		}
+		return
+	}
+
 	if d.hasProtocol("dhcp") {
 		d.doDHCPSequence()
 	}
@@ -1443,7 +1649,86 @@ func (d *iotDeviceRunner) httpUserAgent() string {
 	return fmt.Sprintf("%s/2.4 (%s; %s; ID/%s)", strings.ReplaceAll(vc, " ", "-"), vendor, devType, d.spec.ID)
 }
 
+func (d *iotDeviceRunner) sendTunnelTCP(dstIPStr string, dstPort uint16, payload []byte, protoLabel string, dialTimeout time.Duration) bool {
+	iface := d.getBoundTunnelIface()
+	if iface == "" {
+		return false
+	}
+	if dialTimeout <= 0 {
+		dialTimeout = 2500 * time.Millisecond
+	}
+	dialer := net.Dialer{
+		Timeout: dialTimeout,
+		Control: func(network, address string, c syscall.RawConn) error {
+			_ = c.Control(func(fd uintptr) {
+				bindToDevice(int(fd), iface)
+			})
+			return nil
+		},
+	}
+	conn, err := dialer.DialContext(d.ctx, "tcp4", fmt.Sprintf("%s:%d", dstIPStr, dstPort))
+	if err != nil {
+		// Even when a remote TCP port is closed or filtered by NGFW, the kernel emitted the real TCP SYN
+		// packet out of the bound uesimtunX tunnel interface.
+		d.recordSentPacket(60, protoLabel)
+		// If there is an L7 payload and TCP handshake couldn't complete (e.g. synthetic TEST-NET IP),
+		// also emit a UDP datagram bound to the tunnel so DPI/packet-counters see the payload bytes.
+		if len(payload) > 0 {
+			_ = d.sendTunnelUDP(dstIPStr, dstPort, payload, "")
+		}
+		return true
+	}
+	defer conn.Close()
+
+	if len(payload) > 0 {
+		_ = conn.SetWriteDeadline(time.Now().Add(2500 * time.Millisecond))
+		n, writeErr := conn.Write(payload)
+		if writeErr == nil && n > 0 {
+			_ = conn.SetReadDeadline(time.Now().Add(400 * time.Millisecond))
+			buf := make([]byte, 512)
+			_, _ = conn.Read(buf)
+			d.recordSentPacket(n+120, protoLabel)
+			return true
+		}
+	}
+	d.recordSentPacket(120, protoLabel)
+	return true
+}
+
+func (d *iotDeviceRunner) sendTunnelUDP(dstIPStr string, dstPort uint16, payload []byte, protoLabel string) bool {
+	iface := d.getBoundTunnelIface()
+	if iface == "" || dstIPStr == "224.0.0.251" || dstIPStr == "255.255.255.255" {
+		return false
+	}
+	dialer := net.Dialer{
+		Timeout: 2500 * time.Millisecond,
+		Control: func(network, address string, c syscall.RawConn) error {
+			_ = c.Control(func(fd uintptr) {
+				bindToDevice(int(fd), iface)
+			})
+			return nil
+		},
+	}
+	conn, err := dialer.DialContext(d.ctx, "udp4", fmt.Sprintf("%s:%d", dstIPStr, dstPort))
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	n, err := conn.Write(payload)
+	if err != nil {
+		return false
+	}
+	if protoLabel != "" {
+		d.recordSentPacket(n+28, protoLabel)
+	}
+	return true
+}
+
 func (d *iotDeviceRunner) sendSpoofedTCP(dstIPStr string, dstPort uint16, flags uint8, payload []byte, protoLabel string) bool {
+	if d.isTunnelMode {
+		return d.sendTunnelTCP(dstIPStr, dstPort, payload, protoLabel, 1200*time.Millisecond)
+	}
 	ipStr, gwStr := d.getIPAndGateway()
 	srcIP, err1 := parseIPv4(ipStr)
 	dstIP, err2 := parseIPv4(dstIPStr)
@@ -1460,6 +1745,9 @@ func (d *iotDeviceRunner) sendSpoofedTCP(dstIPStr string, dstPort uint16, flags 
 // sendSpoofedTCPFlow initiates a TCP 3-way handshake (SYN) and registers the L7 payload
 // so iotRawEngine replies with ACK + PSH|ACK (L7 payload) + FIN|ACK upon receiving SYN-ACK.
 func (d *iotDeviceRunner) sendSpoofedTCPFlow(dstIPStr string, dstPort uint16, l7Payload []byte, protoLabel string) bool {
+	if d.isTunnelMode {
+		return d.sendTunnelTCP(dstIPStr, dstPort, l7Payload, protoLabel, 2500*time.Millisecond)
+	}
 	ipStr, gwStr := d.getIPAndGateway()
 	srcIP, err1 := parseIPv4(ipStr)
 	dstIP, err2 := parseIPv4(dstIPStr)
@@ -1486,6 +1774,9 @@ func (d *iotDeviceRunner) sendSpoofedTCPFlow(dstIPStr string, dstPort uint16, l7
 }
 
 func (d *iotDeviceRunner) sendSpoofedUDP(dstIPStr string, srcPort, dstPort uint16, payload []byte, protoLabel string) bool {
+	if d.isTunnelMode {
+		return d.sendTunnelUDP(dstIPStr, dstPort, payload, protoLabel)
+	}
 	ipStr, gwStr := d.getIPAndGateway()
 	srcIP, err1 := parseIPv4(ipStr)
 	dstIP, err2 := parseIPv4(dstIPStr)
@@ -1628,7 +1919,7 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 			// Emit spoofed DNS query from the IoT device IP before initiating the TCP connection
 			_, gw := d.getIPAndGateway()
 			dnsSrv := iotPublicDNS[0]
-			if gw != "" {
+			if gw != "" && !d.isTunnelMode {
 				dnsSrv = gw
 			}
 			sport := uint16(49152 + rand.Intn(16383))
@@ -1638,7 +1929,7 @@ func (d *iotDeviceRunner) runProtocolWorker(proto string) {
 			}
 
 			fallbackSrv := cloudCfg.Servers[0]
-			targetSrv := resolveDomainIPv4(sniDomain, fallbackSrv)
+			targetSrv := resolveDomainIPv4(sniDomain, fallbackSrv, d.getBoundTunnelIface())
 			if d.sendSpoofedTCPFlow(targetSrv, 443, tlsHello, "cloud") {
 				d.log("info", fmt.Sprintf("☁️ Cloud HTTPS (SNI: %s) sent to %s:443", sniDomain, targetSrv))
 			}
@@ -1790,7 +2081,7 @@ func (d *iotDeviceRunner) badDNSFlood(bCtx context.Context) {
 	for d.isBadBehaviorActive(bCtx) {
 		_, gw := d.getIPAndGateway()
 		servers := append([]string{}, iotPublicDNS...)
-		if gw != "" {
+		if gw != "" && !d.isTunnelMode {
 			servers = append(servers, gw)
 		}
 		for i := 0; i < 2; i++ {
@@ -1909,7 +2200,7 @@ func (d *iotDeviceRunner) badPANTestDomains(bCtx context.Context) {
 	for d.isBadBehaviorActive(bCtx) {
 		_, gw := d.getIPAndGateway()
 		servers := append([]string{}, iotPublicDNS...)
-		if gw != "" {
+		if gw != "" && !d.isTunnelMode {
 			servers = append(servers, gw)
 		}
 		domain := iotPANDNSTestDomains[rand.Intn(len(iotPANDNSTestDomains))]
@@ -1923,7 +2214,7 @@ func (d *iotDeviceRunner) badPANTestDomains(bCtx context.Context) {
 		}
 
 		// Resolve live IP of urlfiltering.paloaltonetworks.com (fallback 34.111.236.155)
-		panURLIP := resolveDomainIPv4(panHost, panFallbackIP)
+		panURLIP := resolveDomainIPv4(panHost, panFallbackIP, d.getBoundTunnelIface())
 		path := iotPANURLTestPaths[rand.Intn(len(iotPANURLTestPaths))]
 		httpReq := buildHTTPGetPayload(panHost, path, d.httpUserAgent())
 		if d.sendSpoofedTCPFlow(panURLIP, 80, httpReq, "bad_pan_url") {

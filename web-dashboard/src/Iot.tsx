@@ -1710,9 +1710,14 @@ export default function Iot({ token }: IotProps) {
                                 </div>
 
                                 {/* IP + MAC */}
-                                <div className="w-36 shrink-0 hidden sm:block">
-                                    <div className={cn("text-xs font-mono font-black", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
-                                        {device.status?.stats?.current_ip || '---.---.---.---'}
+                                <div className="w-40 shrink-0 hidden sm:block">
+                                    <div className={cn("text-xs font-mono font-black flex items-center gap-1.5 flex-wrap", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
+                                        <span>{device.status?.stats?.current_ip || '---.---.---.---'}</span>
+                                        {localStorage.getItem('stigix_show_egress_telemetry') !== 'false' && device.status?.stats?.egress_interface && (
+                                            <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[8px] font-bold text-cyan-400 leading-none" title={`Bound Egress Tunnel: ${device.status.stats.egress_interface}`}>
+                                                {device.status.stats.egress_interface}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="text-[9px] font-mono text-text-muted truncate" title={`MAC: ${device.mac}`}>
                                         {device.mac}
@@ -1889,8 +1894,13 @@ export default function Iot({ token }: IotProps) {
                                         <div className="text-[8px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1">
                                             <Wifi size={9} /> IP Address
                                         </div>
-                                        <div className={cn("text-xs font-mono font-black mt-0.5", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
-                                            {device.status?.stats?.current_ip || '---.---.---.---'}
+                                        <div className={cn("text-xs font-mono font-black mt-0.5 flex items-center gap-1.5 flex-wrap", device.status?.stats?.current_ip ? "text-blue-400" : "text-text-muted")}>
+                                            <span>{device.status?.stats?.current_ip || '---.---.---.---'}</span>
+                                            {localStorage.getItem('stigix_show_egress_telemetry') !== 'false' && device.status?.stats?.egress_interface && (
+                                                <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[8px] font-bold text-cyan-400 leading-none" title={`Bound Egress Tunnel: ${device.status.stats.egress_interface}`}>
+                                                    {device.status.stats.egress_interface}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                     <div>
