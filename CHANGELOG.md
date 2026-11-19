@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.29] - 2026-11-19
+
+### Added & Enhanced
+- **Multi-Interface & 5G Tunnel (`uesimtun*`) TX/RX Round-Robin & Discreet Telemetry (`engines/stigix-go/traffic.go`, `voice.go`, `convergence.go`, `pcap_replay.go`, `probe.go`, `web-dashboard/server.ts`, `Statistics.tsx`, `Security.tsx`, `ConnectivityPerformance.tsx`, `Settings.tsx`)**:
+  - Added dynamic wildcard interface resolution (`resolveTrafficInterfaces`, `pickNextInterface`) supporting `uesimtun*` / `tun*` with atomic Round-Robin load-balancing, real `SO_BINDTODEVICE` socket binding, bound tunnel DNS resolution (with automatic loopback `127.0.0.53` redirect to `8.8.8.8:53`), and anti-leak protection when 0 tunnels are UP.
+  - Added per-interface telemetry (`requests_by_iface`, `errors_by_iface`, `by_iface`, `egressInterface`) across SaaS Traffic, Security Test Logs, and Connectivity Probes.
+  - Added a discreet visibility toggle in **Settings → System → Interfaces & Egress** (`Show Egress Tunnel / Interface Telemetry Badges`), hidden by default on standard single-NIC SD-WAN deployments (`eth0` / `enp1s0`) and active on multi-tunnel 5G nodes.
+
 ## [3.2.28] - 2026-11-18
 
 ### Fixed & Enhanced

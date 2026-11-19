@@ -505,8 +505,11 @@ export default function PacketCapture({
 
     // Dynamic BPF Presets for IoT Security Devices & Vendors
     const iotBpfPresets = useMemo(() => {
-        const deviceOptions: Array<{ id: string; label: string; sublabel: string; bpf: string }> = [];
+        const summaryOptions: Array<{ id: string; label: string; sublabel: string; bpf: string; isActive?: boolean }> = [];
+        const deviceOptions: Array<{ id: string; label: string; sublabel: string; bpf: string; isActive?: boolean }> = [];
         const vendorMap = new Map<string, { count: number; clauses: string[] }>();
+        const allClauses: string[] = [];
+        const activeClauses: string[] = [];
 
         const sorted = [...iotDevices].sort((a, b) => {
             const aActive = a.deviceState === 'ACTIVE' || a.running ? 0 : a.enabled ? 1 : 2;
@@ -527,6 +530,11 @@ export default function PacketCapture({
             const bpf = clauses.join(' or ');
 
             const isActive = d.deviceState === 'ACTIVE' || d.running;
+            if (isActive) {
+                activeClauses.push(...clauses);
+            }
+            allClauses.push(...clauses);
+
             const stateDot = isActive ? '🟢 ' : d.enabled ? '🔵 ' : '';
             const vendorSuffix = d.vendor ? ` (${d.vendor})` : '';
 
@@ -535,6 +543,7 @@ export default function PacketCapture({
                 label: `${stateDot}${d.name || d.id}${vendorSuffix}`,
                 sublabel: `${validIp ? `${validIp} · ` : ''}${mac || ''} → ${bpf}`,
                 bpf,
+                isActive,
             });
 
             const vendorName = String(d.vendor || '').trim();
@@ -547,6 +556,28 @@ export default function PacketCapture({
                 }
                 vendorMap.set(vendorName, existing);
             }
+        }
+
+        if (activeClauses.length > 0) {
+            const uniqueActive = Array.from(new Set(activeClauses));
+            const bpf = uniqueActive.join(' or ');
+            summaryOptions.push({
+                id: 'iot_summary_all_active',
+                label: `⚡ All Active IoT Devices (${deviceOptions.filter(d => d.isActive).length})`,
+                sublabel: bpf,
+                bpf,
+                isActive: true,
+            });
+        }
+        if (allClauses.length > 0) {
+            const uniqueAll = Array.from(new Set(allClauses));
+            const bpf = uniqueAll.join(' or ');
+            summaryOptions.push({
+                id: 'iot_summary_all_emulated',
+                label: `🌐 All Emulated IoT Devices (${deviceOptions.length})`,
+                sublabel: bpf,
+                bpf,
+            });
         }
 
         const vendorOptions: Array<{ id: string; label: string; sublabel: string; bpf: string }> = [];
@@ -565,7 +596,7 @@ export default function PacketCapture({
                 });
             });
 
-        return { deviceOptions, vendorOptions };
+        return { summaryOptions, deviceOptions, vendorOptions };
     }, [iotDevices]);
 
     const handlePresetSelect = (presetId: string) => {
@@ -579,6 +610,11 @@ export default function PacketCapture({
         const custom = customBpfPresets.find(p => p.id === presetId);
         if (custom) {
             setBpfFilter(custom.bpf);
+            return;
+        }
+        const iotSummary = iotBpfPresets.summaryOptions.find(p => p.id === presetId);
+        if (iotSummary) {
+            setBpfFilter(iotSummary.bpf);
             return;
         }
         const iotDev = iotBpfPresets.deviceOptions.find(p => p.id === presetId);
@@ -2844,6 +2880,17 @@ export default function PacketCapture({
                                 }))
                             });
                         }
+                        if (iotBpfPresets.summaryOptions.length > 0) {
+                            presetGroups.push({
+                                label: '👑 IoT Security — Fleet Overview',
+                                options: iotBpfPresets.summaryOptions.map(sp => ({
+                                    value: sp.id,
+                                    label: sp.label,
+                                    sublabel: sp.sublabel,
+                                    isActive: sp.isActive
+                                }))
+                            });
+                        }
                         if (iotBpfPresets.vendorOptions.length > 0) {
                             presetGroups.push({
                                 label: '🏷️ IoT Security — By Vendor / Family',
@@ -2860,7 +2907,8 @@ export default function PacketCapture({
                                 options: iotBpfPresets.deviceOptions.map(dp => ({
                                     value: dp.id,
                                     label: dp.label,
-                                    sublabel: dp.sublabel
+                                    sublabel: dp.sublabel,
+                                    isActive: dp.isActive
                                 }))
                             });
                         }
@@ -2894,7 +2942,9 @@ export default function PacketCapture({
                                     groups={presetGroups}
                                     disabled={capturing}
                                     accent="cyan"
-                                    menuMinWidth={320}
+                                    menuMinWidth={380}
+                                    searchable={true}
+                                    searchPlaceholder="Search preset, device, vendor, IP or MAC..."
                                     triggerClassName="bg-card-secondary rounded-xl h-9 font-mono font-bold"
                                 />
                             </div>

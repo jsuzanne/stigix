@@ -1721,6 +1721,9 @@ try {
 
 
 
+let _lastEgressIface = '';
+let _lastEgressIp = '';
+
 /**
  * Resolves the primary traffic generator egress interface, IPv4 address, and binding flags.
  */
@@ -1767,6 +1770,8 @@ const getEgressConfig = (): { iface: string; interface: string; ip: string; ifac
     }
 
     const ifaceFlag = (iface && !iface.startsWith('lo') && !iface.includes('*')) ? `--interface ${iface}` : (ip && ip !== '127.0.0.1' ? `--interface ${ip}` : '');
+    if (iface) _lastEgressIface = iface;
+    if (ip) _lastEgressIp = ip;
 
     return { iface, interface: iface, ip, ifaceFlag };
 };
@@ -6268,9 +6273,13 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
         const execPromise = promisify(exec);
         const execFilePromise = promisify(execFile);
         const epType = endpoint.type.toLowerCase();
+        const probeEgress = getEgressConfig();
+        const probeIface = probeEgress.interface || getInterface();
+        if (probeIface) (result as any).egressInterface = probeIface;
+        if (probeEgress.ip) (result as any).egressIp = probeEgress.ip;
         const stigixGoBin = resolveGoEngineBinary() || '/usr/local/bin/stigix-go';
         if (isGoEngineEnabled() && fs.existsSync(stigixGoBin) && (epType === 'http' || epType === 'https' || epType === 'ping' || epType === 'tcp' || epType === 'dns')) {
-            const iface = getInterface();
+            const iface = probeIface;
             const timeoutMs = endpoint.timeout || 5000;
             const retryDelayMs = Math.max(1000, Math.min(5000, Math.floor(timeoutMs / 10)));
             const probeArgs = [
@@ -10959,6 +10968,25 @@ const addTestResult = async (testType: string, testName: string, result: any, te
     const id = testId || getNextTestId();
     const fallbackPort = getPredictiveSourcePort(testType, id);
 
+    const rawCmd = String(details?.command || result?.command || '');
+    const cmdIfaceMatch = rawCmd.match(/--interface\s+([^\s'"]+)/);
+    const detectedIface = details?.egressInterface || result?.egressInterface || (cmdIfaceMatch ? cmdIfaceMatch[1] : (_lastEgressIface || undefined));
+    let detectedIp = details?.egressIp || result?.egressIp;
+    if (detectedIface && !detectedIp) {
+        try {
+            const nets = os.networkInterfaces()[detectedIface] || [];
+            const ipv4 = nets.find(n => (n.family === 'IPv4' || (n as any).family === 4) && !n.internal);
+            if (ipv4) detectedIp = ipv4.address;
+        } catch {}
+        if (!detectedIp && detectedIface === _lastEgressIface && _lastEgressIp) {
+            detectedIp = _lastEgressIp;
+        }
+    }
+    if (detectedIface && result && typeof result === 'object') {
+        result.egressInterface = detectedIface;
+        if (detectedIp) result.egressIp = detectedIp;
+    }
+
     const historyEntry: any = {
         testId: id,
         timestamp: Date.now(),
@@ -11000,6 +11028,8 @@ const addTestResult = async (testType: string, testName: string, result: any, te
             output: details.output || result.output,
             resolvedIp: details.resolvedIp || details.dns_ip || result.resolvedIp,
             srcPort: details.srcPort || result.srcPort || details.sourcePort || result.sourcePort || fallbackPort,
+            egressInterface: detectedIface,
+            egressIp: detectedIp,
             // C2 extra fields
             attackType: details.attackType || result.attackType,
             scenarioId: details.scenarioId || result.scenarioId,
@@ -11007,7 +11037,7 @@ const addTestResult = async (testType: string, testName: string, result: any, te
             http_code: details.http_code ?? result.http_code,
             dns_ip: details.dns_ip ?? result.dns_ip,
             resolved_count: details.resolved_count ?? result.resolved_count,
-        } : { ...result, srcPort: result.srcPort || fallbackPort },
+        } : { ...result, srcPort: result.srcPort || fallbackPort, egressInterface: detectedIface, egressIp: detectedIp },
         runId
     };
 

@@ -809,6 +809,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     // System startup behaviour
     const [systemSettings, setSystemSettings] = useState<any>({ auto_restart_iot: false, auto_restart_voice: false, auto_restart_traffic: true, auto_restart_probes: true, auto_restart_custom_tcp: true, registry_mode: 'auto' });
     const [savingSystemSettings, setSavingSystemSettings] = useState(false);
+    const [showEgressTelemetry, setShowEgressTelemetry] = useState<boolean>(() => {
+        if (typeof window === 'undefined') return true;
+        return localStorage.getItem('stigix_show_egress_telemetry') !== 'false';
+    });
     // Engine Runtime Benchmark & Hot-Switcher (Legacy Python/Bash vs Go Native)
     const [engineRuntimeInfo, setEngineRuntimeInfo] = useState<any>(null);
     const [switchingEngineRuntime, setSwitchingEngineRuntime] = useState(false);
@@ -5733,6 +5737,35 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             </button>
                                         );
                                     })}
+                                </div>
+
+                                <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-card-secondary/30 border border-border">
+                                    <div>
+                                        <div className="text-xs font-black text-text-primary">Show Egress Tunnel / Interface Telemetry Badges</div>
+                                        <div className="text-[10px] text-text-muted mt-0.5">
+                                            Display discreet per-interface badges (e.g. <code className="font-mono text-cyan-400">uesimtun0..N</code>) across SaaS Traffic, Security Test Logs, and Connectivity Probes.
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const next = !showEgressTelemetry;
+                                            setShowEgressTelemetry(next);
+                                            try {
+                                                localStorage.setItem('stigix_show_egress_telemetry', next ? 'true' : 'false');
+                                            } catch {}
+                                            toast.success(`Egress interface telemetry badges ${next ? 'enabled' : 'hidden'}`);
+                                        }}
+                                        className={cn(
+                                            "relative w-10 h-5 rounded-full transition-colors duration-200 flex-shrink-0 border cursor-pointer",
+                                            showEgressTelemetry ? "bg-cyan-500 border-transparent" : "bg-border/40 border-border"
+                                        )}
+                                    >
+                                        <span className={cn(
+                                            "absolute top-[2px] w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-200",
+                                            showEgressTelemetry ? "translate-x-[20px]" : "translate-x-[2px]"
+                                        )} />
+                                    </button>
                                 </div>
                             </div>
                         </div>

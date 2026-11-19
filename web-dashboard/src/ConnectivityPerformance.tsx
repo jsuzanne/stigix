@@ -1999,6 +1999,21 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                             <span className="text-[10px] text-text-muted font-mono break-all opacity-80 leading-tight">
                                                 {formatDisplayUrl(e)}
                                             </span>
+                                            {(() => {
+                                                const egressIface = (e.lastResult as any)?.egressInterface;
+                                                const egressIp = (e.lastResult as any)?.egressIp;
+                                                const egressPref = typeof window !== 'undefined' ? localStorage.getItem('stigix_show_egress_telemetry') : null;
+                                                const showEgressBadge = egressIface && (egressPref === 'true' || (egressPref !== 'false' && (egressIface.startsWith('uesimtun') || egressIface.startsWith('tun'))));
+                                                if (!showEgressBadge) return null;
+                                                return (
+                                                    <span
+                                                        className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/25"
+                                                        title={egressIp ? `Last Egress Interface: ${egressIface} (${egressIp})` : `Last Egress Interface: ${egressIface}`}
+                                                    >
+                                                        {egressIface}
+                                                    </span>
+                                                );
+                                            })()}
                                             <button
                                                 onClick={(ev) => {
                                                     ev.stopPropagation();

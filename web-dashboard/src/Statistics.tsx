@@ -110,7 +110,13 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
     }
 
     const ifaceKeys = Object.keys(stats.requests_by_iface || {}).sort();
-    const hasMultiOrTunnelIface = ifaceKeys.length > 1 || ifaceKeys.some(k => k !== 'eth0');
+    const egressTelemetryPref = typeof window !== 'undefined' ? localStorage.getItem('stigix_show_egress_telemetry') : null;
+    const isMultiOrTunnelDetected = ifaceKeys.length > 1 || ifaceKeys.some(k => k.startsWith('uesimtun') || k.startsWith('tun'));
+    const hasMultiOrTunnelIface = egressTelemetryPref === 'false'
+        ? false
+        : egressTelemetryPref === 'true'
+            ? ifaceKeys.length > 0
+            : isMultiOrTunnelDetected;
 
     // Combine requests, errors, and live telemetry data
     const appStats = Object.keys(stats.requests_by_app).map(app => {

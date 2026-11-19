@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, Check, Search, X } from 'lucide-react';
 
 export interface StigixSelectOption {
     value: string | number;
@@ -9,6 +9,7 @@ export interface StigixSelectOption {
     badge?: string;
     badgeClassName?: string;
     icon?: React.ReactNode;
+    isActive?: boolean;
 }
 
 export interface StigixSelectGroup {
@@ -31,6 +32,9 @@ interface StigixSelectProps {
     triggerIcon?: React.ReactNode;
     accent?: 'cyan' | 'purple' | 'indigo' | 'emerald' | 'blue';
     uppercaseTrigger?: boolean;
+    searchable?: boolean;
+    searchPlaceholder?: string;
+    showActiveToggle?: boolean;
 }
 
 export function StigixSelect({
@@ -48,11 +52,17 @@ export function StigixSelect({
     triggerIcon,
     accent = 'purple',
     uppercaseTrigger = false,
+    searchable = false,
+    searchPlaceholder = 'Filter options...',
+    showActiveToggle = false,
 }: StigixSelectProps) {
     const effectiveMinWidth = minMenuWidth ?? menuMinWidth ?? 200;
     const [open, setOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeOnly, setActiveOnly] = useState(false);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const menuRef = useRef<HTMLDivElement | null>(null);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
     const [coords, setCoords] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
 
     const allOptions: StigixSelectOption[] = groups
@@ -61,13 +71,43 @@ export function StigixSelect({
 
     const selectedOption = allOptions.find(o => String(o.value) === String(value));
 
+    // Check if there are active items (via isActive prop or 🟢 in label)
+    const activeCount = allOptions.filter(o => o.isActive || o.label.includes('🟢')).length;
+    const canShowActiveToggle = showActiveToggle || activeCount > 0;
+
+    // Filter options based on search query and activeOnly toggle
+    const query = searchQuery.trim().toLowerCase();
+    const filterOption = (opt: StigixSelectOption) => {
+        if (activeOnly && !opt.isActive && !opt.label.includes('🟢')) {
+            return false;
+        }
+        if (!query) return true;
+        const matchLabel = opt.label.toLowerCase().includes(query);
+        const matchSublabel = opt.sublabel?.toLowerCase().includes(query);
+        const matchBadge = opt.badge?.toLowerCase().includes(query);
+        const matchValue = String(opt.value).toLowerCase().includes(query);
+        return matchLabel || matchSublabel || matchBadge || matchValue;
+    };
+
+    const filteredOptions = options.filter(filterOption);
+    const filteredGroups = groups
+        ? groups.map(g => ({
+            ...g,
+            options: g.options.filter(filterOption)
+        })).filter(g => g.options.length > 0)
+        : null;
+
+    const allFilteredOptions: StigixSelectOption[] = filteredGroups
+        ? filteredGroups.flatMap(g => g.options)
+        : filteredOptions;
+
     const computeCoords = () => {
         if (!triggerRef.current) return null;
         const rect = triggerRef.current.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
         const viewportWidth = window.innerWidth;
         const spaceBelow = viewportHeight - rect.bottom;
-        const estimatedHeight = Math.min(320, allOptions.length * 36 + (groups ? groups.length * 28 : 16));
+        const estimatedHeight = Math.min(380, allOptions.length * 36 + (groups ? groups.length * 28 : 16) + (searchable ? 52 : 0));
         const openUpward = spaceBelow < estimatedHeight && rect.top > spaceBelow;
         const width = Math.max(rect.width, effectiveMinWidth);
         const left = Math.min(rect.left, Math.max(8, viewportWidth - width - 12));
@@ -97,7 +137,20 @@ export function StigixSelect({
         if (open) {
             updatePosition();
         }
-    }, [open, value, allOptions.length]);
+    }, [open, value, allOptions.length, searchQuery, activeOnly]);
+
+    // Focus search input when menu opens, reset filter when closed
+    useEffect(() => {
+        if (!open) {
+            setSearchQuery('');
+            setActiveOnly(false);
+        } else if (searchable) {
+            const timer = setTimeout(() => {
+                searchInputRef.current?.focus();
+            }, 40);
+            return () => clearTimeout(timer);
+        }
+    }, [open, searchable]);
 
     useEffect(() => {
         if (!open) return;
@@ -114,15 +167,26 @@ export function StigixSelect({
             if (e.key === 'Escape') {
                 setOpen(false);
                 triggerRef.current?.focus();
-            } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && allOptions.length > 0) {
+            } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && allFilteredOptions.length > 0) {
                 e.preventDefault();
-                const curIdx = allOptions.findIndex(o => String(o.value) === String(value));
+                const curIdx = allFilteredOptions.findIndex(o => String(o.value) === String(value));
                 const nextIdx = e.key === 'ArrowDown'
-                    ? (curIdx + 1) % allOptions.length
-                    : (curIdx - 1 + allOptions.length) % allOptions.length;
-                const nextOpt = allOptions[nextIdx];
+                    ? (curIdx + 1) % allFilteredOptions.length
+                    : (curIdx - 1 + allFilteredOptions.length) % allFilteredOptions.length;
+                const nextOpt = allFilteredOptions[nextIdx];
                 if (nextOpt) {
                     onChange(String(nextOpt.value));
+                }
+            } else if (e.key === 'Enter' && allFilteredOptions.length > 0 && searchQuery) {
+                // Select first matching option if enter pressed while searching
+                const cur = allFilteredOptions.find(o => String(o.value) === String(value));
+                if (!cur && allFilteredOptions[0]) {
+                    onChange(String(allFilteredOptions[0].value));
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                } else if (cur) {
+                    setOpen(false);
+                    triggerRef.current?.focus();
                 }
             }
         };
@@ -264,25 +328,102 @@ export function StigixSelect({
                         left: coords.left,
                         width: coords.width,
                     }}
-                    className="bg-card border border-border rounded-2xl shadow-2xl z-[300] p-1.5 space-y-1.5 max-h-80 overflow-y-auto"
+                    className="bg-card border border-border rounded-2xl shadow-2xl z-[300] overflow-hidden flex flex-col max-h-96 animate-in fade-in zoom-in-95 duration-150"
                 >
-                    {groups ? (
-                        groups.map((group, gIdx) => (
-                            <div
-                                key={group.label}
-                                className={gIdx > 0 ? 'pt-1.5 border-t border-border/60 space-y-0.5' : 'space-y-0.5'}
-                            >
-                                <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-text-muted opacity-70">
-                                    {group.label}
-                                </div>
-                                {group.options.map(renderOptionRow)}
+                    {searchable && (
+                        <div className="p-2 border-b border-border/60 bg-card/95 backdrop-blur-sm shrink-0 space-y-1.5">
+                            <div className="relative flex items-center">
+                                <Search size={12} className="absolute left-2.5 text-text-muted pointer-events-none" />
+                                <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    placeholder={searchPlaceholder}
+                                    className="w-full pl-7 pr-7 py-1.5 bg-card-secondary border border-border/80 focus:border-cyan-500 rounded-xl text-xs text-text-primary placeholder:text-text-muted/60 outline-none transition-colors"
+                                    onClick={e => e.stopPropagation()}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Escape') {
+                                            setOpen(false);
+                                            triggerRef.current?.focus();
+                                        }
+                                    }}
+                                />
+                                {searchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-2 text-text-muted hover:text-text-primary p-0.5 rounded cursor-pointer"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
                             </div>
-                        ))
-                    ) : (
-                        <div className="space-y-0.5">
-                            {options.map(renderOptionRow)}
+
+                            {canShowActiveToggle && (
+                                <div className="flex items-center gap-1.5 pt-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveOnly(false)}
+                                        className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
+                                            !activeOnly
+                                                ? 'bg-card-secondary text-text-primary border border-border font-bold'
+                                                : 'text-text-muted hover:text-text-primary'
+                                        }`}
+                                    >
+                                        All ({allOptions.length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveOnly(true)}
+                                        className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer ${
+                                            activeOnly
+                                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold'
+                                                : 'text-text-muted hover:text-emerald-400'
+                                        }`}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                        <span>Active ({activeCount})</span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
+
+                    <div className="p-1.5 space-y-1.5 overflow-y-auto flex-1">
+                        {filteredGroups ? (
+                            filteredGroups.length > 0 ? (
+                                filteredGroups.map((group, gIdx) => (
+                                    <div
+                                        key={group.label}
+                                        className={gIdx > 0 ? 'pt-1.5 border-t border-border/60 space-y-0.5' : 'space-y-0.5'}
+                                    >
+                                        <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-text-muted opacity-70 flex items-center justify-between">
+                                            <span>{group.label}</span>
+                                            <span className="text-[8px] font-mono opacity-60 font-normal">
+                                                {group.options.length}
+                                            </span>
+                                        </div>
+                                        {group.options.map(renderOptionRow)}
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="py-6 text-center text-xs text-text-muted font-medium">
+                                    No options match {searchQuery ? `"${searchQuery}"` : 'current filter'}
+                                </div>
+                            )
+                        ) : (
+                            filteredOptions.length > 0 ? (
+                                <div className="space-y-0.5">
+                                    {filteredOptions.map(renderOptionRow)}
+                                </div>
+                            ) : (
+                                <div className="py-6 text-center text-xs text-text-muted font-medium">
+                                    No options match {searchQuery ? `"${searchQuery}"` : 'current filter'}
+                                </div>
+                            )
+                        )}
+                    </div>
                 </div>,
                 document.body
             )}
