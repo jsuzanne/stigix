@@ -21372,7 +21372,7 @@ app.get('/api/iot/catalog/stats', authenticateToken, (_req, res) => {
 app.post('/api/iot/catalog/generate', authenticateToken, async (req, res) => {
     try {
         const { vertical, prompt, count, bad_behavior_pct, merge } = req.body || {};
-        const existing = loadIoTConfig();
+        const existing = getIoTConfig();
         const existingDevices: any[] = Array.isArray(existing.devices) ? existing.devices : [];
         const existingMacs = new Set<string>(
             existingDevices.map((d: any) => String(d.mac || '').toLowerCase()).filter(Boolean)
@@ -21483,7 +21483,7 @@ app.post('/api/iot/import-prisma-csv', authenticateToken, async (req, res) => {
         const catalogHarvest = iotCatalog.harvestDevices(newDevices, 'prisma-assets-csv');
 
         if (merge) {
-            const existing = loadIoTConfig();
+            const existing = getIoTConfig();
             const existingIds = new Set((existing.devices || []).map((d: any) => d.id));
             const merged = [
                 ...(existing.devices || []),
@@ -21573,7 +21573,7 @@ app.post('/api/iot/import-vuln-csv', authenticateToken, async (req, res) => {
         const catalogHarvest = iotCatalog.harvestDevices(newDevices, 'prisma-assets-csv');
 
         if (merge) {
-            const existing = loadIoTConfig();
+            const existing = getIoTConfig();
             const existingIds = new Set((existing.devices || []).map((d: any) => d.id));
             const merged = [
                 ...(existing.devices || []),
