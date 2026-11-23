@@ -2004,7 +2004,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage, isL
                                                 const egressIface = (e.lastResult as any)?.egressInterface;
                                                 const egressIp = (e.lastResult as any)?.egressIp;
                                                 const egressPref = typeof window !== 'undefined' ? localStorage.getItem('stigix_show_egress_telemetry') : null;
-                                                const showEgressBadge = egressIface && (egressPref === 'true' || (egressPref !== 'false' && (egressIface.startsWith('uesimtun') || egressIface.startsWith('tun'))));
+                                                const showEgressBadge = egressIface && egressPref !== 'false' && (egressIface.startsWith('uesimtun') || egressIface.startsWith('tun'));
                                                 if (!showEgressBadge) return null;
                                                 return (
                                                     <span

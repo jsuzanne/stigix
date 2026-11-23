@@ -3656,7 +3656,7 @@ export default function Security({ token, onGoToCloudSettings: _onGoToCloudSetti
                                                                     const egressIface = result.result?.egressInterface || (result as any).details?.egressInterface || (String((result as any).details?.command || result.result?.command || '').match(/--interface\s+([^\s'"]+)/)?.[1]);
                                                                     const egressIp = result.result?.egressIp || (result as any).details?.egressIp;
                                                                     const egressPref = typeof window !== 'undefined' ? localStorage.getItem('stigix_show_egress_telemetry') : null;
-                                                                    const showEgressBadge = egressIface && (egressPref === 'true' || (egressPref !== 'false' && (egressIface.startsWith('uesimtun') || egressIface.startsWith('tun'))));
+                                                                    const showEgressBadge = egressIface && egressPref !== 'false' && (egressIface.startsWith('uesimtun') || egressIface.startsWith('tun'));
                                                                     if (!showEgressBadge) return null;
                                                                     return (
                                                                         <span

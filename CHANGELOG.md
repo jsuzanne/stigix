@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.32] - 2026-11-23
+
+### Enhanced & Fixed
+- **Clean Fixed-Width SaaS Traffic Table & Compact Egress Tunnel Filter (`web-dashboard/src/Statistics.tsx`, `ConnectivityPerformance.tsx`, `Security.tsx`)**:
+  - Removed inline per-interface error badges from the `ERRORS` table column and removed the separate `EGRESS INTERFACES / 5G TUNNELS` banner box so the SaaS Traffic table always preserves identical column widths and single-line row heights regardless of the number of active tunnels.
+  - Added a compact **Egress Tunnel / Interface Filter Dropdown** directly inside the Search & Controls bar (visible only when multi-interface or `uesimtun*` / `tun*` tunnels are active), dynamically updating each application row's `Requests`, `Errors`, and `Success Rate` for the selected tunnel.
+  - Ensured classic single-interface SD-WAN nodes (`eth0`, `enp1s0`, `enp2s0`) never display redundant interface badges or filters.
+
 ## [3.2.31] - 2026-11-19
 
 ### Fixed

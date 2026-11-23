@@ -112,31 +112,30 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
     const ifaceKeys = Object.keys(stats.requests_by_iface || {}).sort();
     const egressTelemetryPref = typeof window !== 'undefined' ? localStorage.getItem('stigix_show_egress_telemetry') : null;
     const isMultiOrTunnelDetected = ifaceKeys.length > 1 || ifaceKeys.some(k => k.startsWith('uesimtun') || k.startsWith('tun'));
-    const hasMultiOrTunnelIface = egressTelemetryPref === 'false'
-        ? false
-        : egressTelemetryPref === 'true'
-            ? ifaceKeys.length > 0
-            : isMultiOrTunnelDetected;
+    const hasMultiOrTunnelIface = egressTelemetryPref === 'false' ? false : isMultiOrTunnelDetected;
 
     // Combine requests, errors, and live telemetry data
     const appStats = Object.keys(stats.requests_by_app).map(app => {
         const cleanApp = normalizeAppName(app);
         const tel = stats.telemetry_by_app?.[cleanApp] || stats.telemetry_by_app?.[app];
+        const ifaceStat = selectedIfaceFilter && tel?.by_iface ? tel.by_iface[selectedIfaceFilter] : undefined;
+        const reqCount = selectedIfaceFilter ? (ifaceStat?.requests || 0) : (stats.requests_by_app[app] || 0);
+        const errCount = selectedIfaceFilter ? (ifaceStat?.errors || 0) : (stats.errors_by_app[app] || 0);
 
         return {
             name: app,
             group: appToGroup[cleanApp] || appToGroup[app] || truncatedToGroup[cleanApp] || 'Uncategorized',
-            requests: stats.requests_by_app[app] || 0,
-            errors: stats.errors_by_app[app] || 0,
-            successRate: stats.requests_by_app[app] > 0
-                ? ((stats.requests_by_app[app] - (stats.errors_by_app[app] || 0)) / stats.requests_by_app[app] * 100).toFixed(1)
+            requests: reqCount,
+            errors: errCount,
+            successRate: reqCount > 0
+                ? (((reqCount - errCount) / reqCount) * 100).toFixed(1)
                 : '100.0',
             rtt_ms: tel && tel.rtt_ms > 0 ? tel.rtt_ms : null,
             ttfb_ms: tel && tel.ttfb_ms > 0 ? tel.ttfb_ms : null,
             dns_ms: tel?.dns_ms ?? 0,
             tcp_ms: tel?.tcp_ms ?? 0,
             tls_ms: tel?.tls_ms ?? 0,
-            last_code: tel?.last_code ?? 200,
+            last_code: ifaceStat?.last_code || (tel?.last_code ?? 200),
             last_iface: tel?.last_iface,
             by_iface: tel?.by_iface
         };
@@ -230,57 +229,8 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                 </div>
             )}
 
-            {/* Multi-Interface / 5G Tunnel Load-Balancing Summary Bar */}
-            {hasMultiOrTunnelIface && (
-                <div className="bg-card border border-border rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-                    <div className="flex items-center gap-2">
-                        <Globe size={15} className="text-cyan-400" />
-                        <span className="text-[11px] font-black uppercase tracking-wider text-text-primary">
-                            Egress Interfaces / 5G Tunnels (Round-Robin)
-                        </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        {ifaceKeys.map(ifName => {
-                            const reqs = stats.requests_by_iface?.[ifName] || 0;
-                            const errs = stats.errors_by_iface?.[ifName] || 0;
-                            const isSelected = selectedIfaceFilter === ifName;
-                            return (
-                                <button
-                                    key={ifName}
-                                    onClick={() => setSelectedIfaceFilter(isSelected ? null : ifName)}
-                                    className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-lg border text-[11px] font-mono transition-all ${
-                                        isSelected
-                                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-sm'
-                                            : errs > 0
-                                            ? 'bg-red-500/10 border-red-500/30 text-text-primary hover:border-red-400/50'
-                                            : 'bg-card-secondary border-border text-text-primary hover:border-cyan-500/40'
-                                    }`}
-                                    title="Click to filter applications traversing this interface"
-                                >
-                                    <span className="font-bold text-cyan-400">{ifName}</span>
-                                    <span className="text-text-muted">{reqs} req</span>
-                                    {errs > 0 ? (
-                                        <span className="text-red-400 font-bold">({errs} blocked/err)</span>
-                                    ) : (
-                                        <span className="text-emerald-400 font-bold">OK</span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                        {selectedIfaceFilter && (
-                            <button
-                                onClick={() => setSelectedIfaceFilter(null)}
-                                className="text-[10px] font-bold text-text-muted hover:text-text-primary px-2 py-1"
-                            >
-                                Clear filter ✕
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
-
             {/* Controls */}
-            <div className="bg-card border border-border rounded-xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between shadow-sm">
+            <div className="bg-card border border-border rounded-xl p-4 flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
                 <div className="relative flex-1 w-full">
                     <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                     <input
@@ -291,14 +241,49 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                         className="w-full bg-card-secondary border border-border text-text-primary rounded-lg pl-10 pr-4 py-2 outline-none focus:border-blue-500 transition-colors text-xs"
                     />
                 </div>
-                {onReset && (
-                    <button
-                        onClick={onReset}
-                        className="px-4 py-2 rounded-lg font-bold bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white border border-red-500/20 transition-all ml-2 text-xs shadow-sm"
-                    >
-                        Reset Counters
-                    </button>
-                )}
+                <div className="flex items-center gap-2.5 w-full md:w-auto justify-end shrink-0">
+                    {hasMultiOrTunnelIface && (
+                        <div className="flex items-center gap-1.5 bg-card-secondary border border-border rounded-lg px-2.5 py-1.5">
+                            <Globe size={14} className="text-cyan-400 shrink-0" />
+                            <select
+                                value={selectedIfaceFilter || ''}
+                                onChange={(e) => setSelectedIfaceFilter(e.target.value || null)}
+                                className="bg-transparent text-xs font-mono font-bold text-text-primary outline-none cursor-pointer pr-1"
+                                title="Filter traffic statistics by Egress Tunnel / Interface"
+                            >
+                                <option value="" className="bg-card text-text-primary">
+                                    All Tunnels ({ifaceKeys.length}) — {stats.total_requests.toLocaleString()} req
+                                </option>
+                                {ifaceKeys.map(ifName => {
+                                    const reqs = stats.requests_by_iface?.[ifName] || 0;
+                                    const errs = stats.errors_by_iface?.[ifName] || 0;
+                                    return (
+                                        <option key={ifName} value={ifName} className="bg-card text-text-primary">
+                                            {ifName} — {reqs.toLocaleString()} req{errs > 0 ? ` (${errs} err)` : ' (OK)'}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                            {selectedIfaceFilter && (
+                                <button
+                                    onClick={() => setSelectedIfaceFilter(null)}
+                                    className="text-text-muted hover:text-text-primary text-xs px-1"
+                                    title="Clear tunnel filter"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    {onReset && (
+                        <button
+                            onClick={onReset}
+                            className="px-4 py-2 rounded-lg font-bold bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white border border-red-500/20 transition-all text-xs shadow-sm shrink-0"
+                        >
+                            Reset Counters
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Statistics Table */}
@@ -398,37 +383,16 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                                             {(() => {
                                                 const errorRate = app.requests > 0 ? (app.errors / app.requests) * 100 : 0;
                                                 const isSlaViolated = app.errors > 0 && errorRate >= thresholds.error_rate_warning_pct;
-                                                const appIfaceEntries = app.by_iface ? Object.entries(app.by_iface).sort(([a], [b]) => a.localeCompare(b)) : [];
-                                                const showIfaceBreakdown = hasMultiOrTunnelIface && appIfaceEntries.length > 0 && (app.errors > 0 || appIfaceEntries.length > 1);
                                                 return (
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        <span className={`font-mono text-xs font-bold ${
-                                                            app.errors > 0
-                                                                ? isSlaViolated
-                                                                    ? 'text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded'
-                                                                    : 'text-red-400'
-                                                                : 'text-text-muted opacity-40'
-                                                        }`} title={isSlaViolated ? `SLA Violation: ${errorRate.toFixed(1)}% error rate (threshold: ${thresholds.error_rate_warning_pct}%)` : undefined}>
-                                                            {app.errors.toLocaleString()}
-                                                        </span>
-                                                        {showIfaceBreakdown && (
-                                                            <div className="flex flex-wrap justify-end gap-1">
-                                                                {appIfaceEntries.map(([ifName, ifStat]) => (
-                                                                    <span
-                                                                        key={ifName}
-                                                                        className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
-                                                                            ifStat.errors > 0
-                                                                                ? 'bg-red-500/15 text-red-400 border-red-500/30 font-bold'
-                                                                                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                                                        }`}
-                                                                        title={`${ifName}${ifStat.source_ip ? ` (${ifStat.source_ip})` : ''}: ${ifStat.requests} req, ${ifStat.errors} err (Last HTTP ${ifStat.last_code || '200'})`}
-                                                                    >
-                                                                        {ifName}: {ifStat.errors > 0 ? `${ifStat.errors}/${ifStat.requests} err` : `${ifStat.requests} ok`}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                    <span className={`font-mono text-xs font-bold ${
+                                                        app.errors > 0
+                                                            ? isSlaViolated
+                                                                ? 'text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded'
+                                                                : 'text-red-400'
+                                                            : 'text-text-muted opacity-40'
+                                                    }`} title={isSlaViolated ? `SLA Violation: ${errorRate.toFixed(1)}% error rate (threshold: ${thresholds.error_rate_warning_pct}%)` : undefined}>
+                                                        {app.errors.toLocaleString()}
+                                                    </span>
                                                 );
                                             })()}
                                         </td>
@@ -475,7 +439,7 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                                                                     <div>🔒 TLS: <span className="text-text-primary font-bold">{app.tls_ms.toFixed(1)} ms</span></div>
                                                                     <div>⚡ TTFB: <span className="text-purple-400 font-bold">{app.ttfb_ms?.toFixed(1) || '0'} ms</span></div>
                                                                 </div>
-                                                                {appIfaceEntries.length > 0 && (
+                                                                {hasMultiOrTunnelIface && appIfaceEntries.length > 0 && (
                                                                     <div className="border-t border-border/40 pt-1.5 space-y-1 font-mono">
                                                                         <div className="text-[9px] font-black uppercase tracking-wider text-cyan-400">
                                                                             Egress Interface Trace
