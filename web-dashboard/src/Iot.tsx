@@ -106,6 +106,11 @@ export default function Iot({ token }: IotProps) {
     const sliderDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
     // State filter & sorting
     const [stateFilter, setStateFilter] = useState<'ALL' | 'ACTIVE' | 'QUEUED' | 'IDLE' | 'STOPPED'>('ALL');
+    const [selectedTunnelFilter, setSelectedTunnelFilter] = useState<string | null>(null);
+    const [showTunnelDropdown, setShowTunnelDropdown] = useState(false);
+    const [showSortDropdown, setShowSortDropdown] = useState(false);
+    const tunnelDropdownRef = useRef<HTMLDivElement | null>(null);
+    const sortDropdownRef = useRef<HTMLDivElement | null>(null);
     const [sortBy, setSortBy] = useState<'recent' | 'index' | 'danger' | 'packets' | 'name'>(() => {
         const saved = localStorage.getItem('iot-sort-by');
         if (saved && ['recent', 'index', 'danger', 'packets', 'name'].includes(saved)) return saved as any;
@@ -165,6 +170,12 @@ export default function Iot({ token }: IotProps) {
         function handleClickOutside(event: MouseEvent) {
             if (importDropdownRef.current && !importDropdownRef.current.contains(event.target as Node)) {
                 setShowImportDropdown(false);
+            }
+            if (tunnelDropdownRef.current && !tunnelDropdownRef.current.contains(event.target as Node)) {
+                setShowTunnelDropdown(false);
+            }
+            if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target as Node)) {
+                setShowSortDropdown(false);
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
@@ -873,6 +884,22 @@ export default function Iot({ token }: IotProps) {
 
     const riskyOrAttackingCount = Array.isArray(devices) ? devices.filter(isDeviceRiskyOrAttacking).length : 0;
 
+    const iotTunnelSummary = React.useMemo(() => {
+        const map = new Map<string, { iface: string; ip: string; count: number; activeCount: number }>();
+        if (Array.isArray(devices)) {
+            devices.forEach(d => {
+                const ifName = d.status?.stats?.egress_interface || (d as any).interface;
+                if (!ifName) return;
+                const prev = map.get(ifName) || { iface: ifName, ip: '', count: 0, activeCount: 0 };
+                prev.count += 1;
+                if ((d as any).deviceState === 'ACTIVE') prev.activeCount += 1;
+                if (!prev.ip && d.status?.stats?.current_ip) prev.ip = d.status.stats.current_ip;
+                map.set(ifName, prev);
+            });
+        }
+        return Array.from(map.values()).sort((a, b) => a.iface.localeCompare(b.iface, undefined, { numeric: true }));
+    }, [devices]);
+
     const filteredDevices = Array.isArray(devices) ? devices.filter(d => {
         const query = (searchQuery || '').toLowerCase();
         const name = (d.name || '').toLowerCase();
@@ -886,7 +913,8 @@ export default function Iot({ token }: IotProps) {
         const ds = (d as any).deviceState || 'STOPPED';
         const stateMatch = stateFilter === 'ALL' || ds === stateFilter;
         const riskMatch = !onlyRiskOrAttack || isDeviceRiskyOrAttacking(d);
-        return textMatch && stateMatch && riskMatch;
+        const tunnelMatch = !selectedTunnelFilter || (d.status?.stats?.egress_interface || (d as any).interface) === selectedTunnelFilter;
+        return textMatch && stateMatch && riskMatch && tunnelMatch;
     }).sort((a, b) => {
         if (sortBy === 'recent') {
             const stateRank = (s?: string) => s === 'ACTIVE' ? 0 : s === 'QUEUED' ? 1 : s === 'IDLE' ? 2 : 3;
@@ -1333,21 +1361,149 @@ export default function Iot({ token }: IotProps) {
                         </button>
                     )}
 
-                    {/* Sort Selector */}
-                    <div className="flex items-center gap-1 bg-card-secondary border border-border rounded-xl px-2.5 py-1">
-                        <span className="text-[10px] font-bold text-text-muted">Sort:</span>
-                        <select
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value as any)}
-                            className="bg-transparent text-[11px] font-bold text-text-primary outline-none cursor-pointer"
+                    {/* Tunnel / Interface Selector Popover */}
+                    {localStorage.getItem('stigix_show_egress_telemetry') !== 'false' && iotTunnelSummary.length > 0 && (
+                        <div className="relative" ref={tunnelDropdownRef}>
+                            <button
+                                type="button"
+                                onClick={() => setShowTunnelDropdown(prev => !prev)}
+                                className={cn(
+                                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-mono font-bold border transition-all",
+                                    selectedTunnelFilter
+                                        ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300"
+                                        : "bg-card-secondary border-border text-text-secondary hover:text-text-primary hover:bg-card-hover"
+                                )}
+                                title="Filter IoT devices by bound 5G Tunnel / Interface"
+                            >
+                                <Wifi size={12} className="text-cyan-400 shrink-0" />
+                                <span>
+                                    {selectedTunnelFilter ? selectedTunnelFilter : `Tunnels (${iotTunnelSummary.length})`}
+                                </span>
+                                {selectedTunnelFilter ? (
+                                    <span
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedTunnelFilter(null);
+                                            setShowTunnelDropdown(false);
+                                        }}
+                                        className="ml-0.5 p-0.5 rounded hover:bg-cyan-500/20 text-cyan-300"
+                                        title="Clear tunnel filter"
+                                    >
+                                        <X size={11} />
+                                    </span>
+                                ) : (
+                                    <ChevronDown size={12} className={cn("text-text-muted transition-transform", showTunnelDropdown && "rotate-180")} />
+                                )}
+                            </button>
+
+                            {showTunnelDropdown && (
+                                <div className="absolute right-0 top-full mt-2 w-64 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl p-1.5 z-40 animate-in fade-in zoom-in-95 duration-150">
+                                    <div className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-text-muted flex items-center justify-between">
+                                        <span>5G Egress Tunnel Filter</span>
+                                        <span className="text-cyan-400 font-mono">Sticky SIM</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSelectedTunnelFilter(null); setShowTunnelDropdown(false); }}
+                                        className={cn(
+                                            "w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-mono transition-colors",
+                                            !selectedTunnelFilter
+                                                ? "bg-cyan-500/15 text-cyan-300 font-bold border border-cyan-500/30"
+                                                : "text-text-primary hover:bg-card-secondary"
+                                        )}
+                                    >
+                                        <span>All Tunnels ({iotTunnelSummary.length})</span>
+                                        <span className="text-[10px] text-text-muted font-bold">
+                                            {devices.length} devs
+                                        </span>
+                                    </button>
+                                    <div className="h-px bg-border my-1 mx-1" />
+                                    <div className="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+                                        {iotTunnelSummary.map(t => {
+                                            const active = selectedTunnelFilter === t.iface;
+                                            return (
+                                                <button
+                                                    key={t.iface}
+                                                    type="button"
+                                                    onClick={() => { setSelectedTunnelFilter(active ? null : t.iface); setShowTunnelDropdown(false); }}
+                                                    className={cn(
+                                                        "w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-mono transition-colors",
+                                                        active
+                                                            ? "bg-cyan-500/15 text-cyan-300 font-bold border border-cyan-500/30"
+                                                            : "text-text-primary hover:bg-card-secondary"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                        <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-bold text-cyan-400 shrink-0">
+                                                            {t.iface}
+                                                        </span>
+                                                        {t.ip && (
+                                                            <span className="text-[10px] text-text-muted truncate">{t.ip}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1 text-[10px] shrink-0">
+                                                        {t.activeCount > 0 && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold">
+                                                                {t.activeCount} act
+                                                            </span>
+                                                        )}
+                                                        <span className="text-text-muted font-bold">{t.count} total</span>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Sort Selector Popover */}
+                    <div className="relative" ref={sortDropdownRef}>
+                        <button
+                            type="button"
+                            onClick={() => setShowSortDropdown(prev => !prev)}
+                            className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-hover border border-border rounded-xl px-2.5 py-1.5 text-[11px] font-bold text-text-primary transition-all"
                             title="Sort IoT devices — switch to #ID for static editing order"
                         >
-                            <option value="recent" className="bg-card text-text-primary">⚡ Live Activity</option>
-                            <option value="index" className="bg-card text-text-primary">#ID (Static)</option>
-                            <option value="danger" className="bg-card text-text-primary">Danger Score</option>
-                            <option value="packets" className="bg-card text-text-primary">Packets</option>
-                            <option value="name" className="bg-card text-text-primary">Name</option>
-                        </select>
+                            <span className="text-[10px] font-bold text-text-muted">Sort:</span>
+                            <span>
+                                {sortBy === 'recent' ? '⚡ Live Activity' :
+                                 sortBy === 'index' ? '#ID (Static)' :
+                                 sortBy === 'danger' ? 'Danger Score' :
+                                 sortBy === 'packets' ? 'Packets' : 'Name'}
+                            </span>
+                            <ChevronDown size={12} className={cn("text-text-muted transition-transform", showSortDropdown && "rotate-180")} />
+                        </button>
+                        {showSortDropdown && (
+                            <div className="absolute right-0 top-full mt-2 w-48 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl p-1.5 z-40 animate-in fade-in zoom-in-95 duration-150 space-y-0.5">
+                                {([
+                                    { value: 'recent', label: '⚡ Live Activity' },
+                                    { value: 'index', label: '#ID (Static)' },
+                                    { value: 'danger', label: 'Danger Score' },
+                                    { value: 'packets', label: 'Packets Sent' },
+                                    { value: 'name', label: 'Device Name' },
+                                ] as const).map(opt => (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => {
+                                            setSortBy(opt.value);
+                                            localStorage.setItem('iot-sort-by', opt.value);
+                                            setShowSortDropdown(false);
+                                        }}
+                                        className={cn(
+                                            "w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold transition-colors",
+                                            sortBy === opt.value
+                                                ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                                : "text-text-primary hover:bg-card-secondary"
+                                        )}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Select All */}
@@ -1723,7 +1879,7 @@ export default function Iot({ token }: IotProps) {
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     const ifName = String(device.status?.stats?.egress_interface || '');
-                                                    setSearchQuery(prev => prev.toLowerCase() === ifName.toLowerCase() ? '' : ifName);
+                                                    setSelectedTunnelFilter(prev => prev === ifName ? null : ifName);
                                                 }}
                                                 className="px-1.5 py-0.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-[8px] font-bold text-cyan-400 leading-none cursor-pointer transition-colors"
                                                 title={`Bound Egress Tunnel: ${device.status.stats.egress_interface} (Click to filter)`}
@@ -1914,7 +2070,7 @@ export default function Iot({ token }: IotProps) {
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         const ifName = String(device.status?.stats?.egress_interface || '');
-                                                        setSearchQuery(prev => prev.toLowerCase() === ifName.toLowerCase() ? '' : ifName);
+                                                        setSelectedTunnelFilter(prev => prev === ifName ? null : ifName);
                                                     }}
                                                     className="px-1.5 py-0.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-[8px] font-bold text-cyan-400 leading-none cursor-pointer transition-colors"
                                                     title={`Bound Egress Tunnel: ${device.status.stats.egress_interface} (Click to filter)`}

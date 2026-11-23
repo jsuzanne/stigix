@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePeerContext } from './PeerContext';
-import { BarChart3, Search, Activity, Zap, Check, Plus, Clock, Server, Shield, Globe, Info } from 'lucide-react';
+import { BarChart3, Search, Activity, Zap, Check, Plus, Clock, Server, Shield, Globe, Info, ChevronDown, X } from 'lucide-react';
 import { Favicon } from './components/Favicon';
 
 interface IfaceTelemetry {
@@ -41,6 +41,8 @@ interface StatsProps {
 export default function Statistics({ stats, appConfig, onReset, token }: StatsProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedIfaceFilter, setSelectedIfaceFilter] = useState<string | null>(null);
+    const [showIfaceDropdown, setShowIfaceDropdown] = useState(false);
+    const ifaceDropdownRef = useRef<HTMLDivElement | null>(null);
     const [sortBy, setSortBy] = useState<'requests' | 'errors' | 'name' | 'group' | 'successRate' | 'latency' | 'ttfb'>('requests');
     const [promotingApp, setPromotingApp] = useState<string | null>(null);
     const [promotedApps, setPromotedApps] = useState<Record<string, boolean>>({});
@@ -56,6 +58,16 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
 
     const authToken = token || localStorage.getItem('token');
     const { gFetch, activePeerId } = usePeerContext();
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (ifaceDropdownRef.current && !ifaceDropdownRef.current.contains(event.target as Node)) {
+                setShowIfaceDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         const fetchThresholds = () => {
@@ -243,35 +255,109 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                 </div>
                 <div className="flex items-center gap-2.5 w-full md:w-auto justify-end shrink-0">
                     {hasMultiOrTunnelIface && (
-                        <div className="flex items-center gap-1.5 bg-card-secondary border border-border rounded-lg px-2.5 py-1.5">
-                            <Globe size={14} className="text-cyan-400 shrink-0" />
-                            <select
-                                value={selectedIfaceFilter || ''}
-                                onChange={(e) => setSelectedIfaceFilter(e.target.value || null)}
-                                className="bg-transparent text-xs font-mono font-bold text-text-primary outline-none cursor-pointer pr-1"
+                        <div className="relative" ref={ifaceDropdownRef}>
+                            <button
+                                type="button"
+                                onClick={() => setShowIfaceDropdown(prev => !prev)}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-mono font-bold transition-all shadow-sm ${
+                                    selectedIfaceFilter
+                                        ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                                        : 'bg-card-secondary hover:bg-card-hover border-border text-text-primary'
+                                }`}
                                 title="Filter traffic statistics by Egress Tunnel / Interface"
                             >
-                                <option value="" className="bg-card text-text-primary">
-                                    All Tunnels ({ifaceKeys.length}) — {stats.total_requests.toLocaleString()} req
-                                </option>
-                                {ifaceKeys.map(ifName => {
-                                    const reqs = stats.requests_by_iface?.[ifName] || 0;
-                                    const errs = stats.errors_by_iface?.[ifName] || 0;
-                                    return (
-                                        <option key={ifName} value={ifName} className="bg-card text-text-primary">
-                                            {ifName} — {reqs.toLocaleString()} req{errs > 0 ? ` (${errs} err)` : ' (OK)'}
-                                        </option>
-                                    );
-                                })}
-                            </select>
-                            {selectedIfaceFilter && (
-                                <button
-                                    onClick={() => setSelectedIfaceFilter(null)}
-                                    className="text-text-muted hover:text-text-primary text-xs px-1"
-                                    title="Clear tunnel filter"
-                                >
-                                    ✕
-                                </button>
+                                <Globe size={14} className="text-cyan-400 shrink-0" />
+                                <span>
+                                    {selectedIfaceFilter ? (
+                                        <>
+                                            <span className="text-cyan-400">{selectedIfaceFilter}</span>
+                                            <span className="text-text-muted ml-1.5 font-normal">
+                                                {(stats.requests_by_iface?.[selectedIfaceFilter] || 0).toLocaleString()} req
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            All Tunnels <span className="text-text-muted font-normal">({ifaceKeys.length})</span>
+                                        </>
+                                    )}
+                                </span>
+                                {selectedIfaceFilter ? (
+                                    <span
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedIfaceFilter(null);
+                                            setShowIfaceDropdown(false);
+                                        }}
+                                        className="ml-0.5 p-0.5 rounded hover:bg-cyan-500/20 text-cyan-300"
+                                        title="Clear tunnel filter"
+                                    >
+                                        <X size={12} />
+                                    </span>
+                                ) : (
+                                    <ChevronDown size={13} className={`text-text-muted transition-transform ${showIfaceDropdown ? 'rotate-180' : ''}`} />
+                                )}
+                            </button>
+
+                            {showIfaceDropdown && (
+                                <div className="absolute right-0 top-full mt-2 w-72 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl p-1.5 z-40 animate-in fade-in zoom-in-95 duration-150">
+                                    <div className="px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-text-muted flex items-center justify-between">
+                                        <span>Egress Tunnel / Interface</span>
+                                        <span className="text-cyan-400 font-mono">Round-Robin</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSelectedIfaceFilter(null); setShowIfaceDropdown(false); }}
+                                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-mono transition-colors ${
+                                            !selectedIfaceFilter
+                                                ? 'bg-cyan-500/15 text-cyan-300 font-bold border border-cyan-500/30'
+                                                : 'text-text-primary hover:bg-card-secondary'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <Globe size={13} className="text-cyan-400" />
+                                            <span>All Tunnels ({ifaceKeys.length})</span>
+                                        </span>
+                                        <span className="text-[10px] text-text-muted font-bold">
+                                            {stats.total_requests.toLocaleString()} req
+                                        </span>
+                                    </button>
+                                    <div className="h-px bg-border my-1 mx-1" />
+                                    <div className="max-h-64 overflow-y-auto space-y-0.5 pr-0.5">
+                                        {ifaceKeys.map(ifName => {
+                                            const reqs = stats.requests_by_iface?.[ifName] || 0;
+                                            const errs = stats.errors_by_iface?.[ifName] || 0;
+                                            const active = selectedIfaceFilter === ifName;
+                                            return (
+                                                <button
+                                                    key={ifName}
+                                                    type="button"
+                                                    onClick={() => { setSelectedIfaceFilter(active ? null : ifName); setShowIfaceDropdown(false); }}
+                                                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-mono transition-colors ${
+                                                        active
+                                                            ? 'bg-cyan-500/15 text-cyan-300 font-bold border border-cyan-500/30'
+                                                            : 'text-text-primary hover:bg-card-secondary'
+                                                    }`}
+                                                >
+                                                    <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-bold text-cyan-400">
+                                                        {ifName}
+                                                    </span>
+                                                    <div className="flex items-center gap-1.5 text-[10px]">
+                                                        <span className="text-text-secondary font-bold">{reqs.toLocaleString()} req</span>
+                                                        {errs > 0 ? (
+                                                            <span className="px-1.5 py-0.5 rounded bg-red-500/15 border border-red-500/30 text-red-400 font-bold">
+                                                                {errs} err
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold">
+                                                                OK
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
                             )}
                         </div>
                     )}
