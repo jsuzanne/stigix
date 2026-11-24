@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"encoding/pem"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveTrafficInterfaces_DefaultFallbackEth0(t *testing.T) {
@@ -186,5 +192,77 @@ func TestAssignTunnelForIoTDevice_StickyAndBalanced(t *testing.T) {
 	t1Again, ip1Again, okAgain := assignTunnelForIoTDevice("cam-01", "")
 	if !okAgain || t1Again != t1 || ip1Again != ip1 {
 		t.Fatalf("expected sticky tunnel %s (%s), got %s (%s)", t1, ip1, t1Again, ip1Again)
+	}
+}
+
+func TestBuildTrafficTLSConfig_StrictAndCustomCA(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	resetRootCACache := func() {
+		rootCAMu.Lock()
+		cachedRootPool = nil
+		lastBundleMod = time.Time{}
+		rootCAMu.Unlock()
+	}
+
+	// 1. Strict TLS without the test CA installed -> must fail certificate verification
+	t.Setenv("SSL_CERT_FILE", "")
+	t.Setenv("CURL_CA_BUNDLE", "")
+	resetRootCACache()
+
+	strictClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: buildTrafficTLSConfig(false),
+		},
+		Timeout: 5 * time.Second,
+	}
+	code, _, err := doTracedRequest(context.Background(), strictClient, srv.URL, "stigix-test")
+	if err == nil || code != 0 {
+		t.Fatalf("expected TLS verification failure without custom CA, got code=%d err=%v", code, err)
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "certificate") && !strings.Contains(strings.ToLower(err.Error()), "x509") {
+		t.Fatalf("expected x509/certificate error, got: %v", err)
+	}
+
+	// 2. Strict TLS with the test server's CA installed via SSL_CERT_FILE -> must succeed
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: srv.Certificate().Raw,
+	})
+	caFile := filepath.Join(t.TempDir(), "test-forward-trust-ca.pem")
+	if err := os.WriteFile(caFile, certPEM, 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SSL_CERT_FILE", caFile)
+	resetRootCACache()
+
+	caClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: buildTrafficTLSConfig(false),
+		},
+		Timeout: 5 * time.Second,
+	}
+	code, _, err = doTracedRequest(context.Background(), caClient, srv.URL, "stigix-test")
+	if err != nil || code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 with custom CA trusted, got code=%d err=%v", code, err)
+	}
+
+	// 3. Opt-in ignore_tls_errors=true without custom CA -> must succeed
+	t.Setenv("SSL_CERT_FILE", "")
+	resetRootCACache()
+
+	insecureClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: buildTrafficTLSConfig(true),
+		},
+		Timeout: 5 * time.Second,
+	}
+	code, _, err = doTracedRequest(context.Background(), insecureClient, srv.URL, "stigix-test")
+	if err != nil || code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 with ignore_tls_errors=true, got code=%d err=%v", code, err)
 	}
 }

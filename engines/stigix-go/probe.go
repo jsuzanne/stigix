@@ -431,6 +431,7 @@ func singleHTTPAttempt(
 	}
 
 	transport := &http.Transport{
+		Proxy:             http.ProxyFromEnvironment,
 		DisableKeepAlives: true,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			currentPhase = "connect"

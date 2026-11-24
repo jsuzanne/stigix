@@ -23,9 +23,10 @@ import (
 
 type AppConfigFile struct {
 	Control struct {
-		Enabled       bool    `json:"enabled"`
-		ClientCount   int     `json:"client_count"`
-		SleepInterval float64 `json:"sleep_interval"`
+		Enabled         bool    `json:"enabled"`
+		ClientCount     int     `json:"client_count"`
+		SleepInterval   float64 `json:"sleep_interval"`
+		IgnoreTLSErrors bool    `json:"ignore_tls_errors,omitempty"`
 	} `json:"control"`
 	Applications []AppEntry `json:"applications"`
 }
@@ -490,6 +491,13 @@ func doTracedRequest(ctx context.Context, client *http.Client, urlStr string, ua
 	}, nil
 }
 
+func buildTrafficTLSConfig(ignoreTLSErrors bool) *tls.Config {
+	return &tls.Config{
+		InsecureSkipVerify: ignoreTLSErrors,
+		RootCAs:            getProbeRootCAs(),
+	}
+}
+
 func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir string, logMu *sync.Mutex) {
 	activeHTTPWorkers.Add(1)
 	defer activeHTTPWorkers.Add(-1)
@@ -531,12 +539,15 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 	}
 
 	clientsByIface := make(map[string]*http.Client)
-	getClientForInterface := func(iface string, isWildcard bool, totalIfaces int) *http.Client {
+	getClientForInterface := func(iface string, isWildcard bool, totalIfaces int, ignoreTLSErrors bool) *http.Client {
 		shouldBind := isWildcard || totalIfaces > 1 || (iface != "" && iface != "eth0" && iface != "auto" && iface != "default")
 		useBoundDNS := strings.HasPrefix(iface, "uesimtun") || isWildcard || shouldBind
-		cacheKey := fmt.Sprintf("%s|bind=%v|dns=%v", iface, shouldBind, useBoundDNS)
+		cacheKey := fmt.Sprintf("%s|bind=%v|dns=%v|insecure=%v", iface, shouldBind, useBoundDNS, ignoreTLSErrors)
+		currentRootCAs := getProbeRootCAs()
 		if c, exists := clientsByIface[cacheKey]; exists {
-			return c
+			if tr, ok := c.Transport.(*http.Transport); ok && tr.TLSClientConfig != nil && tr.TLSClientConfig.RootCAs == currentRootCAs {
+				return c
+			}
 		}
 
 		dialer := &net.Dialer{
@@ -559,7 +570,7 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 		transport := &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			DialContext:           dialer.DialContext,
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig:       buildTrafficTLSConfig(ignoreTLSErrors),
 			MaxIdleConns:          32,
 			IdleConnTimeout:       30 * time.Second,
 			TLSHandshakeTimeout:   8 * time.Second,
@@ -620,7 +631,7 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 
 		uas := loadUserAgents(configDir)
 		ua := uas[rand.Intn(len(uas))]
-		client := getClientForInterface(iface, isWildcard, len(ifaces))
+		client := getClientForInterface(iface, isWildcard, len(ifaces), cfg.Control.IgnoreTLSErrors)
 
 		domain := strings.TrimPrefix(strings.TrimPrefix(app.Domain, "https://"), "http://")
 		endpoint := app.Endpoint
@@ -679,8 +690,12 @@ func runTrafficWorker(ctx context.Context, workerIdx int, configDir, logDir stri
 		if isErr {
 			stats.ErrorsByApp[domain]++
 			stats.ErrorsByIface[iface]++
+			errDetail := ""
+			if err != nil {
+				errDetail = fmt.Sprintf(", err=%v", err)
+			}
 			appendTrafficLog(logMu, trafficLog, "WARN",
-				fmt.Sprintf("[%s] [%s] FAIL %s via %s (HTTP %s, TTFB %.1fms)", clientID, domain, targetURL, viaLabel, tData.LastCode, tData.TtfbMs))
+				fmt.Sprintf("[%s] [%s] FAIL %s via %s (HTTP %s, TTFB %.1fms%s)", clientID, domain, targetURL, viaLabel, tData.LastCode, tData.TtfbMs, errDetail))
 		} else {
 			appendTrafficLog(logMu, trafficLog, "INFO",
 				fmt.Sprintf("[%s] [%s] OK %s via %s (HTTP %d, RTT %.1fms, TTFB %.1fms, DNS %.1fms)",
