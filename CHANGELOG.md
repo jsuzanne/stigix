@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.33] - 2026-11-24
+
+### Fixed & Aligned
+- **Consistent SSL Decryption & Custom CA Trust Store Across All Go Engines (`engines/stigix-go/traffic.go`, `probe.go`)**:
+  - Replaced `InsecureSkipVerify: true` in the Go SaaS Traffic Generator with strict TLS certificate validation backed by `getProbeRootCAs()` (system Root CAs + custom Enterprise / Prisma Access Forward Trust CAs configured in **Settings**, with automatic hot-reload).
+  - Added optional `ignore_tls_errors` flag (default `false`) in `applications-config.json` and detailed error logging in `traffic.log` on request failures (e.g., `x509: certificate signed by unknown authority`).
+  - Enabled `Proxy: http.ProxyFromEnvironment` in `stigix-go probe` (`probe.go`) so Connectivity/DEX, Cloud Targets, and Security Testing probes match `traffic.go` and `curl` when `HTTP_PROXY` / `HTTPS_PROXY` are set.
+
 ## [3.2.32] - 2026-11-23
 
 ### Enhanced & Fixed
