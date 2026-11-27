@@ -129,3 +129,8 @@ CSPrismaAccessLab-Back-emealabs/
 CSPrismaAccessLab-Back-emealabs
 /CSPrismaAccessLab*
 
+# Private Hackathon submissions & templates (CRITICAL - Never commit)
+hackathon/
+/hackathon/
+
+
